@@ -97,6 +97,16 @@ router.post("/restaurants/:parentId/branches", optionalAuth, requireAuth, async 
       return res.status(404).json({ error: "Parent restaurant not found" });
     }
 
+    const { resolveRestaurantPlan } = await import("../billing/planFeatures.js");
+    const planInfo = await resolveRestaurantPlan(knex, parentId);
+    if (!planInfo.features.branches) {
+      return res.status(403).json({
+        error: "Branches are not included in the Starter plan. Upgrade to Growth or Pilot.",
+        code: "plan_feature_locked",
+        plan: planInfo.plan || "starter",
+      });
+    }
+
     const {
       name,
       address,

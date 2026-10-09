@@ -58,6 +58,11 @@ import StaffTables from "@/pages/StaffTables";
 import Permissions from "@/pages/Permissions";
 import Kitchen from "@/pages/Kitchen";
 import Landing from "@/pages/Landing";
+import Subscribe from "@/pages/Subscribe";
+import SubscribeSuccess from "@/pages/SubscribeSuccess";
+import Signup from "@/pages/Signup";
+import SignupSuccess from "@/pages/SignupSuccess";
+import { PlanFeatureGate } from "@/components/PlanFeatureGate";
 
 const queryClient = new QueryClient();
 
@@ -84,6 +89,10 @@ const App = () => (
                 }
               />
               <Route path="/" element={<Landing />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/signup/success" element={<SignupSuccess />} />
+              <Route path="/subscribe" element={<Subscribe />} />
+              <Route path="/subscribe/success" element={<SubscribeSuccess />} />
               <Route
                 element={
                   <ProtectedRoute>
@@ -97,7 +106,14 @@ const App = () => (
                 <Route path="customers" element={<Navigate to="/users/customers" replace />} />
                 <Route path="users" element={<Navigate to="/users/team-members" replace />} />
                 <Route path="users/customers" element={<Customers />} />
-                <Route path="users/team-members" element={<TeamMembersPage />} />
+                <Route
+                  path="users/team-members"
+                  element={
+                    <PlanFeatureGate feature="staff_management">
+                      <TeamMembersPage />
+                    </PlanFeatureGate>
+                  }
+                />
                 <Route path="users/restaurant-owners" element={<Navigate to="/users/team-members" replace />} />
                 <Route path="leads" element={<Leads />} />
                 <Route path="agents" element={<Agents />} />
@@ -121,10 +137,46 @@ const App = () => (
                 <Route path="vehicles" element={<Vehicles />} />
                 <Route path="drivers" element={<Drivers />} />
                 <Route path="restaurant-settings" element={<RestaurantSettings />} />
-                <Route path="branches" element={<BranchPortal />} />
-                <Route path="branches/:branchId" element={<BranchPortal />} />
-                <Route path="branch-portal" element={<BranchPortal />} />
-                <Route path="branch-portal/:branchId" element={<BranchPortal />} />
+                <Route
+                  path="branches"
+                  element={
+                    <PlanFeatureGate feature="branches">
+                      <BranchPortal />
+                    </PlanFeatureGate>
+                  }
+                />
+                <Route
+                  path="branches/:branchId"
+                  element={
+                    <PlanFeatureGate feature="branches">
+                      <BranchPortal />
+                    </PlanFeatureGate>
+                  }
+                />
+                <Route
+                  path="branch-portal"
+                  element={
+                    <PlanFeatureGate feature="branches">
+                      <BranchPortal />
+                    </PlanFeatureGate>
+                  }
+                />
+                <Route
+                  path="branch-portal/:branchId"
+                  element={
+                    <PlanFeatureGate feature="branches">
+                      <BranchPortal />
+                    </PlanFeatureGate>
+                  }
+                />
+                <Route
+                  path="permissions"
+                  element={
+                    <PlanFeatureGate feature="staff_management">
+                      <Permissions />
+                    </PlanFeatureGate>
+                  }
+                />
                 <Route path="restaurants" element={<Restaurants />} />
                 <Route path="restaurants/:id/details" element={<RestaurantDetails />} />
                 <Route path="restaurants/:id/configuration" element={<RestaurantConfiguration />} />
@@ -139,7 +191,6 @@ const App = () => (
                 <Route path="coupons" element={<Coupons />} />
                 <Route path="cuisines" element={<Cuisines />} />
                 <Route path="reservations" element={<TableReservations />} />
-                <Route path="permissions" element={<Permissions />} />
                 <Route path="kitchen" element={<Kitchen />} />
                 <Route path="tables" element={<StaffTables />} />
                 <Route path="profile" element={<Profile />} />

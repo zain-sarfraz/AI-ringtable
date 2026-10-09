@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  UtensilsCrossed,
   Eye,
   EyeOff,
   ArrowRight,
@@ -12,6 +11,7 @@ import {
   ArrowLeft,
   KeyRound,
 } from "lucide-react";
+import { BRAND_ASSETS, PRODUCT_NAME } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,9 +63,7 @@ export default function Login() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3 animate-pulse">
-          <div className="w-12 h-12 rounded-2xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/30">
-            <UtensilsCrossed className="h-6 w-6 text-primary-foreground" />
-          </div>
+          <img src={BRAND_ASSETS.appIcon} alt={PRODUCT_NAME} className="h-12 w-12 rounded-2xl shadow-lg" />
           <span className="text-sm font-medium text-muted-foreground">{t("common:loading", "Loading…")}</span>
         </div>
       </div>
@@ -240,10 +238,7 @@ export default function Login() {
         />
 
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-primary-foreground/15 backdrop-blur-sm border border-primary-foreground/20 flex items-center justify-center shadow-lg">
-            <UtensilsCrossed className="h-5 w-5" />
-          </div>
-          <span className="text-lg font-semibold tracking-tight">Royal Restaurant</span>
+          <img src={BRAND_ASSETS.logoHorizontalWhite} alt={PRODUCT_NAME} className="h-9 w-auto max-w-[200px]" />
         </div>
 
         <div className="relative z-10 max-w-md space-y-5">
@@ -260,7 +255,7 @@ export default function Login() {
         </div>
 
         <p className="relative z-10 text-sm text-primary-foreground/50">
-          © {new Date().getFullYear()} Royal Restaurant
+          © {new Date().getFullYear()} {PRODUCT_NAME}
         </p>
       </aside>
 
@@ -281,10 +276,7 @@ export default function Login() {
 
         <div className="relative w-full max-w-[400px] animate-fade-in my-auto">
           <div className="flex items-center gap-2 mb-6 lg:hidden">
-            <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md shadow-primary/30">
-              <UtensilsCrossed className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <p className="text-base font-bold tracking-tight text-foreground">Royal Restaurant</p>
+            <img src={BRAND_ASSETS.logoHorizontal} alt={PRODUCT_NAME} className="h-8 w-auto max-w-[180px]" />
           </div>
 
           <div className="mb-8 space-y-2 text-center lg:text-left">
@@ -541,6 +533,15 @@ export default function Login() {
                 })}
               </div>
             </div>
+          ) : null}
+
+          {view === "login" ? (
+            <p className="text-center text-sm text-muted-foreground mt-6">
+              New restaurant?{" "}
+              <Link to="/#pricing" className="font-medium text-primary hover:underline">
+                Choose a plan &amp; sign up
+              </Link>
+            </p>
           ) : null}
 
           <p className="text-center text-sm text-muted-foreground mt-8 lg:mt-10">

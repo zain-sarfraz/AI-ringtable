@@ -1,12 +1,14 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { BILLING_PLANS, BillingInterval, formatPlanPrice, planAmount } from "@/lib/billingPlans";
+import { BRAND_ASSETS, PRODUCT_EMAIL, PRODUCT_NAME, productTitle } from "@/lib/brand";
 import "./landing.css";
 
 const FAQS = [
   {
     q: "We already have a POS. Do we need to replace it?",
-    a: "No. AI Restaurant automates the parts around your POS — phone calls, reservations, QR and online ordering. Your POS stays where it is.",
+    a: "No. Ringtable automates the parts around your POS — phone calls, reservations, QR and online ordering. Your POS stays where it is.",
   },
   {
     q: "Will customers know they're talking to AI?",
@@ -26,19 +28,25 @@ const FAQS = [
   },
   {
     q: "How long is the contract?",
-    a: "Month-to-month. Cancel anytime. Pilot restaurants lock their founding price for 12 months.",
+    a: "Monthly or yearly through Stripe. Cancel anytime. Yearly Starter and Growth include 2 months free. Pilot restaurants get Growth at $400/mo, locked for 1 year.",
   },
 ];
 
-function BrandMark() {
+function BrandMark({ variant = "mark" }: { variant?: "mark" | "wordmark" }) {
+  if (variant === "wordmark") {
+    return (
+      <img
+        className="brand-wordmark"
+        src={BRAND_ASSETS.logoHorizontalWhite}
+        alt={PRODUCT_NAME}
+        width={168}
+        height={42}
+      />
+    );
+  }
   return (
     <span className="lg" aria-hidden="true">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8" />
-        <path d="M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7" />
-        <path d="m2.1 21.8 6.4-6.3" />
-        <path d="m19 5-7 7" />
-      </svg>
+      <img src={BRAND_ASSETS.appIcon} alt="" width={44} height={44} />
     </span>
   );
 }
@@ -228,7 +236,7 @@ function RoiCalculator() {
             <b>{hours * 30} hrs</b>
           </div>
           <div className="rr">
-            <span>AI Restaurant Growth plan</span>
+            <span>{PRODUCT_NAME} Growth plan</span>
             <b>$599/mo</b>
           </div>
           <div className="rr border-0">
@@ -251,10 +259,11 @@ export default function Landing() {
   const { user } = useAuth();
   const [navOpen, setNavOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
 
   useEffect(() => {
     const previous = document.title;
-    document.title = "AI Restaurant — Never Miss a Restaurant Order Again | Qubetech";
+    document.title = productTitle("Never Miss a Restaurant Order Again");
     return () => {
       document.title = previous;
     };
@@ -263,18 +272,14 @@ export default function Landing() {
   return (
     <div className="lp" id="top">
       <div className="ann">
-        🗽 Now onboarding 10 founding pilot restaurants in New York City — free setup on your own menu{" "}
+        🗽 Now onboarding 10 founding pilot restaurants in New York City — Growth at $400/mo for 1 year{" "}
         <a href="#audit">4 spots left →</a>
       </div>
 
       <nav className="navwrap">
         <div className="container navrow">
-          <a className="brand" href="#top">
-            <BrandMark />
-            <span className="brand-name">
-              AI Restaurant
-              <small>by Qubetech</small>
-            </span>
+          <a className="brand" href="#top" aria-label={PRODUCT_NAME}>
+            <BrandMark variant="wordmark" />
           </a>
           <button className="nav-toggle" type="button" aria-label="Toggle navigation" aria-expanded={navOpen} onClick={() => setNavOpen((v) => !v)}>
             ☰
@@ -568,7 +573,7 @@ export default function Landing() {
         <div className="container">
           <div className="row g-5 align-items-center dd mb-5 pb-4">
             <div className="col-lg-6">
-              <span className="eyebrow">The AI Restaurant Brain</span>
+              <span className="eyebrow">The Ringtable Brain</span>
               <h2>An AI that knows your menu — down to the last modifier.</h2>
               <p className="l">
                 We don't just upload a PDF menu. Your AI works from structured data: items, sizes, modifiers, combos, hours, policies — and what's sold out right now.
@@ -880,7 +885,7 @@ export default function Landing() {
           <div className="sh">
             <span className="eyebrow">Keep your POS</span>
             <h2>We automate around what you already use.</h2>
-            <p>No rip-and-replace. AI Restaurant handles calls, reservations, QR and online ordering — and your existing POS stays where it is.</p>
+            <p>No rip-and-replace. Ringtable handles calls, reservations, QR and online ordering — and your existing POS stays where it is.</p>
           </div>
           <div className="row g-3">
             {[
@@ -1012,7 +1017,7 @@ export default function Landing() {
                   </div>
                   <div className="d-flex gap-3 text-mut mt-2" style={{ fontSize: 12 }}>
                     <span>■ Before</span>
-                    <span className="text-or">■ After AI Restaurant</span>
+                    <span className="text-or">■ After Ringtable</span>
                   </div>
                 </div>
               </div>
@@ -1042,7 +1047,7 @@ export default function Landing() {
                 At your busiest hours we try to book a table, place a pickup order and ask a menu question. You get a scored report in 48 hours — and a demo of the AI handling the same calls, on your own menu.
               </p>
               <div className="pilot">
-                <b>🗽 NYC Founding Pilot Program</b> — free setup, founding price locked for 12 months, direct line to our product team.
+                <b>🗽 NYC Founding Pilot Program</b> — Growth at $400/mo, locked for 1 year, direct line to our product team.
                 <div className="spots">
                   <i />
                   <i />
@@ -1138,7 +1143,15 @@ export default function Landing() {
           <div className="sh">
             <span className="eyebrow">Pricing</span>
             <h2>Simple plans. Setup included.</h2>
-            <p>Every plan includes menu setup, AI training and the One Order Inbox. Cancel anytime.</p>
+            <p>Every plan includes menu setup, AI training and the One Order Inbox. Monthly or yearly. Cancel anytime.</p>
+            <div className="bill-toggle" role="group" aria-label="Billing period">
+              <button type="button" className={billingInterval === "month" ? "on" : ""} onClick={() => setBillingInterval("month")}>
+                Monthly
+              </button>
+              <button type="button" className={billingInterval === "year" ? "on" : ""} onClick={() => setBillingInterval("year")}>
+                Yearly 
+              </button>
+            </div>
           </div>
           <div className="row g-4 align-items-stretch">
             <div className="col-lg-4">
@@ -1146,18 +1159,22 @@ export default function Landing() {
                 <h3>Starter</h3>
                 <p className="text-mut mt-1 mb-0">1 location</p>
                 <div className="pz">
-                  $299<small>/mo</small>
+                  {formatPlanPrice(planAmount("starter", billingInterval))}
+                  <small>/{billingInterval === "year" ? "yr" : "mo"}</small>
                 </div>
+                <p className="price-note">{billingInterval === "year" ? BILLING_PLANS.starter.yearlyNote : "\u00a0"}</p>
                 <ul>
-                  <li>AI Receptionist · 500 min</li>
+                  <li>AI Receptionist</li>
+                  <li>1,000 minutes</li>
                   <li>Phone + QR ordering</li>
                   <li>Reservations</li>
                   <li>One Order Inbox & KDS</li>
                   <li>AI performance dashboard</li>
+                  <li>1 location — no branches or staff seats</li>
                 </ul>
-                <a href="#demo" className="btn btn-ghost w-100">
-                  Start with a Free Audit
-                </a>
+                <Link to={`/signup?plan=starter&interval=${billingInterval}`} className="btn btn-ghost w-100">
+                  Sign up {billingInterval === "year" ? "yearly" : "monthly"}
+                </Link>
               </div>
             </div>
             <div className="col-lg-4">
@@ -1172,37 +1189,43 @@ export default function Landing() {
                   Up to 5 locations
                 </p>
                 <div className="pz">
-                  $599<small style={{ color: "#9AA6B8" }}>/mo</small>
+                  {formatPlanPrice(planAmount("growth", billingInterval))}
+                  <small style={{ color: "#9AA6B8" }}>/{billingInterval === "year" ? "yr" : "mo"}</small>
                 </div>
+                <p className="price-note">{billingInterval === "year" ? BILLING_PLANS.growth.yearlyNote : "\u00a0"}</p>
                 <ul>
-                  <li>AI Receptionist · 2,000 min</li>
+                  <li>AI Receptionist</li>
+                  <li>2,500 minutes</li>
                   <li>Phone, QR & Website ordering</li>
+                  <li>Multi branches</li>
                   <li>Multi-location routing</li>
                   <li>Revenue attribution & missed-call recovery</li>
                   <li>Staff roles & audit log</li>
                 </ul>
-                <a href="#demo" className="btn btn-or w-100">
-                  Book a 10-min Demo
-                </a>
+                <Link to={`/signup?plan=growth&interval=${billingInterval}`} className="btn btn-or w-100">
+                  Sign up {billingInterval === "year" ? "yearly" : "monthly"}
+                </Link>
               </div>
             </div>
             <div className="col-lg-4">
               <div className="cardx pp">
                 <h3>Pilot</h3>
-                <p className="text-mut mt-1 mb-0">NYC founding restaurants</p>
+                <p className="text-mut mt-1 mb-0">Growth for 1 year</p>
                 <div className="pz">
-                  Free<small> setup</small>
+                  {formatPlanPrice(planAmount("pilot", billingInterval))}
+                  <small>/{billingInterval === "year" ? "yr" : "mo"}</small>
                 </div>
+                <p className="price-note">{billingInterval === "year" ? BILLING_PLANS.pilot.yearlyNote : "\u00a0"}</p>
                 <ul>
                   <li>Everything in Growth</li>
-                  <li>Founding price locked 12 months</li>
+                  <li>Same $400 price locked for 1 year</li>
                   <li>Weekly check-in with our team</li>
                   <li>Shape the product roadmap</li>
                   <li>4 spots remaining</li>
                 </ul>
-                <a href="#demo" className="btn btn-ghost w-100">
-                  Apply for Pilot
-                </a>
+                <Link to={`/signup?plan=pilot&interval=${billingInterval}`} className="btn btn-ghost w-100">
+                  Sign up {billingInterval === "year" ? "yearly" : "monthly"}
+                </Link>
               </div>
             </div>
           </div>
@@ -1273,12 +1296,11 @@ export default function Landing() {
         <div className="container">
           <div className="row g-4">
             <div className="col-lg-4">
-              <a className="brand" href="#top">
-                <BrandMark />
-                <span className="brand-name">AI Restaurant</span>
+              <a className="brand" href="#top" aria-label={PRODUCT_NAME}>
+                <BrandMark variant="wordmark" />
               </a>
               <p className="mt-3" style={{ lineHeight: 1.6, fontSize: 14, maxWidth: 300 }}>
-                The AI restaurant operating system for independent restaurants. Built by Qubetech.
+                The AI restaurant operating system for independent restaurants.
               </p>
             </div>
             <div className="col-6 col-lg-2 offset-lg-1">
@@ -1303,14 +1325,16 @@ export default function Landing() {
             <div className="col-6 col-lg-3">
               <h5>Get in touch</h5>
               <ul>
-                <li><a href="https://qubetech.us">qubetech.us</a></li>
+                <li>
+                  <a href={`mailto:${PRODUCT_EMAIL}`}>{PRODUCT_EMAIL}</a>
+                </li>
                 <li>Washington, DC</li>
                 <li><a href="#demo">Book a demo</a></li>
               </ul>
             </div>
           </div>
           <div className="d-flex justify-content-between flex-wrap gap-2 mt-4 pt-4" style={{ borderTop: "1px solid var(--line2)", fontSize: 13 }}>
-            <span>© 2026 Qubetech. All rights reserved.</span>
+            <span>© {new Date().getFullYear()} {PRODUCT_NAME}. All rights reserved.</span>
             <span>
               <a href="#top">Privacy</a> · <a href="#top">Terms</a>
             </span>

@@ -18,6 +18,7 @@ export const SIDEBAR_NAV_SEARCH_ITEMS: SidebarNavSearchItem[] = [
     href: "/users/team-members",
     section: "Users",
     keywords: ["users", "team", "staff", "employees", "members", "permissions"],
+    /** Hidden via plan gate for Starter; still searchable for Growth+ */
   },
   { label: "Orders", href: "/orders", section: "Orders", keywords: ["all orders", "order list"] },
   { label: "New orders", href: "/orders/new", section: "Orders", keywords: ["new", "inbox", "pending"] },

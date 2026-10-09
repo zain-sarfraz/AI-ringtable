@@ -143,8 +143,9 @@
 .lp .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 17px; color: #fff; text-decoration: none; white-space: nowrap; flex: none; letter-spacing: -0.02em; }
 .lp .brand-name { display: flex; flex-direction: column; line-height: 1.05; }
 .lp .brand small { font-weight: 500; color: #8b97ab; font-size: 12px; letter-spacing: 0; margin-top: 3px; }
-.lp .lg { width: 44px; height: 44px; border-radius: 13px; background: linear-gradient(180deg, #ff7a2f, var(--or)); display: grid; place-items: center; flex: none; box-shadow: 0 8px 16px -10px rgba(242, 106, 27, 0.9); }
-.lp .lg svg { display: block; }
+.lp .brand-wordmark { display: block; height: 36px; width: auto; max-width: min(188px, 46vw); }
+.lp .lg { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; flex: none; overflow: hidden; box-shadow: 0 8px 16px -10px rgba(0, 0, 0, 0.45); }
+.lp .lg img { display: block; width: 44px; height: 44px; }
 .lp .nav-toggle { display: none; margin-left: auto; width: 42px; height: 36px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.3); background: transparent; color: #fff; }
 .lp .nav-menu { display: flex; align-items: center; flex: 1; min-width: 0; gap: 16px; }
 .lp .navlinks { display: flex; align-items: center; justify-content: center; gap: 2px; list-style: none; margin: 0; padding: 0; flex: 1; }
@@ -337,6 +338,12 @@
 
 .lp .pp { padding: 36px; display: flex; flex-direction: column; }
 .lp .pp h3 { font-size: 22px; }
+.lp .bill-toggle { display: inline-flex; gap: 4px; background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
+.lp .bill-toggle button { border: 0; background: transparent; border-radius: 999px; padding: 8px 16px; font-weight: 600; font-size: 14px; color: var(--ink); cursor: pointer; }
+.lp .bill-toggle button.on { background: var(--navy); color: #fff; }
+.lp .bill-toggle button span { font-weight: 500; font-size: 12px; margin-left: 6px; opacity: 0.8; }
+.lp .price-note { font-size: 13px; color: var(--mut); min-height: 1.2em; margin: 0; }
+.lp .pp.hot .price-note { color: #9AA6B8; }
 .lp .pp .pz { font-size: 48px; font-weight: 700; margin: 16px 0 4px; letter-spacing: -0.02em; }
 .lp .pp .pz small { font-size: 16px; color: var(--mut); font-weight: 500; }
 .lp .pp ul { list-style: none; padding: 0; margin: 24px 0 28px; flex: 1; }

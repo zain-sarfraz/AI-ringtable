@@ -2,7 +2,6 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Settings,
-  UtensilsCrossed as LogoIcon,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -45,6 +44,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
 import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
+import { usePlanFeatures } from "@/hooks/usePlanFeatures";
+import { BRAND_ASSETS, PRODUCT_NAME } from "@/lib/brand";
 import { supabase } from "@/integrations/supabase/client";
 
 interface SidebarProps {
@@ -57,6 +58,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const location = useLocation();
   const { role, profile, user } = useAuth();
   const { restaurantId, activeRestaurant } = useActiveRestaurant();
+  const planFeatures = usePlanFeatures();
   const [restaurantName, setRestaurantName] = useState("");
   const [ordersOpen, setOrdersOpen] = useState(
     location.pathname === "/orders" || location.pathname.startsWith("/orders/")
@@ -116,15 +118,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   );
 
   const usersChildren = useMemo(
-    () => [
-      { icon: Users, label: t("sidebar:teamMembers", "Team Members"), href: "/users/team-members" },
-    ],
-    [t]
+    () =>
+      planFeatures.staff_management
+        ? [{ icon: Users, label: t("sidebar:teamMembers", "Team Members"), href: "/users/team-members" }]
+        : [],
+    [t, planFeatures.staff_management]
   );
 
   const managementItems = useMemo(
     () => [
-      { icon: Shield, label: t("sidebar:permissions", "Permissions"), href: "/permissions" },
+      ...(planFeatures.staff_management
+        ? [{ icon: Shield, label: t("sidebar:permissions", "Permissions"), href: "/permissions" }]
+        : []),
       { icon: TableProperties, label: t("sidebar:tables", "Tables"), href: "/reservations?tab=tables" },
       { icon: ChefHat, label: t("sidebar:kitchen", "Kitchen"), href: "/kitchen" },
       { icon: CalendarCheck, label: t("sidebar:reservations", "Reservations"), href: "/reservations" },
@@ -133,12 +138,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         label: isBranch ? t("sidebar:myBranch", "My Branch") : t("sidebar:myRestaurant", "My Restaurant"),
         href: "/restaurant-settings",
       },
-      ...(!isBranch
+      ...(!isBranch && planFeatures.branches
         ? [{ icon: Building2, label: t("sidebar:branches", "Branches"), href: "/branches" }]
         : []),
       { icon: Settings, label: t("sidebar:settings", "Settings"), href: "/settings" },
     ],
-    [t, isBranch]
+    [t, isBranch, planFeatures.branches, planFeatures.staff_management]
   );
 
   useEffect(() => {
@@ -338,13 +343,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               type="button"
               onClick={collapsed ? onToggle : undefined}
               className={cn(
-                "w-9 h-9 rounded-lg gradient-primary flex items-center justify-center flex-shrink-0 shadow-lg shadow-black/20 focus:outline-none",
+                "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden shadow-lg shadow-black/20 focus:outline-none",
                 collapsed ? "cursor-pointer hover:opacity-90 focus-visible:ring-2 focus-visible:ring-sidebar-primary" : "cursor-default"
               )}
-              title={collapsed ? t("sidebar:expand", "Click to expand") : undefined}
-              aria-label={collapsed ? "Expand sidebar" : "Sidebar logo"}
+              title={collapsed ? t("sidebar:expand", "Click to expand") : PRODUCT_NAME}
+              aria-label={collapsed ? "Expand sidebar" : PRODUCT_NAME}
             >
-              <LogoIcon className="h-5 w-5 text-primary-foreground" />
+              <img src={BRAND_ASSETS.appIcon} alt="" className="h-9 w-9" />
             </button>
             <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
               <span
@@ -353,8 +358,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   collapsed ? "opacity-0 pointer-events-none" : "opacity-100"
                 )}
               >
-                {role === "super_admin" ? "Super Admin" : restaurantName || "Restaurant"}
+                {role === "super_admin" ? PRODUCT_NAME : restaurantName || PRODUCT_NAME}
               </span>
+              {role === "super_admin" && !collapsed && (
+                <span className="text-[10px] font-semibold text-violet-400 uppercase tracking-wider leading-none flex items-center gap-1 mt-0.5">
+                  <Shield className="h-2.5 w-2.5" /> Super Admin
+                </span>
+              )}
               {(role === "kitchen" || role === "chef") && !collapsed && (
                 <span className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider leading-none flex items-center gap-1 mt-0.5">
                   <ChefHat className="h-2.5 w-2.5" /> {t("users:roleKitchen", "Kitchen Staff")}
@@ -602,30 +612,32 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <div className="space-y-0.5">
             <NavItem icon={LayoutDashboard} label={t("sidebar:dashboard", "Dashboard")} href="/dashboard" />
 
-            {collapsed ? (
-              <NavItem
-                icon={Users}
-                label={t("sidebar:users", "Users")}
-                href="/users/team-members"
-                activeOverride={usersGroupActive}
-              />
-            ) : (
-              <div className="space-y-0.5">
-                <GroupButton
-                  open={usersOpen}
-                  onToggleOpen={() => setUsersOpen((v) => !v)}
-                  active={usersGroupActive}
+            {planFeatures.staff_management && (
+              collapsed ? (
+                <NavItem
                   icon={Users}
                   label={t("sidebar:users", "Users")}
+                  href="/users/team-members"
+                  activeOverride={usersGroupActive}
                 />
-                {usersOpen && (
-                  <div className="space-y-0.5">
-                    {usersChildren.map((item) => (
-                      <NavItem key={item.href} {...item} indent />
-                    ))}
-                  </div>
-                )}
-              </div>
+              ) : (
+                <div className="space-y-0.5">
+                  <GroupButton
+                    open={usersOpen}
+                    onToggleOpen={() => setUsersOpen((v) => !v)}
+                    active={usersGroupActive}
+                    icon={Users}
+                    label={t("sidebar:users", "Users")}
+                  />
+                  {usersOpen && (
+                    <div className="space-y-0.5">
+                      {usersChildren.map((item) => (
+                        <NavItem key={item.href} {...item} indent />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
             )}
 
             {collapsed ? (

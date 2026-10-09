@@ -186,6 +186,18 @@ router.post("/create-team-member", optionalAuth, requireAuth, async (req, res) =
       return res.status(404).json({ error: "Restaurant not found" });
     }
 
+    if (!isSuperAdmin) {
+      const { resolveRestaurantPlan } = await import("../billing/planFeatures.js");
+      const planInfo = await resolveRestaurantPlan(knex, rid);
+      if (!planInfo.features.staff_management) {
+        return res.status(403).json({
+          error: "Staff management is not included in the Starter plan. Upgrade to Growth or Pilot.",
+          code: "plan_feature_locked",
+          plan: planInfo.plan || "starter",
+        });
+      }
+    }
+
     // Check or create profile
     let profile = await knex("profiles").whereRaw("lower(email) = lower(?)", [em]).first();
     if (!profile) {

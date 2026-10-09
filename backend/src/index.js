@@ -15,6 +15,8 @@ import notificationsRoutes from "./routes/notifications.js";
 import reservationsRoutes from "./routes/reservations.js";
 import tableSessionsRoutes from "./routes/tableSessions.js";
 import uberOrdersRoutes from "./routes/uberOrders.js";
+import billingRoutes, { billingWebhookHandler } from "./routes/billing.js";
+import { billingMode } from "./billing/plans.js";
 import { twilioInboundWebhook } from "./fns/twilioInboundWebhook.js";
 import { uberWebhookHttpHandler } from "./uber/webhookHandler.js";
 import { makeWebhookHttpHandler } from "./integrations/webhookHttp.js";
@@ -75,6 +77,7 @@ app.get("/api/health", (_req, res) => {
       JUSTEAT_ENABLED: process.env.JUSTEAT_ENABLED || "false",
       DOORDASH_ENABLED: process.env.DOORDASH_ENABLED || "false",
       DOORDASH_ENV: process.env.DOORDASH_ENV || null,
+      STRIPE_MODE: billingMode(),
     },
   });
 });
@@ -101,6 +104,8 @@ app.post(
   makeWebhookHttpHandler(doordashAdapter),
 );
 
+app.post("/api/billing/webhook", express.raw({ type: "application/json" }), billingWebhookHandler);
+
 app.use("/api/auth", jsonParser, authRoutes);
 app.use("/api/uploads", uploadsRoutes);
 app.use("/api/public", jsonParser, publicRoutes);
@@ -112,6 +117,7 @@ app.use("/api", jsonParser, branchesRoutes);
 app.use("/api", jsonParser, reservationsRoutes);
 app.use("/api", jsonParser, tableSessionsRoutes);
 app.use("/api", jsonParser, uberOrdersRoutes);
+app.use("/api/billing", jsonParser, billingRoutes);
 
 app.post(
   "/api/functions/twilio-inbound-webhook",
