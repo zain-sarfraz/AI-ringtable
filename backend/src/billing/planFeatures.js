@@ -18,15 +18,17 @@ export const PLAN_FEATURES = {
   },
 };
 
+/** Null/unknown plan = legacy restaurant → full features. Only explicit `starter` is limited. */
 export function featuresForPlan(planId) {
   const key = String(planId || "").toLowerCase();
-  return PLAN_FEATURES[key] || PLAN_FEATURES.starter;
+  if (!key) return PLAN_FEATURES.growth;
+  return PLAN_FEATURES[key] || PLAN_FEATURES.growth;
 }
 
 export async function resolveRestaurantPlan(knex, restaurantId) {
-  if (!restaurantId) return { plan: null, features: featuresForPlan("starter"), restaurant: null };
+  if (!restaurantId) return { plan: null, features: featuresForPlan(null), restaurant: null };
   const restaurant = await knex("restaurants").where({ id: restaurantId }).first();
-  if (!restaurant) return { plan: null, features: featuresForPlan("starter"), restaurant: null };
+  if (!restaurant) return { plan: null, features: featuresForPlan(null), restaurant: null };
 
   // Branch inherits parent plan
   let planOwner = restaurant;
@@ -47,7 +49,7 @@ export async function resolveRestaurantPlan(knex, restaurantId) {
 
   return {
     plan,
-    features: featuresForPlan(plan || "starter"),
+    features: featuresForPlan(plan),
     restaurant: planOwner,
   };
 }

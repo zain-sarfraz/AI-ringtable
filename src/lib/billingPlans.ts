@@ -33,7 +33,9 @@ export function formatPlanPrice(dollars: number) {
   return `$${dollars.toLocaleString("en-US")}`;
 }
 
+/** Null/unknown plan = legacy restaurant → full features. Only explicit `starter` is limited. */
 export function featuresForPlan(plan: string | null | undefined): PlanFeatures {
   const key = String(plan || "").toLowerCase() as BillingPlanId;
-  return PLAN_FEATURES[key] || PLAN_FEATURES.starter;
+  if (!key) return PLAN_FEATURES.growth;
+  return PLAN_FEATURES[key] || PLAN_FEATURES.growth;
 }
