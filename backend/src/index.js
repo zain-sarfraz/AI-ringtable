@@ -31,6 +31,8 @@ const allowedOrigins = [
   process.env.PUBLIC_APP_URL,
   "http://localhost:8080",
   "http://127.0.0.1:8080",
+  "http://ringtable.io",
+  "https://ringtable.io",
   "https://airestaurant.toolkitpro.cloud"
 ].filter(Boolean);
 

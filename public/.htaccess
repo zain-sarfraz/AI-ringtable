@@ -1,7 +1,11 @@
 # SPA + static assets for Apache (Webuzo)
+# API lives at /backend (proxied to Node) — never rewrite those URLs to index.html
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+
+  # Leave /backend/* for the subdirectory reverse proxy
+  RewriteRule ^backend(?:/|$) - [L]
 
   # Don't rewrite real files/dirs
   RewriteCond %{REQUEST_FILENAME} -f [OR]

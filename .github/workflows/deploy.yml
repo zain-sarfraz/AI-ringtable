@@ -1,4 +1,4 @@
-name: Deploy to Webuzo
+name: Deploy to ringtable.io
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-webuzo
+  group: deploy-ringtable
   cancel-in-progress: true
 
 jobs:
@@ -17,6 +17,10 @@ jobs:
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_USER: ${{ secrets.SSH_USER }}
       SSH_PORT: ${{ secrets.SSH_PORT }}
+      # Node listen port on server (Apache /backend proxies here)
+      BACKEND_PORT: "5059"
+      REMOTE_WEBROOT: /home/limiria/public_html/ringtable.io
+      REMOTE_BACKEND: /home/limiria/public_html/ringtable.io/backend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,7 +39,7 @@ jobs:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: |
           if [ -z "$VITE_API_URL" ]; then
-            export VITE_API_URL="https://airestaurantbackend.toolkitpro.cloud"
+            export VITE_API_URL="http://ringtable.io/backend"
           fi
           echo "Building with VITE_API_URL=$VITE_API_URL"
           npm run build
@@ -71,15 +75,27 @@ jobs:
           echo "Attempting SSH connection to ${SSH_USER}@${SSH_HOST}:${SSH_PORT}..."
           ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" 'echo "SSH_OK - connected as $(whoami) on $(hostname) at $(date -u)"'
 
-      - name: Deploy frontend (dist → public_html/airestaurant)
+      - name: Ensure remote dirs
+        run: |
+          ssh -p "$SSH_PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o LogLevel=ERROR \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            "${SSH_USER}@${SSH_HOST}" \
+            "mkdir -p '${REMOTE_WEBROOT}' '${REMOTE_BACKEND}'"
+
+      - name: Deploy frontend (dist → public_html/ringtable.io)
         run: |
           rsync -avz --delete \
             -e "ssh -p ${SSH_PORT} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=30" \
             --exclude '.git' \
             --exclude '.env' \
-            dist/ "${SSH_USER}@${SSH_HOST}:/home/limiria/public_html/airestaurant/"
+            --exclude 'backend' \
+            dist/ "${SSH_USER}@${SSH_HOST}:${REMOTE_WEBROOT}/"
 
-      - name: Deploy backend (backend → public_html/airestaurantbackend)
+      - name: Deploy backend (backend → public_html/ringtable.io/backend)
         run: |
           rsync -avz --delete \
             -e "ssh -p ${SSH_PORT} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=30" \
@@ -88,7 +104,21 @@ jobs:
             --exclude 'uploads' \
             --exclude 'backend_log.txt' \
             --exclude 'scratch' \
-            backend/ "${SSH_USER}@${SSH_HOST}:/home/limiria/public_html/airestaurantbackend/"
+            backend/ "${SSH_USER}@${SSH_HOST}:${REMOTE_BACKEND}/"
+
+      - name: Point /backend .htaccess at Node port
+        run: |
+          printf '%s\n' \
+            'RewriteEngine On' \
+            "# Always proxy — do not expose source files from public_html" \
+            "RewriteRule ^(.*)$ http://127.0.0.1:${BACKEND_PORT}/\$1 [P,L]" \
+            | ssh -p "$SSH_PORT" \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              -o LogLevel=ERROR \
+              -o BatchMode=yes \
+              -o ConnectTimeout=30 \
+              "${SSH_USER}@${SSH_HOST}" "cat > '${REMOTE_BACKEND}/.htaccess'"
 
       - name: Install backend deps + PM2 start/restart
         run: |
@@ -98,17 +128,17 @@ jobs:
             -o LogLevel=ERROR \
             -o BatchMode=yes \
             -o ConnectTimeout=30 \
-            "${SSH_USER}@${SSH_HOST}" 'bash -s' << 'EOF'
+            "${SSH_USER}@${SSH_HOST}" "BACKEND_PORT=${BACKEND_PORT} REMOTE_BACKEND=${REMOTE_BACKEND} bash -s" << 'EOF'
           set -e
-          cd /home/limiria/public_html/airestaurantbackend
+          cd "$REMOTE_BACKEND"
           # Prefer full install so new deps (pm2) land even if lock is stale
           npm install --omit=dev
 
-          # Run migrations and seed admin user
+          # Run migrations and seed admin user (.env must already exist on server)
           node scripts/migrate.js || true
           node scripts/seed-admin.js || true
 
-          # Use local pm2 only (parent public_html has a broken pm2 on PATH)
+          # Use local pm2 only (parent public_html can have a broken pm2 on PATH)
           PM2="./node_modules/.bin/pm2"
           if [ ! -x "$PM2" ]; then
             npm install pm2@5.4.3 --no-fund --no-audit
@@ -119,12 +149,28 @@ jobs:
             exit 1
           fi
 
-          # Release port 3033 if held by an orphan process and restart clean
-          fuser -k 3033/tcp 2>/dev/null || true
-          pkill -f 'src/index.js' 2>/dev/null || true
-          "$PM2" delete airestaurant-api 2>/dev/null || true
-          "$PM2" start src/index.js --name airestaurant-api --update-env
+          # Keep PORT in .env in sync with Apache proxy
+          if [ -f .env ]; then
+            if grep -q '^PORT=' .env; then
+              sed -i "s/^PORT=.*/PORT=${BACKEND_PORT}/" .env
+            else
+              echo "PORT=${BACKEND_PORT}" >> .env
+            fi
+            if ! grep -q '^PUBLIC_APP_URL=' .env; then
+              echo "PUBLIC_APP_URL=http://ringtable.io" >> .env
+            fi
+            if ! grep -q '^PUBLIC_API_URL=' .env; then
+              echo "PUBLIC_API_URL=http://ringtable.io/backend" >> .env
+            fi
+          else
+            echo "::warning::backend/.env missing on server — create it before API will work"
+          fi
+
+          # Release port if held by an orphan process and restart clean
+          fuser -k "${BACKEND_PORT}/tcp" 2>/dev/null || true
+          "$PM2" delete ringtable-api 2>/dev/null || true
+          PORT="$BACKEND_PORT" "$PM2" start src/index.js --name ringtable-api --update-env
           "$PM2" save
-          "$PM2" status airestaurant-api
+          "$PM2" status ringtable-api
           echo "Backend deploy finished at $(date -u)"
           EOF
