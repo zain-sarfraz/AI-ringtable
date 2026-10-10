@@ -61,6 +61,7 @@ import Landing from "@/pages/Landing";
 import Subscribe from "@/pages/Subscribe";
 import SubscribeSuccess from "@/pages/SubscribeSuccess";
 import Signup from "@/pages/Signup";
+import SignupCheckout from "@/pages/SignupCheckout";
 import SignupSuccess from "@/pages/SignupSuccess";
 import { PlanFeatureGate } from "@/components/PlanFeatureGate";
 
@@ -76,6 +77,13 @@ const App = () => (
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/" element={<Landing />} />
+              {/* Signup / billing — before dynamic /:restaurantSlug routes */}
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/signup/checkout" element={<SignupCheckout />} />
+              <Route path="/signup/success" element={<SignupSuccess />} />
+              <Route path="/subscribe" element={<Subscribe />} />
+              <Route path="/subscribe/success" element={<SubscribeSuccess />} />
               <Route path="/track/:code" element={<Track />} />
               <Route path="/order" element={<Order />} />
               <Route path="/:restaurantSlug/:branchId/menu" element={<Order />} />
@@ -88,11 +96,6 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
-              <Route path="/" element={<Landing />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/signup/success" element={<SignupSuccess />} />
-              <Route path="/subscribe" element={<Subscribe />} />
-              <Route path="/subscribe/success" element={<SubscribeSuccess />} />
               <Route
                 element={
                   <ProtectedRoute>

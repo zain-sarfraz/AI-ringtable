@@ -238,7 +238,7 @@ export default function Login() {
         />
 
         <div className="relative z-10 flex items-center gap-3">
-          <img src={BRAND_ASSETS.logoHorizontalWhite} alt={PRODUCT_NAME} className="h-9 w-auto max-w-[200px]" />
+          <img src={BRAND_ASSETS.logoHorizontal} alt={PRODUCT_NAME} className="h-9 w-auto max-w-[200px]" />
         </div>
 
         <div className="relative z-10 max-w-md space-y-5">
@@ -275,9 +275,9 @@ export default function Login() {
         />
 
         <div className="relative w-full max-w-[400px] animate-fade-in my-auto">
-          <div className="flex items-center gap-2 mb-6 lg:hidden">
-            <img src={BRAND_ASSETS.logoHorizontal} alt={PRODUCT_NAME} className="h-8 w-auto max-w-[180px]" />
-          </div>
+          {/* <div className="mb-6 flex items-center justify-center lg:justify-start">
+            <img src={BRAND_ASSETS.logoHorizontal} alt={PRODUCT_NAME} className="h-9 w-auto max-w-[200px]" />
+          </div> */}
 
           <div className="mb-8 space-y-2 text-center lg:text-left">
             {view !== "login" ? (

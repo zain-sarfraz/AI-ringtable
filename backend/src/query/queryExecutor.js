@@ -444,7 +444,20 @@ export async function executeQuery(knex, body, user) {
     applyFilters(q, body.filters);
     if (body.returning) {
       const out = await q.returning("*");
-      return { data: out, error: null };
+      const list = Array.isArray(out) ? out : out != null ? [out] : [];
+      if (body.single === "one") {
+        if (list.length !== 1) {
+          return {
+            data: null,
+            error: { message: list.length === 0 ? "No rows updated" : "Multiple rows updated" },
+          };
+        }
+        return { data: list[0], error: null };
+      }
+      if (body.single === "maybe") {
+        return { data: list[0] ?? null, error: null };
+      }
+      return { data: list, error: null };
     }
     await q;
     return { data: null, error: null };

@@ -1164,13 +1164,9 @@ export default function Landing() {
                 </div>
                 <p className="price-note">{billingInterval === "year" ? BILLING_PLANS.starter.yearlyNote : "\u00a0"}</p>
                 <ul>
-                  <li>AI Receptionist</li>
-                  <li>1,000 minutes</li>
-                  <li>Phone + QR ordering</li>
-                  <li>Reservations</li>
-                  <li>One Order Inbox & KDS</li>
-                  <li>AI performance dashboard</li>
-                  <li>1 location — no branches or staff seats</li>
+                  {BILLING_PLANS.starter.highlights.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
                 </ul>
                 <Link to={`/signup?plan=starter&interval=${billingInterval}`} className="btn btn-ghost w-100">
                   Sign up {billingInterval === "year" ? "yearly" : "monthly"}
@@ -1186,7 +1182,7 @@ export default function Landing() {
                   </span>
                 </div>
                 <p className="mt-1 mb-0" style={{ color: "#9AA6B8" }}>
-                  Up to 5 locations
+                  ${BILLING_PLANS.growth.monthly}/mo · up to 5 locations
                 </p>
                 <div className="pz">
                   {formatPlanPrice(planAmount("growth", billingInterval))}
@@ -1194,13 +1190,9 @@ export default function Landing() {
                 </div>
                 <p className="price-note">{billingInterval === "year" ? BILLING_PLANS.growth.yearlyNote : "\u00a0"}</p>
                 <ul>
-                  <li>AI Receptionist</li>
-                  <li>2,500 minutes</li>
-                  <li>Phone, QR & Website ordering</li>
-                  <li>Multi branches</li>
-                  <li>Multi-location routing</li>
-                  <li>Revenue attribution & missed-call recovery</li>
-                  <li>Staff roles & audit log</li>
+                  {BILLING_PLANS.growth.highlights.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
                 </ul>
                 <Link to={`/signup?plan=growth&interval=${billingInterval}`} className="btn btn-or w-100">
                   Sign up {billingInterval === "year" ? "yearly" : "monthly"}
@@ -1217,11 +1209,9 @@ export default function Landing() {
                 </div>
                 <p className="price-note">{billingInterval === "year" ? BILLING_PLANS.pilot.yearlyNote : "\u00a0"}</p>
                 <ul>
-                  <li>Everything in Growth</li>
-                  <li>Same $400 price locked for 1 year</li>
-                  <li>Weekly check-in with our team</li>
-                  <li>Shape the product roadmap</li>
-                  <li>4 spots remaining</li>
+                  {BILLING_PLANS.pilot.highlights.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
                 </ul>
                 <Link to={`/signup?plan=pilot&interval=${billingInterval}`} className="btn btn-ghost w-100">
                   Sign up {billingInterval === "year" ? "yearly" : "monthly"}

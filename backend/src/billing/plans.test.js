@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { amountFor, isDummyStripeSecret, listPlans } from "./plans.js";
+import { amountFor, billingMode, isDummyStripeSecret, listPlans, usesDummyStripeCredentials } from "./plans.js";
 import { evaluateDummyCard } from "./dummyCard.js";
 
 describe("billing plans", () => {
@@ -20,6 +20,17 @@ describe("billing plans", () => {
     assert.equal(isDummyStripeSecret("sk_test_51DUMMYAIRestaurant000"), true);
     assert.equal(isDummyStripeSecret("sk_test_51RealAccountKeyAbcdef1234567890"), false);
     assert.equal(isDummyStripeSecret("not-a-stripe-key"), true);
+    assert.equal(usesDummyStripeCredentials("sk_test_51DUMMYAIRestaurant000"), true);
+  });
+
+  it("respects BILLING_MODE override", () => {
+    const prev = process.env.BILLING_MODE;
+    process.env.BILLING_MODE = "stripe";
+    assert.equal(billingMode(), "stripe");
+    process.env.BILLING_MODE = "dummy";
+    assert.equal(billingMode(), "dummy");
+    if (prev == null) delete process.env.BILLING_MODE;
+    else process.env.BILLING_MODE = prev;
   });
 });
 

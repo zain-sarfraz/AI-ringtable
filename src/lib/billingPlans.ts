@@ -17,11 +17,52 @@ export const PLAN_FEATURES: Record<BillingPlanId, PlanFeatures> = {
 
 export const BILLING_PLANS: Record<
   BillingPlanId,
-  { name: string; monthly: number; yearly: number; yearlyNote: string }
+  { name: string; monthly: number; yearly: number; yearlyNote: string; highlights: string[] }
 > = {
-  starter: { name: "Starter", monthly: 299, yearly: 2990, yearlyNote: "2 months free" },
-  growth: { name: "Growth", monthly: 599, yearly: 5990, yearlyNote: "2 months free" },
-  pilot: { name: "Pilot", monthly: 400, yearly: 4800, yearlyNote: "Same $400/mo rate, billed yearly" },
+  starter: {
+    name: "Starter",
+    monthly: 299,
+    yearly: 2990,
+    yearlyNote: "2 months free",
+    highlights: [
+      "AI Receptionist",
+      "1,000 minutes",
+      "Phone + QR ordering",
+      "Reservations",
+      "One Order Inbox & KDS",
+      "AI performance dashboard",
+      "1 location — no branches or staff seats",
+    ],
+  },
+  growth: {
+    name: "Growth",
+    monthly: 599,
+    yearly: 5990,
+    yearlyNote: "2 months free",
+    highlights: [
+      "2,500 AI call minutes",
+      "Multiple branches included",
+      "User management included",
+      "Kitchen login — dedicated access for kitchen staff",
+      "Receptionist login — dedicated access for reservation staff",
+      "Salesperson login — dedicated access for sales staff",
+      "Multilingual support included",
+      "Direct support available",
+    ],
+  },
+  pilot: {
+    name: "Pilot",
+    monthly: 400,
+    yearly: 4800,
+    yearlyNote: "Same $400/mo rate, billed yearly",
+    highlights: [
+      "Everything in Growth",
+      "Same $400 price locked for 1 year",
+      "Weekly check-in with our team",
+      "Shape the product roadmap",
+      "4 spots remaining",
+    ],
+  },
 };
 
 export function planAmount(plan: BillingPlanId, interval: BillingInterval) {

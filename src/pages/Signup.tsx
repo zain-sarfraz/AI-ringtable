@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { getApiBase } from "@/lib/apiBase";
 import { setToken } from "@/lib/authStorage";
-import { BILLING_PLANS, BillingInterval, BillingPlanId, formatPlanPrice, planAmount, PLAN_FEATURES } from "@/lib/billingPlans";
+import { BILLING_PLANS, BillingInterval, BillingPlanId, formatPlanPrice, planAmount } from "@/lib/billingPlans";
 import { BRAND_ASSETS, PRODUCT_NAME, productTitle } from "@/lib/brand";
 import { useAuth } from "@/hooks/useAuth";
 import "./landing.css";
@@ -11,6 +11,17 @@ const PLANS = new Set<BillingPlanId>(["starter", "growth", "pilot"]);
 
 function isPlan(value: string | null): value is BillingPlanId {
   return Boolean(value && PLANS.has(value as BillingPlanId));
+}
+
+/** Relative app path → SPA navigate; absolute Stripe URL → full redirect. */
+function goToCheckout(url: string, navigate: ReturnType<typeof useNavigate>) {
+  const target = String(url || "").trim();
+  if (!target) return;
+  if (/^https?:\/\//i.test(target)) {
+    window.location.assign(target);
+    return;
+  }
+  navigate(target.startsWith("/") ? target : `/${target}`);
 }
 
 export default function Signup() {
@@ -23,17 +34,12 @@ export default function Signup() {
   const interval: BillingInterval = intervalParam === "year" ? "year" : "month";
   const details = BILLING_PLANS[plan];
   const amount = planAmount(plan, interval);
-  const features = PLAN_FEATURES[plan];
 
   const [mode, setMode] = useState<"dummy" | "stripe" | null>(null);
   const [restaurantName, setRestaurantName] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [cardNumber, setCardNumber] = useState("4242 4242 4242 4242");
-  const [expMonth, setExpMonth] = useState("12");
-  const [expYear, setExpYear] = useState("30");
-  const [cvc, setCvc] = useState("123");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -60,6 +66,12 @@ export default function Signup() {
     };
   }, []);
 
+  // Keep plan/interval in the URL so refresh + back navigation stay correct
+  useEffect(() => {
+    if (planParam === plan && intervalParam === interval) return;
+    navigate(`/signup?plan=${plan}&interval=${interval}`, { replace: true });
+  }, [plan, interval, planParam, intervalParam, navigate]);
+
   if (!authLoading && user) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -79,12 +91,6 @@ export default function Signup() {
           password,
           full_name: fullName,
           restaurant_name: restaurantName,
-          card: mode === "stripe" ? undefined : {
-            number: cardNumber,
-            exp_month: expMonth,
-            exp_year: expYear,
-            cvc,
-          },
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -93,7 +99,7 @@ export default function Signup() {
         return;
       }
       if (data.checkout_url && data.mode === "stripe") {
-        window.location.href = data.checkout_url;
+        goToCheckout(data.checkout_url, navigate);
         return;
       }
       if (data.token) {
@@ -101,10 +107,15 @@ export default function Signup() {
         if (data.restaurant_id) {
           localStorage.setItem("active_restaurant_id", data.restaurant_id);
         }
-        window.location.href = "/dashboard";
+        navigate("/dashboard", { replace: true });
         return;
       }
-      navigate(data.subscription?.id ? `/signup/success?session=${data.subscription.id}` : "/signup/success");
+      navigate(
+        data.subscription?.id
+          ? `/signup/success?session=${encodeURIComponent(data.subscription.id)}`
+          : "/signup/success",
+        { replace: true },
+      );
     } catch {
       setError("Could not reach the billing server.");
     } finally {
@@ -120,80 +131,72 @@ export default function Signup() {
             <img className="brand-wordmark" src={BRAND_ASSETS.logoHorizontalWhite} alt={PRODUCT_NAME} width={168} height={42} />
           </Link>
           <div className="nav-actions">
-            <Link className="btn btn-login" to="/login">Log in</Link>
-            <Link className="btn btn-ghost" to="/#pricing" style={{ padding: "9px 14px" }}>Change plan</Link>
+            <Link className="btn btn-login" to="/login">
+              Log in
+            </Link>
+            <Link className="btn btn-ghost" to="/#pricing" style={{ padding: "9px 14px" }}>
+              Change plan
+            </Link>
           </div>
         </div>
       </nav>
       <section className="sec">
-        <div className="container" style={{ maxWidth: 780 }}>
+        <div className="container" style={{ maxWidth: 520 }}>
           <div className="cardx" style={{ padding: 32 }}>
             <span className="eyebrow">Create restaurant account</span>
             <h1 style={{ fontSize: 34, margin: "14px 0 8px" }}>{details.name} plan</h1>
-            <p className="text-mut" style={{ marginTop: 0 }}>
+            <p className="text-mut" style={{ marginTop: 0, marginBottom: 24 }}>
               {formatPlanPrice(amount)}/{interval === "year" ? "year" : "month"}
               {interval === "year" ? ` · ${details.yearlyNote}` : ""}
             </p>
-            <ul style={{ margin: "0 0 20px", paddingLeft: 18, color: "var(--mut)", fontSize: 14 }}>
-              <li>{features.branches ? "Multi branches included" : "Single location — no branches"}</li>
-              <li>{features.staff_management ? "Staff & team management included" : "No staff management on Starter"}</li>
-              <li>Account is created only after successful Stripe payment</li>
-            </ul>
             <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
               <label>
                 <div className="lbl">Restaurant name</div>
-                <input className="form-control" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} required minLength={2} />
+                <input
+                  className="form-control"
+                  value={restaurantName}
+                  onChange={(e) => setRestaurantName(e.target.value)}
+                  required
+                  minLength={2}
+                  autoComplete="organization"
+                />
               </label>
               <label>
-                <div className="lbl">Your name</div>
-                <input className="form-control" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+                <div className="lbl">Name</div>
+                <input
+                  className="form-control"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                  autoComplete="name"
+                />
               </label>
               <label>
                 <div className="lbl">Work email</div>
-                <input className="form-control" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+                <input
+                  className="form-control"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
               </label>
               <label>
                 <div className="lbl">Password</div>
-                <input className="form-control" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} autoComplete="new-password" />
+                <input
+                  className="form-control"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                />
               </label>
-              {mode !== "stripe" && (
-                <>
-                  <label>
-                    <div className="lbl">Card number</div>
-                    <input className="form-control" inputMode="numeric" autoComplete="cc-number" value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} required />
-                  </label>
-                  <div className="row g-3">
-                    <div className="col-4">
-                      <label>
-                        <div className="lbl">Month</div>
-                        <input className="form-control" inputMode="numeric" value={expMonth} onChange={(e) => setExpMonth(e.target.value)} required />
-                      </label>
-                    </div>
-                    <div className="col-4">
-                      <label>
-                        <div className="lbl">Year</div>
-                        <input className="form-control" inputMode="numeric" value={expYear} onChange={(e) => setExpYear(e.target.value)} required />
-                      </label>
-                    </div>
-                    <div className="col-4">
-                      <label>
-                        <div className="lbl">CVC</div>
-                        <input className="form-control" inputMode="numeric" autoComplete="cc-csc" value={cvc} onChange={(e) => setCvc(e.target.value)} required />
-                      </label>
-                    </div>
-                  </div>
-                  <p className="text-mut" style={{ fontSize: 13, margin: 0 }}>
-                    Test mode: pay with 4242 4242 4242 4242. Card 4000 0000 0000 0002 is declined.
-                  </p>
-                </>
-              )}
               {error && <p style={{ color: "var(--red)", margin: 0 }}>{error}</p>}
-              <button className="btn btn-or" type="submit" disabled={submitting || authLoading}>
-                {submitting
-                  ? "Processing…"
-                  : mode === "stripe"
-                    ? `Continue to Stripe · ${formatPlanPrice(amount)}`
-                    : `Pay & create restaurant · ${formatPlanPrice(amount)}`}
+              <button className="btn btn-or" type="submit" disabled={submitting || authLoading || mode == null}>
+                {submitting ? "Processing…" : "Proceed"}
               </button>
             </form>
           </div>

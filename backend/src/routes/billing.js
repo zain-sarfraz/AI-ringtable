@@ -15,6 +15,7 @@ import {
   isDummyStripeSecret,
   listPlans,
   priceLockedUntil,
+  usesDummyStripeCredentials,
 } from "../billing/plans.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -41,14 +42,20 @@ function publicSubscription(row) {
   };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 async function findSubscription(knex, sessionId) {
   const id = String(sessionId || "").trim();
   if (!id) return null;
-  return knex("billing_subscriptions")
-    .where(function match() {
-      this.where({ id }).orWhere({ stripe_checkout_session_id: id });
-    })
-    .first();
+  // `id` is uuid — never compare non-UUID Stripe session ids (cs_test_…) against it.
+  if (UUID_RE.test(id)) {
+    return knex("billing_subscriptions")
+      .where(function match() {
+        this.where({ id }).orWhere({ stripe_checkout_session_id: id });
+      })
+      .first();
+  }
+  return knex("billing_subscriptions").where({ stripe_checkout_session_id: id }).first();
 }
 
 function stripeClient() {
@@ -180,6 +187,7 @@ router.get("/plans", (_req, res) => {
 router.get("/config", (_req, res) => {
   res.json({
     mode: billingMode(),
+    dummy_credentials: usesDummyStripeCredentials(),
     publishable_key: billingMode() === "stripe" ? process.env.STRIPE_PUBLISHABLE_KEY || null : null,
   });
 });
@@ -286,7 +294,6 @@ router.post("/signup", async (req, res) => {
       });
     }
 
-    const stripe = await stripeClient();
     const [pending] = await knex("billing_subscriptions")
       .insert({
         plan: plan.id,
@@ -303,6 +310,26 @@ router.post("/signup", async (req, res) => {
         updated_at: now,
       })
       .returning("*");
+
+    // Dummy Stripe keys → local Checkout page (test card 4242…). Real keys → Stripe-hosted Checkout.
+    if (usesDummyStripeCredentials()) {
+      const sessionId = `cs_test_${pending.id}`;
+      await knex("billing_subscriptions")
+        .where({ id: pending.id })
+        .update({ stripe_checkout_session_id: sessionId, updated_at: new Date() });
+      // Relative path so local/prod hosts both work with dummy credentials.
+      return res.json({
+        mode: "stripe",
+        checkout_url: `/signup/checkout?session=${sessionId}`,
+        session_id: sessionId,
+        dummy_credentials: true,
+      });
+    }
+
+    const stripe = await stripeClient();
+    if (!stripe) {
+      return res.status(503).json({ error: "Stripe is not configured." });
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -341,6 +368,84 @@ router.post("/signup", async (req, res) => {
   } catch (err) {
     console.error("Signup checkout failed:", err);
     return res.status(500).json({ error: err.message || "Could not start signup" });
+  }
+});
+
+/** Local Stripe Checkout (dummy credentials): load pending signup session. */
+router.get("/signup/checkout/:sessionId", async (req, res) => {
+  try {
+    const knex = getKnex();
+    const row = await findSubscription(knex, req.params.sessionId);
+    if (!row || !row.pending_password_hash) {
+      return res.status(404).json({ error: "Checkout session not found." });
+    }
+    if (row.status === "active" && row.restaurant_id) {
+      return res.json({
+        already_paid: true,
+        success_url: `/signup/success?session=${row.stripe_checkout_session_id || row.id}`,
+      });
+    }
+    const plan = getPlan(row.plan);
+    return res.json({
+      session_id: row.stripe_checkout_session_id || row.id,
+      plan: row.plan,
+      plan_name: plan?.name || row.plan,
+      interval: row.billing_interval,
+      amount_cents: row.amount_cents,
+      currency: row.currency || "usd",
+      restaurant_name: row.restaurant_name,
+      customer_email: row.customer_email,
+      status: row.status,
+      dummy_credentials: true,
+      test_card: "4242 4242 4242 4242",
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "Could not load checkout" });
+  }
+});
+
+/** Local Stripe Checkout (dummy credentials): pay with Stripe test card, then claim. */
+router.post("/signup/pay", async (req, res) => {
+  try {
+    if (!usesDummyStripeCredentials() && billingMode() !== "stripe") {
+      return res.status(400).json({ error: "Use Stripe Checkout for live payments." });
+    }
+    if (!usesDummyStripeCredentials()) {
+      return res.status(400).json({ error: "This endpoint is only for dummy Stripe credentials." });
+    }
+
+    const sessionId = String(req.body?.session || req.body?.session_id || "").trim();
+    if (!sessionId) return res.status(400).json({ error: "Missing checkout session" });
+
+    const card = evaluateDummyCard(req.body?.card || {});
+    if (!card.ok) return res.status(402).json({ error: card.message, code: card.code });
+
+    const knex = getKnex();
+    let row = await findSubscription(knex, sessionId);
+    if (!row || !row.pending_password_hash) {
+      return res.status(404).json({ error: "Checkout session not found." });
+    }
+
+    const periodEnd = addBillingPeriod(new Date(), row.billing_interval);
+    const [updated] = await knex("billing_subscriptions")
+      .where({ id: row.id })
+      .update({
+        status: "active",
+        card_last4: card.last4,
+        current_period_end: row.current_period_end || periodEnd,
+        price_locked_until: row.price_locked_until || priceLockedUntil(row.plan, new Date()),
+        updated_at: new Date(),
+      })
+      .returning("*");
+    row = updated || row;
+
+    return res.json({
+      ok: true,
+      success_url: `/signup/success?session=${row.stripe_checkout_session_id || row.id}`,
+    });
+  } catch (err) {
+    console.error("Dummy signup pay failed:", err);
+    return res.status(500).json({ error: err.message || "Payment failed" });
   }
 });
 

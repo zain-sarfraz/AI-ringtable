@@ -46,11 +46,11 @@ export default function SignupSuccess() {
             : "";
           setMessage(`Welcome! ${data.subscription?.restaurant_name || "Your restaurant"} is on ${planName}${amount ? ` (${amount})` : ""}. Taking you to the dashboard…`);
           setTimeout(() => {
-            window.location.href = "/dashboard";
+            navigate("/dashboard", { replace: true });
           }, 900);
           return;
         }
-        navigate("/login");
+        navigate("/login", { replace: true });
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Signup failed");
       }

@@ -13,7 +13,7 @@ export const PLANS = {
   growth: {
     id: "growth",
     name: "Growth",
-    blurb: "Up to 5 locations, AI Receptionist, 2,500 minutes, multi branches",
+    blurb: "2,500 AI minutes, multiple branches, user management, kitchen / receptionist / salesperson logins, multilingual support",
     monthlyCents: 59900,
     yearlyCents: 599000,
   },
@@ -36,7 +36,19 @@ export function isDummyStripeSecret(secret = process.env.STRIPE_SECRET_KEY) {
   return DUMMY_MARKERS.some((marker) => upper.includes(marker.toUpperCase()));
 }
 
+/** True when STRIPE_* keys are placeholders (local / demo Checkout). */
+export function usesDummyStripeCredentials(secret = process.env.STRIPE_SECRET_KEY) {
+  return isDummyStripeSecret(secret);
+}
+
+/**
+ * `BILLING_MODE=stripe` forces Checkout redirect UX even with dummy keys.
+ * `BILLING_MODE=dummy` forces instant local pay (no Checkout page).
+ * Default: dummy keys → dummy; real Stripe keys → stripe.
+ */
 export function billingMode() {
+  const forced = String(process.env.BILLING_MODE || "").trim().toLowerCase();
+  if (forced === "stripe" || forced === "dummy") return forced;
   return isDummyStripeSecret() ? "dummy" : "stripe";
 }
 

@@ -231,6 +231,45 @@ class TableQuery {
   }
 }
 
+class UpdateWithReturning implements PromiseLike<{ data: any; error: { message: string } | null }> {
+  constructor(
+    private table: string,
+    private values: Record<string, unknown>,
+    private filters: Filter[],
+    private singleMode: "none" | "maybe" | "one" = "none",
+  ) {}
+
+  eq(column: string, value: unknown) {
+    return new UpdateWithReturning(this.table, this.values, [...this.filters, { type: "eq", column, value }], this.singleMode);
+  }
+  neq(column: string, value: unknown) {
+    return new UpdateWithReturning(this.table, this.values, [...this.filters, { type: "neq", column, value }], this.singleMode);
+  }
+  in(column: string, values: unknown[]) {
+    return new UpdateWithReturning(this.table, this.values, [...this.filters, { type: "in", column, values }], this.singleMode);
+  }
+  maybeSingle() {
+    return new UpdateWithReturning(this.table, this.values, this.filters, "maybe");
+  }
+  single() {
+    return new UpdateWithReturning(this.table, this.values, this.filters, "one");
+  }
+
+  then<TResult1 = { data: any; error: { message: string } | null }, TResult2 = never>(
+    onfulfilled?: ((value: { data: any; error: { message: string } | null }) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2> {
+    return apiQuery({
+      action: "update",
+      table: this.table,
+      values: this.values,
+      filters: this.filters,
+      returning: true,
+      single: this.singleMode === "none" ? undefined : this.singleMode,
+    }).then(onfulfilled as never, onrejected as never);
+  }
+}
+
 class UpdateBuilder implements PromiseLike<{ data: any; error: { message: string } | null }> {
   constructor(private table: string, private values: Record<string, unknown>, private filters: Filter[]) {}
 
@@ -242,6 +281,11 @@ class UpdateBuilder implements PromiseLike<{ data: any; error: { message: string
   }
   in(column: string, values: unknown[]) {
     return new UpdateBuilder(this.table, this.values, [...this.filters, { type: "in", column, values }]);
+  }
+
+  /** Request updated rows back (use to detect zero-row updates). */
+  select(_columns?: string) {
+    return new UpdateWithReturning(this.table, this.values, this.filters);
   }
 
   then<TResult1 = { data: any; error: { message: string } | null }, TResult2 = never>(

@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
 import { getApiBase, resolveMediaUrl } from "@/lib/apiBase";
 import { getCurrencySymbol } from "@/lib/restaurant";
+import { syncRestaurantMenuToVoiceAgent } from "@/lib/syncRestaurantMenuToVoiceAgent";
 
 /** Row from `restaurants` (includes fields set when the tenant was created in super admin). */
 interface Restaurant {
@@ -162,6 +163,21 @@ export default function RestaurantSettings() {
   const [telnyxAreaCode, setTelnyxAreaCode] = useState("");
   const [selectedTelnyxNumber, setSelectedTelnyxNumber] = useState("");
   const [manualTelnyxNumber, setManualTelnyxNumber] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [savingHours, setSavingHours] = useState(false);
+  const [savingFulfillment, setSavingFulfillment] = useState(false);
+
+  /** Soft voice sync after settings changes — never blocks or looks like a failed save. */
+  const quietVoiceSync = useCallback(async (rid: string) => {
+    const result = await syncRestaurantMenuToVoiceAgent(rid);
+    if (!result.success && result.provider !== "none") {
+      toast({
+        variant: "destructive",
+        title: "Settings saved, voice sync failed",
+        description: result.error,
+      });
+    }
+  }, [toast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -265,16 +281,63 @@ export default function RestaurantSettings() {
 
   const saveHours = async () => {
     if (!restaurantId) return;
-    setLoading(true);
-    // Delete existing and insert new
-    await supabase.from("restaurant_hours").delete().eq("restaurant_id", restaurantId);
-    const { error } = await supabase.from("restaurant_hours").insert(hours);
-    setLoading(false);
-    if (error) {
-      toast({ variant: "destructive", title: "Failed to save hours", description: (error as any)?.message });
-    } else {
+    setSavingHours(true);
+    try {
+      const invalid = hours.find(
+        (h) => !h.is_closed && (!String(h.open_time || "").trim() || !String(h.close_time || "").trim()),
+      );
+      if (invalid) {
+        toast({
+          variant: "destructive",
+          title: "Unable to update hours",
+          description: "Open and close times are required for every open day.",
+        });
+        return;
+      }
+
+      const { error: delError } = await supabase
+        .from("restaurant_hours")
+        .delete()
+        .eq("restaurant_id", restaurantId);
+      if (delError) {
+        toast({
+          variant: "destructive",
+          title: "Unable to update hours",
+          description: (delError as { message?: string })?.message ?? String(delError),
+        });
+        return;
+      }
+
+      const payload = hours.map(({ day_of_week, open_time, close_time, is_closed }) => ({
+        restaurant_id: restaurantId,
+        day_of_week,
+        open_time: is_closed ? open_time || "00:00" : open_time,
+        close_time: is_closed ? close_time || "00:00" : close_time,
+        is_closed: Boolean(is_closed),
+      }));
+
+      if (payload.length > 0) {
+        const { error } = await supabase.from("restaurant_hours").insert(payload);
+        if (error) {
+          toast({
+            variant: "destructive",
+            title: "Unable to update hours",
+            description: (error as { message?: string })?.message ?? String(error),
+          });
+          return;
+        }
+      }
+
       toast({ title: "Working hours saved" });
-      void syncMenu();
+      const { data } = await supabase
+        .from("restaurant_hours")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("open_time", { ascending: true });
+      setHours((data as WorkingHour[]) || []);
+      void quietVoiceSync(restaurantId);
+    } finally {
+      setSavingHours(false);
     }
   };
 
@@ -290,7 +353,7 @@ export default function RestaurantSettings() {
   }, [restaurantId, activeRestaurantLoading, loadRestaurantData]);
 
   const saveSettings = async () => {
-    if (!s || !r) return;
+    if (!s || !r || !restaurantId) return;
 
     const name = String(s.name ?? "").trim() || r.name;
     const address = String(s.address ?? "").trim() || null;
@@ -298,46 +361,78 @@ export default function RestaurantSettings() {
     const contactEmail = String(s.email ?? "").trim() || null;
     const logoUrl = String(s.logo_url ?? "").trim() || null;
     const coverUrl = String(r.cover_image_url ?? "").trim() || null;
+    const currency = String(s.currency ?? "USD").trim().toUpperCase() || "USD";
+    const taxRate = Math.min(999.99, Math.max(0, Number(s.tax_rate) || 0));
+    const deliveryFee = Math.max(0, Number(s.delivery_fee) || 0);
+    const minOrder = Math.max(0, Number(s.min_order_amount) || 0);
+    const isOpen = Boolean(s.is_open);
 
-    const [settingsRes, restaurantRes] = await Promise.all([
-      supabase
-        .from("restaurant_settings")
-        .update({
-          name,
-          address,
-          phone,
-          email: contactEmail,
-          currency: s.currency,
-          tax_rate: Number(s.tax_rate) || 0,
-          delivery_fee: Number(s.delivery_fee) || 0,
-          min_order_amount: Number(s.min_order_amount) || 0,
-          is_open: s.is_open,
-          logo_url: logoUrl,
-        })
-        .eq("id", s.id),
-      supabase
-        .from("restaurants")
-        .update({
-          name,
-          address,
-          phone,
-          contact_email: contactEmail,
-          logo_url: logoUrl,
-          cover_image_url: coverUrl,
-        })
-        .eq("id", r.id),
-    ]);
+    setSavingSettings(true);
+    try {
+      const settingsUpdate = {
+        name,
+        address,
+        phone,
+        email: contactEmail,
+        currency,
+        tax_rate: taxRate,
+        delivery_fee: deliveryFee,
+        min_order_amount: minOrder,
+        is_open: isOpen,
+        logo_url: logoUrl,
+      };
 
-    if (settingsRes.error || restaurantRes.error) {
-      toast({
-        variant: "destructive",
-        title: "Failed",
-        description: (settingsRes.error as any)?.message || (restaurantRes.error as any)?.message,
-      });
-    } else {
+      // Prefer restaurant_id (unique) — id-only filters silently no-op when row is missing/out of scope
+      const settingsQuery = s.id
+        ? supabase.from("restaurant_settings").update(settingsUpdate).eq("id", s.id).eq("restaurant_id", restaurantId)
+        : supabase.from("restaurant_settings").update(settingsUpdate).eq("restaurant_id", restaurantId);
+
+      const [settingsRes, restaurantRes] = await Promise.all([
+        settingsQuery.select("id"),
+        supabase
+          .from("restaurants")
+          .update({
+            name,
+            address,
+            phone,
+            contact_email: contactEmail,
+            logo_url: logoUrl,
+            cover_image_url: coverUrl,
+            is_accepting_orders: isOpen,
+          })
+          .eq("id", r.id)
+          .select("id"),
+      ]);
+
+      if (settingsRes.error || restaurantRes.error) {
+        toast({
+          variant: "destructive",
+          title: "Unable to update restaurant settings",
+          description:
+            (settingsRes.error as { message?: string })?.message ||
+            (restaurantRes.error as { message?: string })?.message ||
+            "Save failed",
+        });
+        return;
+      }
+
+      const settingsRows = Array.isArray(settingsRes.data) ? settingsRes.data : settingsRes.data ? [settingsRes.data] : [];
+      const restaurantRows = Array.isArray(restaurantRes.data) ? restaurantRes.data : restaurantRes.data ? [restaurantRes.data] : [];
+
+      if (!settingsRows.length || !restaurantRows.length) {
+        toast({
+          variant: "destructive",
+          title: "Unable to update restaurant settings",
+          description: "No matching restaurant was updated. Check you have access to this restaurant.",
+        });
+        return;
+      }
+
       toast({ title: "Settings saved" });
       await loadRestaurantData();
-      void syncMenu();
+      void quietVoiceSync(restaurantId);
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -803,7 +898,8 @@ export default function RestaurantSettings() {
                 <p className="text-xs text-muted-foreground">{t("restaurantSettings:acceptingOrdersDesc", "When off, customers may see you as closed.")}</p>
               </div>
             </div>
-            <Button onClick={saveSettings} className="shrink-0 sm:w-auto w-full">
+            <Button onClick={() => void saveSettings()} disabled={savingSettings} className="shrink-0 sm:w-auto w-full">
+              {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
               {t("restaurantSettings:saveGeneral", "Save general")}
             </Button>
           </div>
@@ -889,7 +985,8 @@ export default function RestaurantSettings() {
               </p>
             </div>
           </div>
-          <Button variant="secondary" onClick={saveSettings}>
+          <Button variant="secondary" onClick={() => void saveSettings()} disabled={savingSettings}>
+            {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
             {t("restaurantSettings:savePricing", "Save pricing")}
           </Button>
         </CardContent>
@@ -927,17 +1024,45 @@ export default function RestaurantSettings() {
               </div>
             </div>
           </div>
-          <Button variant="secondary" onClick={async () => {
-            const { error } = await supabase.from("restaurants").update({
-              allows_delivery: r.allows_delivery,
-              allows_pickup: r.allows_pickup
-            }).eq("id", r.id);
-            if (error) toast({ variant: "destructive", title: t("common:failed", "Failed"), description: (error as any)?.message });
-            else {
-              toast({ title: t("restaurantSettings:fulfillmentSaved", "Fulfillment options saved") });
-              void syncMenu();
-            }
-          }}>
+          <Button
+            variant="secondary"
+            disabled={savingFulfillment}
+            onClick={async () => {
+              setSavingFulfillment(true);
+              try {
+                const { data, error } = await supabase
+                  .from("restaurants")
+                  .update({
+                    allows_delivery: r.allows_delivery,
+                    allows_pickup: r.allows_pickup,
+                  })
+                  .eq("id", r.id)
+                  .select("id");
+                if (error) {
+                  toast({
+                    variant: "destructive",
+                    title: "Unable to update fulfillment",
+                    description: (error as { message?: string })?.message,
+                  });
+                  return;
+                }
+                const rows = Array.isArray(data) ? data : data ? [data] : [];
+                if (!rows.length) {
+                  toast({
+                    variant: "destructive",
+                    title: "Unable to update fulfillment",
+                    description: "No matching restaurant was updated.",
+                  });
+                  return;
+                }
+                toast({ title: t("restaurantSettings:fulfillmentSaved", "Fulfillment options saved") });
+                if (restaurantId) void quietVoiceSync(restaurantId);
+              } finally {
+                setSavingFulfillment(false);
+              }
+            }}
+          >
+            {savingFulfillment ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
             {t("restaurantSettings:saveFulfillment", "Save fulfillment")}
           </Button>
         </CardContent>
@@ -951,8 +1076,8 @@ export default function RestaurantSettings() {
             </CardTitle>
             <CardDescription>{t("restaurantSettings:operatingHoursDesc", "Set when your restaurant is open for orders.")}</CardDescription>
           </div>
-          <Button onClick={saveHours} disabled={loading} size="sm">
-            {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : t("restaurantSettings:saveHours", "Save Hours")}
+          <Button onClick={() => void saveHours()} disabled={savingHours || loading} size="sm">
+            {savingHours ? <RefreshCw className="h-4 w-4 animate-spin" /> : t("restaurantSettings:saveHours", "Save Hours")}
           </Button>
         </CardHeader>
         <CardContent className="space-y-6 pt-6">
