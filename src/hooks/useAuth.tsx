@@ -79,16 +79,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase
       .from("user_roles")
       .select("role")
-      .eq("user_id", userId)
-      .order("role")
-      .limit(1)
-      .single();
+      .eq("user_id", userId);
 
     if (error) {
       console.error("Error fetching role:", error);
       return null;
     }
-    return data?.role as AppRole;
+    const roles = ((data as { role: string }[] | null) || []).map((r) => r.role);
+    // Prefer highest privilege — never let alphabetical order demote super_admin below admin
+    const priority: AppRole[] = [
+      "super_admin",
+      "admin",
+      "manager",
+      "kitchen",
+      "chef",
+      "cashier",
+      "receptionist",
+      "staff",
+      "driver",
+    ];
+    return priority.find((r) => roles.includes(r)) ?? (roles[0] as AppRole) ?? null;
   };
 
   useEffect(() => {
@@ -138,6 +148,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    // Drop stale tenant selection so a previous restaurant portal cannot leak across accounts
+    try {
+      localStorage.removeItem("active_restaurant_id");
+    } catch {
+      /* ignore */
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       toast({
@@ -181,6 +197,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message,
       });
       throw error;
+    }
+    try {
+      localStorage.removeItem("active_restaurant_id");
+    } catch {
+      /* ignore */
     }
   };
 

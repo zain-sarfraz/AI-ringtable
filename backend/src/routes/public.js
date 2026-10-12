@@ -14,6 +14,7 @@ import {
 import { canonicalOrderNumber, nextOrderNumber } from "../lib/orderNumbers.js";
 import { withAbsoluteMedia } from "../lib/mediaUrl.js";
 import { notifyNewOrderLater, orderTrackUrl } from "../lib/orderAlerts.js";
+import { sendTeamMail, buildLeadNotifyHtml } from "../lib/sendTeamMail.js";
 
 const router = Router();
 
@@ -570,6 +571,123 @@ router.post("/orders", async (req, res) => {
     await trx.rollback();
     console.error(e);
     return res.status(500).json({ error: e.message || "Order failed" });
+  }
+});
+
+/**
+ * POST /api/public/leads
+ * Landing-page Missed-Call Audit + Book Demo forms (no auth).
+ * Saves into `leads` so Super Admin can see them under Leads.
+ */
+router.post("/leads", async (req, res) => {
+  try {
+    const knex = getKnex();
+    const body = req.body || {};
+    const type = String(body.type || "audit").toLowerCase() === "demo" ? "demo" : "audit";
+
+    const restaurant = String(body.restaurant || body.company || "").trim();
+    const fullName = String(body.name || body.full_name || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const phoneRaw = String(body.phone || body.phone_number || "").trim();
+    const phoneDigits = phoneRaw.replace(/\D/g, "");
+    const locations = String(body.locations || body.loc || "").trim();
+    const city = String(body.city || "").trim();
+    const pos = String(body.pos || "").trim();
+    const fix = Array.isArray(body.fix) ? body.fix.map(String) : body.fix ? [String(body.fix)] : [];
+    const bestTime = String(body.time || body.best_time || "").trim();
+    const extraNotes = String(body.notes || "").trim();
+
+    // Cal.com bookings may send a placeholder phone; still accept email + restaurant
+    const isCalBooking = fix.includes("cal-booking") || /cal\.com/i.test(bestTime) || /Cal\.com/i.test(extraNotes);
+    if ((!phoneDigits || phoneDigits.length < 7) && !isCalBooking) {
+      return res.status(400).json({ error: "A valid phone number is required." });
+    }
+    if (!email || !email.includes("@")) {
+      return res.status(400).json({ error: "A valid work email is required." });
+    }
+    if (!restaurant) {
+      return res.status(400).json({ error: "Restaurant name is required." });
+    }
+
+    const source = type === "demo" ? (isCalBooking ? "landing_demo_cal" : "landing_demo") : "landing_audit";
+    const notesLines = [
+      type === "demo" ? "Book demo request" : "Missed-call audit request",
+      restaurant ? `Restaurant: ${restaurant}` : null,
+      locations ? `Locations: ${locations}` : null,
+      city ? `City/ZIP: ${city}` : null,
+      pos ? `POS: ${pos}` : null,
+      fix.length ? `Fix first: ${fix.join(", ")}` : null,
+      bestTime ? `Best time: ${bestTime}` : null,
+      extraNotes || null,
+    ].filter(Boolean);
+
+    const cols = await knex("leads").columnInfo();
+    const payload = {
+      phone_number: phoneRaw || phoneDigits || `cal-${Date.now()}`,
+      email,
+      full_name: fullName || restaurant,
+      source,
+      status: "new",
+    };
+    if (cols.company) payload.company = restaurant;
+    if (cols.notes) payload.notes = notesLines.join("\n");
+    if (cols.updated_at) payload.updated_at = new Date();
+    if (cols.created_at) payload.created_at = new Date();
+
+    // Upsert by phone or email so repeat submissions refresh the lead
+    const existing = await knex("leads")
+      .where(function matchLead() {
+        this.where({ phone_number: payload.phone_number }).orWhere({ email });
+      })
+      .first();
+
+    let lead;
+    if (existing) {
+      const updatePayload = { ...payload };
+      delete updatePayload.created_at;
+      const [updated] = await knex("leads")
+        .where({ id: existing.id })
+        .update(updatePayload)
+        .returning("*");
+      lead = updated || { ...existing, ...updatePayload };
+    } else {
+      const [created] = await knex("leads").insert(payload).returning("*");
+      lead = created;
+    }
+
+    // Notify team inbox (join@ringtable.io webmail) — does not block lead save
+    const textBody = notesLines
+      .concat([`Email: ${email}`, `Phone: ${payload.phone_number}`, `Name: ${payload.full_name}`])
+      .join("\n");
+    try {
+      await sendTeamMail({
+        subject: type === "demo" ? `Demo request: ${restaurant}` : `Missed-call audit: ${restaurant}`,
+        text: textBody,
+        html: buildLeadNotifyHtml({
+          type,
+          restaurant,
+          fullName: payload.full_name,
+          email,
+          phone: payload.phone_number,
+          notesLines,
+        }),
+      });
+    } catch (mailErr) {
+      console.warn("Lead notify email failed:", mailErr.message);
+      console.log(`[lead/${source}] ${restaurant} | ${email} | ${payload.phone_number}`);
+    }
+
+    return res.status(201).json({
+      success: true,
+      id: lead?.id,
+      message:
+        type === "demo"
+          ? "Thanks! We'll be in touch within 24 hours about your demo."
+          : "Thanks! We'll send your free Missed-Call Audit within 48 hours.",
+    });
+  } catch (e) {
+    console.error("Public lead submit error:", e);
+    return res.status(500).json({ error: e.message || "Could not submit. Please try again." });
   }
 });
 

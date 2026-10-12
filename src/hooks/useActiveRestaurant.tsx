@@ -74,52 +74,67 @@ export function ActiveRestaurantProvider({ children }: { children: React.ReactNo
           return;
         }
 
-        // Fetch all restaurants list
-        const { data: allRests } = await supabase
-          .from("restaurants")
-          .select("id, name, slug, is_active, parent_restaurant_id, is_branch, address, service_radius_km, is_accepting_orders, latitude, longitude, subscription_plan, subscription_status")
-          .order("name", { ascending: true });
-
-        const restsList = (allRests as RestaurantInfo[]) || [];
-        if (!cancelled) {
-          setRestaurants(restsList);
-        }
+        const restaurantSelect =
+          "id, name, slug, is_active, parent_restaurant_id, is_branch, address, service_radius_km, is_accepting_orders, latitude, longitude, subscription_plan, subscription_status";
 
         // 1. Super Admin: Platform-wide control.
-        // Can view "All Restaurants" (null) or pick a specific restaurant from dropdown.
         if (role === "super_admin") {
+          const { data: allRests } = await supabase
+            .from("restaurants")
+            .select(restaurantSelect)
+            .order("name", { ascending: true });
+
+          const restsList = (allRests as RestaurantInfo[]) || [];
+          if (!cancelled) setRestaurants(restsList);
+
           const storedRid = localStorage.getItem("active_restaurant_id");
           if (storedRid && storedRid !== "all" && restsList.some((r) => r.id === storedRid)) {
             if (!cancelled) setRestaurantIdState(storedRid);
-          } else {
-            // Default to null (All Restaurants) for Super Admin
-            if (!cancelled) setRestaurantIdState(null);
+          } else if (!cancelled) {
+            setRestaurantIdState(null);
           }
           return;
         }
 
-        // 2. Regular Restaurant Admin / Member (e.g. royal@gmail.com)
+        // 2. Regular Restaurant Admin / Member — ONLY their membership restaurant(s)
         const { data: memberRows } = await supabase
           .from("restaurant_members")
-          .select("restaurant_id, created_at")
+          .select("restaurant_id, member_role, created_at")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false });
 
-        const memberIds = [
-          ...new Set(
-            (memberRows as { restaurant_id: string }[] | null)?.map((m) => m.restaurant_id) ?? []
-          ),
-        ].filter(Boolean);
+        const rows = (memberRows as { restaurant_id: string; member_role?: string }[] | null) ?? [];
+        const memberIds = [...new Set(rows.map((m) => m.restaurant_id).filter(Boolean))];
+        const ownerFirst =
+          rows.find((m) => m.member_role === "owner")?.restaurant_id ||
+          rows.find((m) => m.member_role === "admin")?.restaurant_id ||
+          memberIds[0];
 
         if (memberIds.length > 0) {
+          const { data: mine } = await supabase
+            .from("restaurants")
+            .select(restaurantSelect)
+            .in("id", memberIds)
+            .order("name", { ascending: true });
+
+          if (!cancelled) setRestaurants((mine as RestaurantInfo[]) || []);
+
           const storedRid = localStorage.getItem("active_restaurant_id");
           if (storedRid && memberIds.includes(storedRid)) {
             if (!cancelled) setRestaurantIdState(storedRid);
           } else {
-            if (!cancelled) setRestaurantIdState(memberIds[0]);
+            if (!cancelled) setRestaurantIdState(ownerFirst);
+            try {
+              if (ownerFirst) localStorage.setItem("active_restaurant_id", ownerFirst);
+              else localStorage.removeItem("active_restaurant_id");
+            } catch {
+              /* ignore */
+            }
           }
           return;
         }
+
+        if (!cancelled) setRestaurants([]);
 
         // 3. Driver Role
         if (role === "driver") {

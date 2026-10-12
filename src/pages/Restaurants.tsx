@@ -31,6 +31,8 @@ interface Restaurant {
   agent_system_prompt?: string | null;
   /** Filled in list view for super admin table */
   owner_login_email?: string;
+  is_branch?: boolean;
+  parent_restaurant_id?: string | null;
   commission_rate: number;
   allows_delivery: boolean;
   allows_pickup: boolean;
@@ -78,6 +80,8 @@ const emptyForm = {
   address: "",
   owner_user_id: "",
   owner_email: "",
+  /** Email loaded when edit dialog opened — used to detect owner email changes. */
+  loaded_owner_email: "",
   owner_password: "",
   owner_full_name: "",
   twilio_phone_number: "",
@@ -268,6 +272,7 @@ export default function Restaurants() {
       logo_url: r.logo_url ?? "",
       cover_image_url: r.cover_image_url ?? "",
       ...owner,
+      loaded_owner_email: owner.owner_email ?? "",
       owner_password: "",
       twilio_phone_number: r.twilio_phone_number ?? "",
       elevenlabs_agent_id: r.elevenlabs_agent_id ?? "",
@@ -500,14 +505,19 @@ export default function Restaurants() {
         if (!form.owner_user_id && (!form.owner_password || form.owner_password.length < 6)) {
           throw new Error("Enter a password for the new owner (at least 6 characters), or load an existing restaurant that already has an owner.");
         }
+        const ownerEmail = form.owner_email.trim();
+        const loadedOwnerEmail = String(form.loaded_owner_email || "").trim().toLowerCase();
+        const emailUnchanged = loadedOwnerEmail !== "" && ownerEmail.toLowerCase() === loadedOwnerEmail;
         const ownerBody: Record<string, unknown> = {
-          email: form.owner_email.trim(),
+          email: ownerEmail,
           full_name: (form.owner_full_name || form.name).trim(),
           restaurant_id: mode.restaurant.id,
           member_role: "owner",
           app_role: "admin",
         };
-        if (form.owner_user_id) {
+        // Pass user_id only when email is unchanged. If email switched to an existing
+        // account (e.g. royal@gmail.com), API links that account as owner.
+        if (form.owner_user_id && emailUnchanged) {
           ownerBody.user_id = form.owner_user_id;
         }
         if (form.owner_password.trim().length >= 6) {
@@ -564,7 +574,10 @@ export default function Restaurants() {
       <div className="flex justify-between items-start flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Store className="h-6 w-6" />{t("superAdmin:restaurants", "Restaurants")}</h1>
-          <p className="text-muted-foreground text-sm">{t("superAdmin:restaurantsSubtitle", "Each restaurant has one dashboard owner. Provision tenants and manage their login here.")}</p>
+          <p className="text-muted-foreground text-sm">
+            {t("superAdmin:restaurantsSubtitle", "Each restaurant has one dashboard owner. Provision tenants and manage their login here.")}
+            {!loading ? ` · ${list.length} total` : ""}
+          </p>
         </div>
         <Dialog open={!!mode} onOpenChange={(o) => { if (!o) closeDialog(); }}>
           <DialogTrigger asChild>
@@ -704,6 +717,9 @@ export default function Restaurants() {
                     onChange={(e) => setForm({ ...form, owner_email: e.target.value })}
                     placeholder="owner@restaurant.com"
                   />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    If this email already has an account, that account becomes the restaurant owner.
+                  </p>
                 </div>
                 <div>
                   <Label>{isEdit ? "New password (optional)" : "Owner password *"}</Label>
@@ -905,7 +921,14 @@ export default function Restaurants() {
                   {list.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>
-                        <div className="font-medium">{r.name}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{r.name}</span>
+                          {r.is_branch ? (
+                            <Badge variant="outline" className="text-[10px] font-normal">
+                              Branch
+                            </Badge>
+                          ) : null}
+                        </div>
                         <code className="text-xs text-muted-foreground">/{r.slug}</code>
                       </TableCell>
                       <TableCell>

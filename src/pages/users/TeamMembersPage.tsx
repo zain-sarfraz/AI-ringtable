@@ -120,18 +120,34 @@ export default function TeamMembersPage() {
         if (rErr) throw rErr;
         if (pErr) throw pErr;
 
-        const roleMap = Object.fromEntries(
-          ((rolesData as any[]) || []).map((r) => [r.user_id, r.role])
+        // Platform team only — never list restaurant owners/staff here
+        const platformRoleByUser = new Map<string, string>();
+        for (const r of (rolesData as { user_id: string; role: string }[]) || []) {
+          if (r.role === "super_admin" || r.role === "admin") {
+            const prev = platformRoleByUser.get(r.user_id);
+            if (!prev || r.role === "super_admin") platformRoleByUser.set(r.user_id, r.role);
+          }
+        }
+
+        const { data: memberRows } = await supabase.from("restaurant_members").select("user_id");
+        const restaurantUserIds = new Set(
+          ((memberRows as { user_id: string }[]) || []).map((m) => m.user_id),
         );
 
-        const platformProfiles = ((pData as any[]) || []).filter((p) => roleMap[p.id]);
+        const platformProfiles = ((pData as any[]) || []).filter((p) => {
+          const platformRole = platformRoleByUser.get(p.id);
+          if (!platformRole) return false;
+          // Exclude anyone who is only a restaurant tenant (has membership, not super_admin)
+          if (platformRole !== "super_admin" && restaurantUserIds.has(p.id)) return false;
+          return true;
+        });
 
         const combined: TeamMemberRow[] = platformProfiles.map((p) => ({
           id: p.id,
           restaurant_id: "",
           restaurant_name: "Super Admin Portal",
           user_id: p.id,
-          member_role: roleMap[p.id] || "manager",
+          member_role: platformRoleByUser.get(p.id) || "admin",
           email: p.email,
           full_name: p.full_name,
           created_at: p.created_at,

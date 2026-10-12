@@ -1,18 +1,56 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import Cal, { getCalApi } from "@calcom/embed-react";
 import { useAuth } from "@/hooks/useAuth";
 import { BILLING_PLANS, BillingInterval, formatPlanPrice, planAmount } from "@/lib/billingPlans";
 import { BRAND_ASSETS, PRODUCT_EMAIL, PRODUCT_NAME, productTitle } from "@/lib/brand";
+import { getApiBase } from "@/lib/apiBase";
 import "./landing.css";
+
+/** Cal.com event path, e.g. `your-username/10min` (no https://cal.com/) */
+const CAL_LINK = String(import.meta.env.VITE_CAL_LINK || "").trim().replace(/^https?:\/\/(www\.)?cal\.com\//i, "");
+const CAL_ORIGIN = String(import.meta.env.VITE_CAL_ORIGIN || "https://cal.com").trim().replace(/\/$/, "") || "https://cal.com";
+
+type LeadFormType = "audit" | "demo";
+
+async function submitLandingLeadPayload(payload: Record<string, unknown>) {
+  const res = await fetch(`${getApiBase()}/api/public/leads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string; success?: boolean };
+  if (!res.ok) {
+    throw new Error(typeof data.error === "string" ? data.error : "Could not submit. Please try again.");
+  }
+  return data;
+}
+
+async function submitLandingLead(type: LeadFormType, form: HTMLFormElement) {
+  const fd = new FormData(form);
+  const fix = fd.getAll("fix").map(String).filter(Boolean);
+  return submitLandingLeadPayload({
+    type,
+    restaurant: String(fd.get("restaurant") || "").trim(),
+    name: String(fd.get("name") || "").trim(),
+    phone: String(fd.get("phone") || "").trim(),
+    email: String(fd.get("email") || "").trim(),
+    locations: String(fd.get("locations") || fd.get("loc") || "").trim(),
+    city: String(fd.get("city") || "").trim(),
+    pos: String(fd.get("pos") || "").trim(),
+    fix,
+    time: String(fd.get("time") || "").trim(),
+  });
+}
 
 const FAQS = [
   {
     q: "We already have a POS. Do we need to replace it?",
-    a: "No. Ringtable automates the parts around your POS — phone calls, reservations, QR and online ordering. Your POS stays where it is.",
+    a: "No. Ringtable automates the parts around your POS - phone calls, reservations, QR and online ordering. Your POS stays where it is.",
   },
   {
     q: "Will customers know they're talking to AI?",
-    a: "Yes, if they ask — the receptionist is honest that it's an AI assistant and transfers to your team whenever a guest prefers a person or asks something it can't answer.",
+    a: "Yes, if they ask - the receptionist is honest that it's an AI assistant and transfers to your team whenever a guest prefers a person or asks something it can't answer.",
   },
   {
     q: "What if an item is sold out?",
@@ -20,11 +58,11 @@ const FAQS = [
   },
   {
     q: 'Can it handle modifiers like "no onion, extra cheese"?',
-    a: "Yes. Your menu is loaded as structured data — sizes, crusts, add-ons and removals — and the AI reads the full order back before sending it to the kitchen.",
+    a: "Yes. Your menu is loaded as structured data - sizes, crusts, add-ons and removals — and the AI reads the full order back before sending it to the kitchen.",
   },
   {
     q: "Do I need to change my phone number?",
-    a: "No. You keep your number and forward calls to the AI — all calls, or only when your staff are busy or after hours.",
+    a: "No. You keep your number and forward calls to the AI - all calls, or only when your staff are busy or after hours.",
   },
   {
     q: "How long is the contract?",
@@ -52,6 +90,7 @@ function BrandMark({ variant = "mark" }: { variant?: "mark" | "wordmark" }) {
 }
 
 const NAV = [
+  { href: "#watch", label: "Watch" },
   { href: "#how", label: "How it works" },
   { href: "#engine", label: "Order Engine" },
   { href: "#ai", label: "AI Receptionist" },
@@ -60,48 +99,133 @@ const NAV = [
   { href: "#pricing", label: "Pricing" },
 ];
 
+function LandingVideo({
+  src,
+  title,
+  variant = "wide",
+}: {
+  src: string;
+  title: string;
+  variant?: "wide" | "reel";
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const video = videoRef.current;
+    if (!wrap || !video) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
+          // Browsers only allow autoplay when muted
+          video.muted = true;
+          const playPromise = video.play();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {
+              /* autoplay blocked — user can press play */
+            });
+          }
+        } else {
+          video.pause();
+        }
+      },
+      { threshold: [0, 0.45, 0.7], rootMargin: "0px 0px -8% 0px" },
+    );
+
+    observer.observe(wrap);
+    return () => observer.disconnect();
+  }, [src]);
+
+  return (
+    <div
+      ref={wrapRef}
+      className={`lp-video ${variant === "reel" ? "lp-video-reel" : "lp-video-wide"}`}
+    >
+      <video
+        ref={videoRef}
+        className="lp-video-el"
+        controls
+        playsInline
+        muted
+        loop
+        preload="metadata"
+        title={title}
+        aria-label={title}
+      >
+        <source src={src} type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
+    </div>
+  );
+}
+
 function money(n: number) {
   return "$" + Math.round(n).toLocaleString("en-US");
 }
 
 function AuditForm() {
   const [done, setDone] = useState(false);
-  const onSubmit = (e: FormEvent) => {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState("Thanks! We'll send your free audit within 48 hours ✓");
+
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setDone(true);
+    if (submitting || done) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const data = await submitLandingLead("audit", e.currentTarget);
+      if (data.message) setSuccessMsg(`${data.message} ✓`);
+      setDone(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not submit. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
   return (
     <form className="leadform" onSubmit={onSubmit}>
       <div className="fw-bold" style={{ fontSize: 17 }}>
         Get a free Missed-Call Audit of your restaurant
       </div>
       <p className="text-mut mb-3" style={{ fontSize: 13 }}>
-        We call your restaurant like a real customer at peak hours and send you a report — free, in 48 hours.
+        We call your restaurant like a real customer at peak hours and send you a report - free, in 48 hours.
       </p>
       <div className="row g-2">
         <div className="col-sm-6">
-          <input className="form-control" name="restaurant" placeholder="Restaurant name" required disabled={done} />
+          <input className="form-control" name="restaurant" placeholder="Restaurant name" required disabled={done || submitting} />
         </div>
         <div className="col-sm-6">
-          <input className="form-control" name="phone" type="tel" placeholder="Your phone" required disabled={done} />
+          <input className="form-control" name="phone" type="tel" placeholder="Your phone" required disabled={done || submitting} />
         </div>
         <div className="col-sm-6">
-          <input className="form-control" name="email" type="email" placeholder="Work email" required disabled={done} />
+          <input className="form-control" name="email" type="email" placeholder="Work email" required disabled={done || submitting} />
         </div>
         <div className="col-sm-6">
-          <select className="form-select" name="locations" disabled={done} defaultValue="1">
+          <select className="form-select" name="locations" disabled={done || submitting} defaultValue="1">
             <option value="1">Locations: 1</option>
-            <option value="2-3">2–3</option>
-            <option value="4-5">4–5</option>
+            <option value="2-3">2-3</option>
+            <option value="4-5">4-5</option>
             <option value="6+">6+</option>
           </select>
         </div>
         <div className="col-12">
-          <button className="btn btn-or w-100" type="submit" disabled={done}>
-            {done ? "Thanks! We'll be in touch within 24 hours ✓" : "Send My Free Audit →"}
+          <button className="btn btn-or w-100" type="submit" disabled={done || submitting}>
+            {done ? successMsg : submitting ? "Sending..." : "Send My Free Audit →"}
           </button>
         </div>
       </div>
+      {error ? (
+        <div className="text-center mt-2" style={{ fontSize: 12, color: "#c0392b" }} role="alert">
+          {error}
+        </div>
+      ) : null}
       <div className="text-center text-mut mt-2" style={{ fontSize: 12 }}>
         No credit card · No POS change · Takes 30 seconds
       </div>
@@ -109,80 +233,103 @@ function AuditForm() {
   );
 }
 
+/** Inline Cal.com booking — slots sync to Ringtable leads on success. */
 function DemoForm() {
-  const [done, setDone] = useState(false);
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    setDone(true);
-  };
+  const [booked, setBooked] = useState(false);
+
+  useEffect(() => {
+    if (!CAL_LINK) return;
+    let cancelled = false;
+
+    (async () => {
+      const cal = await getCalApi({ namespace: "ringtable-demo" });
+      if (cancelled) return;
+
+      cal("ui", {
+        theme: "light",
+        hideEventTypeDetails: false,
+        layout: "month_view",
+        cssVarsPerTheme: {
+          light: {
+            "cal-brand": "#e86a17",
+          },
+        },
+      });
+
+      cal("on", {
+        action: "bookingSuccessfulV2",
+        callback: (e: { detail?: { data?: Record<string, unknown> } }) => {
+          const data = e?.detail?.data || {};
+          const responses = (data.responses && typeof data.responses === "object" ? data.responses : {}) as Record<string, unknown>;
+          const email = String(data.email || data.attendeeEmail || responses.email || "").trim();
+          const name = String(data.name || data.attendeeName || responses.name || "").trim();
+          const start = String(data.startTime || data.start || "").trim();
+          const title = String(data.title || "Ringtable demo").trim();
+          const phone = String(data.attendeePhoneNumber || data.phone || responses.phone || "0000000000").trim();
+          const restaurant = String(responses.restaurant || data.company || name || "Demo booking").trim();
+
+          setBooked(true);
+          void submitLandingLeadPayload({
+            type: "demo",
+            restaurant,
+            name: name || "Demo guest",
+            phone: phone || "0000000000",
+            email: email || `booking+${Date.now()}@ringtable.io`,
+            time: start || "cal.com",
+            fix: ["cal-booking"],
+            notes: [`Cal.com booking: ${title}`, start ? `Starts: ${start}` : null].filter(Boolean).join("\n"),
+          }).catch((err) => console.warn("Could not sync Cal booking to leads:", err));
+        },
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!CAL_LINK) {
+    return (
+      <div className="demo" id="book-demo-form">
+        <b style={{ fontSize: 20 }}>Book your 30-minute demo</b>
+        <p className="text-mut mb-3" style={{ fontSize: 13 }}>
+          Includes your free Missed-Call Audit
+        </p>
+        <p className="text-mut" style={{ fontSize: 14 }}>
+          Set <code>VITE_CAL_LINK</code> (e.g. <code>your-username/10min</code>) to enable Cal.com booking.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <form className="demo" onSubmit={onSubmit}>
-      <b style={{ fontSize: 20 }}>Book your 10-minute demo</b>
+    <div className="demo cal-demo" id="book-demo-form">
+      <b style={{ fontSize: 20 }}>Book your 30-minute demo</b>
       <p className="text-mut mb-3" style={{ fontSize: 13 }}>
-        Includes your free Missed-Call Audit
+        Includes your free Missed-Call Audit · Pick a time that works for you
       </p>
-      <div className="row g-2 mb-2">
-        <div className="col-sm-6">
-          <input className="form-control" name="restaurant" placeholder="Restaurant name" required disabled={done} />
+      {booked ? (
+        <div className="text-center py-4" style={{ fontSize: 15 }}>
+          <b>You&apos;re booked ✓</b>
+          <p className="text-mut mt-2 mb-0" style={{ fontSize: 13 }}>
+            Check your email for the calendar invite. We&apos;ll also send your free Missed-Call Audit.
+          </p>
         </div>
-        <div className="col-sm-6">
-          <input className="form-control" name="name" placeholder="Your name" required disabled={done} />
+      ) : (
+        <div className="cal-embed-wrap">
+          <Cal
+            namespace="ringtable-demo"
+            calLink={CAL_LINK}
+            calOrigin={CAL_ORIGIN}
+            style={{ width: "100%", height: "100%", overflow: "scroll" }}
+            config={{ layout: "month_view", theme: "light" }}
+          />
         </div>
-        <div className="col-sm-6">
-          <input className="form-control" name="phone" type="tel" placeholder="Phone" required disabled={done} />
-        </div>
-        <div className="col-sm-6">
-          <input className="form-control" name="email" type="email" placeholder="Work email" required disabled={done} />
-        </div>
-        <div className="col-sm-6">
-          <input className="form-control" name="city" placeholder="City / ZIP" disabled={done} />
-        </div>
-        <div className="col-sm-6">
-          <select className="form-select" name="pos" defaultValue="" disabled={done}>
-            <option value="">Current POS</option>
-            <option>Square</option>
-            <option>Toast</option>
-            <option>Clover</option>
-            <option>Lightspeed</option>
-            <option>Other</option>
-            <option>None</option>
-          </select>
-        </div>
-      </div>
-      <div className="lbl">Number of locations</div>
-      <input className="chip-check" type="radio" name="loc" id="l1" value="1" defaultChecked disabled={done} />
-      <label className="chip" htmlFor="l1">1</label>
-      <input className="chip-check" type="radio" name="loc" id="l2" value="2-3" disabled={done} />
-      <label className="chip" htmlFor="l2">2–3</label>
-      <input className="chip-check" type="radio" name="loc" id="l3" value="4-5" disabled={done} />
-      <label className="chip" htmlFor="l3">4–5</label>
-      <input className="chip-check" type="radio" name="loc" id="l4" value="6+" disabled={done} />
-      <label className="chip" htmlFor="l4">6+</label>
-      <div className="lbl">What do you want to fix first?</div>
-      <input className="chip-check" type="checkbox" name="fix" id="x1" value="missed-calls" defaultChecked disabled={done} />
-      <label className="chip" htmlFor="x1">Missed calls</label>
-      <input className="chip-check" type="checkbox" name="fix" id="x2" value="phone-orders" disabled={done} />
-      <label className="chip" htmlFor="x2">Phone orders</label>
-      <input className="chip-check" type="checkbox" name="fix" id="x3" value="reservations" defaultChecked disabled={done} />
-      <label className="chip" htmlFor="x3">Reservations</label>
-      <input className="chip-check" type="checkbox" name="fix" id="x4" value="qr" disabled={done} />
-      <label className="chip" htmlFor="x4">QR ordering</label>
-      <input className="chip-check" type="checkbox" name="fix" id="x5" value="reporting" disabled={done} />
-      <label className="chip" htmlFor="x5">Reporting</label>
-      <div className="lbl">Best time for a call</div>
-      <input className="chip-check" type="radio" name="time" id="t1" value="morning" disabled={done} />
-      <label className="chip" htmlFor="t1">Morning</label>
-      <input className="chip-check" type="radio" name="time" id="t2" value="2-5pm" defaultChecked disabled={done} />
-      <label className="chip" htmlFor="t2">2–5 PM</label>
-      <input className="chip-check" type="radio" name="time" id="t3" value="after-close" disabled={done} />
-      <label className="chip" htmlFor="t3">After close</label>
-      <button className="btn btn-or w-100 mt-2" type="submit" disabled={done}>
-        {done ? "Thanks! We'll be in touch within 24 hours ✓" : "Book My Demo →"}
-      </button>
+      )}
       <div className="text-center text-mut mt-2" style={{ fontSize: 11.5 }}>
-        We'll only contact you about your demo. No spam.
+        Powered by Cal.com · We&apos;ll only contact you about your demo.
       </div>
-    </form>
+    </div>
   );
 }
 
@@ -272,8 +419,8 @@ export default function Landing() {
   return (
     <div className="lp" id="top">
       <div className="ann">
-        🗽 Now onboarding 10 founding pilot restaurants in New York City — Growth at $400/mo for 1 year{" "}
-        <a href="#audit">4 spots left →</a>
+        🗽 Now onboarding 10 founding pilot restaurants in New York City - Growth at $400/mo for 1 year{" "}
+        <a href="#demo">4 spots left →</a>
       </div>
 
       <nav className="navwrap">
@@ -295,9 +442,6 @@ export default function Landing() {
               ))}
             </ul>
             <div className="nav-actions">
-              <a href="tel:+12025550148" className="nav-phone">
-                📞 (202) 555-0148
-              </a>
               {user ? (
                 <Link to="/dashboard" className="btn-login">
                   Dashboard
@@ -307,7 +451,7 @@ export default function Landing() {
                   Login
                 </Link>
               )}
-              <a href="#audit" className="btn btn-or py-2 px-3" onClick={() => setNavOpen(false)}>
+              <a href="#demo" className="btn btn-or py-2 px-3" onClick={() => setNavOpen(false)}>
                 Get Free Audit
               </a>
             </div>
@@ -324,7 +468,7 @@ export default function Landing() {
                 Never miss a restaurant <span>order</span> again.
               </h1>
               <p className="lead">
-                Our AI answers every call, takes pickup orders, books tables, and sends phone, QR, website and staff orders straight to your kitchen — in one order inbox.
+                Our AI answers every call, takes pickup orders, books tables, and sends phone, QR, website and staff orders straight to your kitchen - in one order inbox.
               </p>
               <AuditForm />
               <div className="proof">
@@ -467,13 +611,13 @@ export default function Landing() {
         <div className="container">
           <div className="sh">
             <span className="eyebrow red">The Problem</span>
-            <h2>A full dining room can still lose customers — because nobody answers the phone.</h2>
+            <h2>A full dining room can still lose customers - because nobody answers the phone.</h2>
             <p>Independent restaurants are fighting labor costs, rising prices and too many disconnected tools. The leaks are hard to see.</p>
           </div>
           <div className="row g-4">
             {[
               ["📵", "Unanswered calls at rush", "When the host is seating guests, the phone rings out. That caller orders from the place down the block.", "Every missed call is a missed ticket"],
-              ["🧩", "Orders in 3 different places", "Phone notes, a QR app and a website plugin — each with its own screen, and none talk to the kitchen.", "Lost tickets, double entry, delays"],
+              ["🧩", "Orders in 3 different places", "Phone notes, a QR app and a website plugin -  each with its own screen, and none talk to the kitchen.", "Lost tickets, double entry, delays"],
               ["✍️", "Wrong orders, wrong modifiers", '"No onion, extra cheese, thin crust" gets lost between the phone and the kitchen. Remakes and refunds follow.', "Remakes eat your margin"],
               ["🦞", "Selling what you're out of", "Staff and apps keep taking orders for items the kitchen ran out of an hour ago. Then someone has to call back.", "Awkward callbacks & bad reviews"],
               ["📒", "Reservations in a notebook", "Double bookings, no-shows and no idea who your regulars are or how often they come back.", "No customer history"],
@@ -492,12 +636,27 @@ export default function Landing() {
         </div>
       </section>
 
+      <section className="sec pt-0" id="watch">
+        <div className="container">
+          <div className="sh">
+            <span className="eyebrow">See it in action</span>
+            <h2>2 minutes to understand Ringtable.</h2>
+            <p>Watch how phone, QR, website and staff orders land in one kitchen workflow -  without replacing your POS.</p>
+          </div>
+          <LandingVideo
+            src="/videos/explainer-2min.mp4"
+            title="Ringtable explainer — 2 minutes"
+            variant="wide"
+          />
+        </div>
+      </section>
+
       <section className="sec sol" id="engine">
         <div className="container">
           <div className="sh">
             <span className="eyebrow dark">Every Order. One Kitchen.</span>
             <h2>Every customer channel flows into one Order Engine.</h2>
-            <p>No more separate systems. Phone, QR, website and waiter orders all become the same order — with the same status, in the same kitchen workflow.</p>
+            <p>No more separate systems. Phone, QR, website and waiter orders all become the same order - with the same status, in the same kitchen workflow.</p>
           </div>
           <div className="row g-3">
             {[
@@ -574,75 +733,29 @@ export default function Landing() {
           <div className="row g-5 align-items-center dd mb-5 pb-4">
             <div className="col-lg-6">
               <span className="eyebrow">The Ringtable Brain</span>
-              <h2>An AI that knows your menu — down to the last modifier.</h2>
+              <h2>An AI that knows your menu - down to the last modifier.</h2>
               <p className="l">
-                We don't just upload a PDF menu. Your AI works from structured data: items, sizes, modifiers, combos, hours, policies — and what's sold out right now.
+                We don't just upload a PDF menu. Your AI works from structured data: items, sizes, modifiers, combos, hours, policies - and what's sold out right now.
               </p>
               <ul className="ticks">
                 <li>Sizes, crusts, add-ons & "no onion" handled correctly</li>
-                <li>86'd items switch off in one tap — AI offers an alternative</li>
+                <li>86'd items switch off in one tap - AI offers an alternative</li>
                 <li>Reads back the full order & total before submitting</li>
                 <li>Never invents prices, items or reservation slots</li>
                 <li>Hands off to your team when it isn't sure</li>
               </ul>
             </div>
             <div className="col-lg-6">
-              <div className="vis">
-                <div className="row g-3">
-                  <div className="col-sm-6">
-                    <div className="panel">
-                      <b style={{ fontSize: 14 }}>Menu · Live availability</b>
-                      <div className="mrow">
-                        <div>
-                          <b>Large Chicken Pizza</b> · $19.99
-                          <br />
-                          <span className="tg">Thin</span>
-                          <span className="tg">Stuffed</span>
-                          <span className="tg">+ Extra cheese</span>
-                          <span className="tg">No onion</span>
-                        </div>
-                        <span className="sw" />
-                      </div>
-                      <div className="mrow">
-                        <div>
-                          <b>Lobster Pasta</b> · $32.00
-                          <br />
-                          <span style={{ color: "var(--red)", fontSize: 11, fontWeight: 600 }}>Sold out today</span>
-                        </div>
-                        <span className="sw off" />
-                      </div>
-                      <div className="mrow">
-                        <div>
-                          <b>Shrimp Pasta</b> · $26.00
-                          <br />
-                          <span className="tg">Spicy</span>
-                          <span className="tg">Gluten-free</span>
-                        </div>
-                        <span className="sw" />
-                      </div>
-                      <div className="mrow border-0">
-                        <div>
-                          <b>Caesar Salad</b> · $12.50
-                          <br />
-                          <span className="tg">+ Chicken $5</span>
-                        </div>
-                        <span className="sw" />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="col-sm-6">
-                    <div className="panel">
-                      <div style={{ fontSize: 12, color: "var(--grn)", fontWeight: 600 }}>● AI Receptionist · live call</div>
-                      <div className="bub cu">I'd like the lobster pasta.</div>
-                      <div className="bub ai">Sorry, the lobster pasta is sold out today. Our shrimp pasta is very popular — would you like that instead?</div>
-                      <div className="bub cu">Sure, plus a large chicken pizza, extra cheese, no onions.</div>
-                      <div className="bub ai">To confirm: 1 shrimp pasta, 1 large chicken pizza with extra cheese and no onions. Pickup total $45.99 before tax. Correct?</div>
-                      <div className="text-center fw-bold mt-2" style={{ fontSize: 11, color: "var(--grn)" }}>
-                        ✓ CONFIRMED → SENT TO KITCHEN #1047
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <div className="lp-reel-block">
+                <div className="lp-reel-label">Real order · live reel</div>
+                <LandingVideo
+                  src="/videos/real-order-reel.mp4"
+                  title="Ringtable real order reel"
+                  variant="reel"
+                />
+                <p className="lp-reel-caption text-mut">
+                  Watch a real phone order go from call → confirmation → kitchen inbox.
+                </p>
               </div>
             </div>
           </div>
@@ -732,7 +845,7 @@ export default function Landing() {
         <div className="container">
           <div className="sh">
             <span className="eyebrow">Sell the money, not the tech</span>
-            <h2>See exactly what the AI earns you — every month.</h2>
+            <h2>See exactly what the AI earns you - every month.</h2>
             <p>Your owner dashboard shows calls handled, orders captured, revenue by channel and the missed calls the AI recovered.</p>
           </div>
           <div className="perf">
@@ -867,7 +980,7 @@ export default function Landing() {
               <span className="eyebrow">Multi-location + Customer history</span>
               <h2>Run every location and know every guest.</h2>
               <p className="l">
-                Orders route to the nearest location automatically. Each guest gets a profile with order history, favorites and visit frequency — so regulars feel like regulars.
+                Orders route to the nearest location automatically. Each guest gets a profile with order history, favorites and visit frequency - so regulars feel like regulars.
               </p>
               <ul className="ticks">
                 <li>Nearest-location routing for pickup & delivery</li>
@@ -885,7 +998,7 @@ export default function Landing() {
           <div className="sh">
             <span className="eyebrow">Keep your POS</span>
             <h2>We automate around what you already use.</h2>
-            <p>No rip-and-replace. Ringtable handles calls, reservations, QR and online ordering — and your existing POS stays where it is.</p>
+            <p>No rip-and-replace. Ringtable handles calls, reservations, QR and online ordering - and your existing POS stays where it is.</p>
           </div>
           <div className="row g-3">
             {[
@@ -929,7 +1042,7 @@ export default function Landing() {
           <div className="sh">
             <span className="eyebrow">Pilot Case Study</span>
             <h2>How a 3-location restaurant stopped missing orders.</h2>
-            <p>One shared phone line, handwritten tickets and a paper reservation book — replaced in 7 days.</p>
+            <p>One shared phone line, handwritten tickets and a paper reservation book - replaced in 7 days.</p>
           </div>
           <div className="csb row g-0">
             <div className="col-lg-6">
@@ -937,7 +1050,7 @@ export default function Landing() {
                 <div className="tag">INDEPENDENT · 3 LOCATIONS · CASUAL DINING</div>
                 <h3>Royal Restaurant: every call answered, +38% phone revenue, zero new hires.</h3>
                 <p>During Friday and weekend rush, calls went unanswered, orders were written by hand and deliveries were sent from the wrong location. Reservations lived in a notebook.</p>
-                <p>They moved phone, QR and website ordering into one Order Engine with the AI Receptionist on the main line — while keeping their existing POS.</p>
+                <p>They moved phone, QR and website ordering into one Order Engine with the AI Receptionist on the main line - while keeping their existing POS.</p>
                 <div className="row g-3 mt-2">
                   <div className="col-4">
                     <div className="meta">
@@ -1041,7 +1154,7 @@ export default function Landing() {
             <div className="col-lg-6">
               <span className="eyebrow">Free Missed-Call Audit</span>
               <h2 style={{ fontSize: "clamp(32px,3.6vw,46px)", lineHeight: 1.08, margin: "16px 0" }}>
-                We'll call your restaurant like a real customer — and show you what we find.
+                We'll call your restaurant like a real customer - and show you what we find.
               </h2>
               <p className="text-mut" style={{ fontSize: 18, lineHeight: 1.6 }}>
                 At your busiest hours we try to book a table, place a pickup order and ask a menu question. You get a scored report in 48 hours — and a demo of the AI handling the same calls, on your own menu.
@@ -1120,7 +1233,7 @@ export default function Landing() {
           </div>
           <div className="row g-4">
             {[
-              ["1", "Free audit & 10-min demo", "We mystery-call your restaurant, then show the AI taking the same calls on your menu.", "Day 1"],
+              ["1", "Free audit & 30-min demo", "We mystery-call your restaurant, then show the AI taking the same calls on your menu.", "Day 1"],
               ["2", "Menu & tables loaded", "We structure your menu, modifiers, combos, hours, tables and locations.", "Day 2–4"],
               ["3", "AI trained & tested", "Your receptionist learns your FAQs and policies. You test-call it until you're happy.", "Day 5–6"],
               ["4", "Go live", "Forward your number, place QR codes, and watch orders land in one inbox.", "Day 7"],
@@ -1257,7 +1370,7 @@ export default function Landing() {
             <div className="row g-5 align-items-start">
               <div className="col-lg-6">
                 <h2>Every customer channel. Every order. One restaurant operating system.</h2>
-                <p>Book a 10-minute demo built on your actual menu. We'll call the AI live, walk through your inbox and dashboard, and send your free Missed-Call Audit.</p>
+                <p>Book a 30-minute demo built on your actual menu. We'll call the AI live, walk through your inbox and dashboard, and send your free Missed-Call Audit.</p>
                 <div className="row g-3 mt-2">
                   {[
                     ["✓ No POS change", "Keep what you use today"],
@@ -1296,6 +1409,7 @@ export default function Landing() {
             <div className="col-6 col-lg-2 offset-lg-1">
               <h5>Product</h5>
               <ul>
+                <li><a href="#watch">Watch videos</a></li>
                 <li><a href="#engine">One Order Engine</a></li>
                 <li><a href="#ai">AI Receptionist</a></li>
                 <li><a href="#engine">QR Ordering</a></li>
@@ -1306,7 +1420,7 @@ export default function Landing() {
             <div className="col-6 col-lg-2">
               <h5>Resources</h5>
               <ul>
-                <li><a href="#audit">Free Missed-Call Audit</a></li>
+                <li><a href="#demo">Free Missed-Call Audit</a></li>
                 <li><a href="#roi">ROI Calculator</a></li>
                 <li><a href="#audit">Pilot Program</a></li>
                 <li><a href="#case">Case Studies</a></li>

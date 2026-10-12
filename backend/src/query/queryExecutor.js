@@ -77,12 +77,14 @@ function applyScope(knex, q, table, user) {
   if (user.roles?.includes("super_admin")) return;
 
   if (table === "restaurant_members") {
-    q.where((qb) => {
-      qb.where("restaurant_members.user_id", user.id);
-      if (user.restaurantIds?.length) {
-        qb.orWhereIn("restaurant_members.restaurant_id", user.restaurantIds);
-      }
-    });
+    const ids = user.restaurantIds || [];
+    if (!ids.length) {
+      // No tenant seat — only their own membership rows (if any)
+      q.where("restaurant_members.user_id", user.id);
+    } else {
+      // Peers of this portal only — never other restaurants' staff
+      q.whereIn("restaurant_members.restaurant_id", ids);
+    }
     return;
   }
 

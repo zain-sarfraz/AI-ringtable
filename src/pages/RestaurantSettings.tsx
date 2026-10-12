@@ -32,12 +32,17 @@ import {
   Clock,
   Plus,
   Trash2,
+  Gauge,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
 import { getApiBase, resolveMediaUrl } from "@/lib/apiBase";
+import { getToken } from "@/lib/authStorage";
 import { getCurrencySymbol } from "@/lib/restaurant";
+import { MINUTE_PACKS, type MinutesBalance, type MinutePackId } from "@/lib/minutePacks";
 import { syncRestaurantMenuToVoiceAgent } from "@/lib/syncRestaurantMenuToVoiceAgent";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 
 /** Row from `restaurants` (includes fields set when the tenant was created in super admin). */
 interface Restaurant {
@@ -166,6 +171,9 @@ export default function RestaurantSettings() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingHours, setSavingHours] = useState(false);
   const [savingFulfillment, setSavingFulfillment] = useState(false);
+  const [minutesBalance, setMinutesBalance] = useState<MinutesBalance | null>(null);
+  const [minutesLoading, setMinutesLoading] = useState(false);
+  const [buyingPackId, setBuyingPackId] = useState<string | null>(null);
 
   /** Soft voice sync after settings changes — never blocks or looks like a failed save. */
   const quietVoiceSync = useCallback(async (rid: string) => {
@@ -254,6 +262,64 @@ export default function RestaurantSettings() {
     setR(restaurant);
     setLoading(false);
   }, [restaurantId, toast]);
+
+  const loadMinutesBalance = useCallback(async () => {
+    if (!restaurantId) return;
+    setMinutesLoading(true);
+    try {
+      const token = getToken();
+      const res = await fetch(`${getApiBase()}/api/billing/minutes/${encodeURIComponent(restaurantId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not load minutes");
+      setMinutesBalance(data as MinutesBalance);
+    } catch (err) {
+      console.warn("Minutes balance:", err);
+      setMinutesBalance(null);
+    } finally {
+      setMinutesLoading(false);
+    }
+  }, [restaurantId]);
+
+  const buyMinutePack = async (packId: MinutePackId) => {
+    if (!restaurantId) return;
+    setBuyingPackId(packId);
+    try {
+      const token = getToken();
+      const res = await fetch(`${getApiBase()}/api/billing/minutes/checkout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ restaurant_id: restaurantId, pack_id: packId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Purchase failed");
+
+      if (data.checkout_url && data.mode === "stripe") {
+        window.location.href = data.checkout_url;
+        return;
+      }
+
+      if (data.balance) setMinutesBalance(data.balance as MinutesBalance);
+      else await loadMinutesBalance();
+
+      toast({
+        title: "Minutes added",
+        description: data.message || "Your AI minute balance was updated.",
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Could not buy minutes",
+        description: err instanceof Error ? err.message : "Try again",
+      });
+    } finally {
+      setBuyingPackId(null);
+    }
+  };
 
   const addHourSlot = (day: number) => {
     if (!restaurantId) return;
@@ -350,7 +416,69 @@ export default function RestaurantSettings() {
       return;
     }
     void loadRestaurantData();
-  }, [restaurantId, activeRestaurantLoading, loadRestaurantData]);
+    void loadMinutesBalance();
+  }, [restaurantId, activeRestaurantLoading, loadRestaurantData, loadMinutesBalance]);
+
+  /** After Stripe Checkout return: claim paid minutes and clean the URL. */
+  useEffect(() => {
+    if (typeof window === "undefined" || !restaurantId) return;
+    const params = new URLSearchParams(window.location.search);
+    const purchaseId = params.get("minutes_paid");
+    const cancelled = params.get("minutes_cancel");
+    if (!purchaseId && !cancelled) return;
+
+    const cleanUrl = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("minutes_paid");
+      url.searchParams.delete("minutes_cancel");
+      window.history.replaceState({}, "", url.pathname + url.search);
+    };
+
+    if (cancelled) {
+      cleanUrl();
+      toast({ title: "Purchase cancelled", description: "No minutes were added." });
+      return;
+    }
+
+    let cancelledFetch = false;
+    (async () => {
+      try {
+        const token = getToken();
+        const res = await fetch(`${getApiBase()}/api/billing/minutes/claim`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ purchase_id: purchaseId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelledFetch) return;
+        if (!res.ok) throw new Error(data.error || "Could not confirm purchase");
+        if (data.balance) setMinutesBalance(data.balance as MinutesBalance);
+        else await loadMinutesBalance();
+        toast({
+          title: "Minutes added",
+          description: "Your AI minute pack payment was confirmed.",
+        });
+      } catch (err) {
+        if (!cancelledFetch) {
+          toast({
+            variant: "destructive",
+            title: "Could not confirm minutes",
+            description: err instanceof Error ? err.message : "Refresh and try again",
+          });
+          void loadMinutesBalance();
+        }
+      } finally {
+        cleanUrl();
+      }
+    })();
+
+    return () => {
+      cancelledFetch = true;
+    };
+  }, [restaurantId, loadMinutesBalance, toast]);
 
   const saveSettings = async () => {
     if (!s || !r || !restaurantId) return;
@@ -782,6 +910,131 @@ export default function RestaurantSettings() {
           </div>
         </div>
       </header>
+
+      <Card className="overflow-hidden border shadow-sm">
+        <CardHeader className="border-b bg-muted/30 pb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1.5">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Gauge className="h-5 w-5 text-primary" />
+                {t("restaurantSettings:aiMinutes", "AI call minutes")}
+              </CardTitle>
+              <CardDescription>
+                {t(
+                  "restaurantSettings:aiMinutesDesc",
+                  "Minutes included in your plan for this billing period, plus any top-ups you buy. Remaining = included + purchased − used.",
+                )}
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              disabled={minutesLoading}
+              onClick={() => void loadMinutesBalance()}
+              title="Refresh minutes"
+            >
+              <RefreshCw className={`h-4 w-4 ${minutesLoading ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-6">
+          {minutesLoading && !minutesBalance ? (
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          ) : minutesBalance ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className="capitalize">
+                  {minutesBalance.plan || "growth"} plan
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  Period {new Date(minutesBalance.period_start).toLocaleDateString()} –{" "}
+                  {new Date(minutesBalance.period_end).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Included</div>
+                  <div className="text-xl font-semibold tabular-nums">
+                    {minutesBalance.included_minutes.toLocaleString()}
+                  </div>
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Purchased</div>
+                  <div className="text-xl font-semibold tabular-nums">
+                    {minutesBalance.purchased_minutes.toLocaleString()}
+                  </div>
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Used</div>
+                  <div className="text-xl font-semibold tabular-nums">
+                    {minutesBalance.used_minutes.toLocaleString()}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <div className="text-xs text-muted-foreground">Remaining</div>
+                  <div className="text-xl font-semibold tabular-nums text-primary">
+                    {minutesBalance.remaining_minutes.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Usage this period</span>
+                  <span>
+                    {minutesBalance.used_minutes.toLocaleString()} /{" "}
+                    {minutesBalance.allowance_minutes.toLocaleString()} min
+                  </span>
+                </div>
+                <Progress
+                  value={
+                    minutesBalance.allowance_minutes > 0
+                      ? Math.min(
+                          100,
+                          (minutesBalance.used_minutes / minutesBalance.allowance_minutes) * 100,
+                        )
+                      : 0
+                  }
+                />
+              </div>
+              <div>
+                <p className="text-sm font-medium mb-3">
+                  {t("restaurantSettings:buyMoreMinutes", "Need more minutes? Buy a top-up pack")}
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(minutesBalance.packs?.length ? minutesBalance.packs : MINUTE_PACKS).map((pack) => (
+                    <Button
+                      key={pack.id}
+                      type="button"
+                      variant="outline"
+                      className="h-auto justify-between py-3 px-4"
+                      disabled={!!buyingPackId}
+                      onClick={() => void buyMinutePack(pack.id as MinutePackId)}
+                    >
+                      <span className="text-left">
+                        <span className="block font-semibold">{pack.label}</span>
+                        <span className="text-xs text-muted-foreground font-normal">One-time top-up</span>
+                      </span>
+                      <span className="font-bold text-primary">
+                        {buyingPackId === pack.id ? "…" : pack.priceLabel}
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Minutes balance unavailable. Ensure the API is running and you are signed in.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="overflow-hidden border shadow-sm">
         <CardHeader className="border-b bg-muted/30 pb-4">

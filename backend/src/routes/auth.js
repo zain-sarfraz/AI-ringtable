@@ -17,6 +17,42 @@ function requireManagement(req, res, next) {
   next();
 }
 
+/**
+ * Restaurant staff/owners belong to one portal only.
+ * If bad data linked the same email to multiple restaurants (e.g. royal@… on Pizza World),
+ * keep the best membership and drop the rest so cross-tenant login stops.
+ */
+async function enforceExclusiveRestaurantPortal(knex, userId, roleNames) {
+  if ((roleNames || []).includes("super_admin")) return null;
+
+  const memberships = await knex("restaurant_members").where({ user_id: userId }).select("*");
+  if (memberships.length <= 1) {
+    return memberships[0]?.restaurant_id ?? null;
+  }
+
+  const rank = (role) => {
+    if (role === "owner") return 0;
+    if (role === "admin") return 1;
+    if (role === "manager") return 2;
+    return 3;
+  };
+
+  memberships.sort((a, b) => {
+    const byRole = rank(a.member_role) - rank(b.member_role);
+    if (byRole !== 0) return byRole;
+    const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return aTime - bTime; // prefer original/home membership
+  });
+
+  const keep = memberships[0];
+  await knex("restaurant_members").where({ user_id: userId }).whereNot({ id: keep.id }).del();
+  console.log(
+    `Exclusive portal for ${userId}: kept ${keep.restaurant_id} (${keep.member_role}), removed ${memberships.length - 1} extra membership(s)`,
+  );
+  return keep.restaurant_id;
+}
+
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body || {};
@@ -35,12 +71,16 @@ router.post("/login", async (req, res) => {
     if (!ok) return res.status(401).json({ error: "Invalid credentials" });
 
     const roles = await knex("user_roles").where({ user_id: profile.id }).select("role");
+    const roleNames = roles.map((r) => r.role);
+    const restaurantId = await enforceExclusiveRestaurantPortal(knex, profile.id, roleNames);
+
     const token = signToken({ sub: profile.id, email: profile.email });
     console.log("Login success for:", email);
     return res.json({
       token,
       user: { id: profile.id, email: profile.email },
-      roles: roles.map((r) => r.role),
+      roles: roleNames,
+      restaurant_id: restaurantId,
     });
   } catch (e) {
     console.error("LOGIN ERROR:", e);
@@ -187,6 +227,10 @@ router.post("/create-team-member", optionalAuth, requireAuth, async (req, res) =
     }
 
     if (!isSuperAdmin) {
+      const allowedRestaurants = req.user?.restaurantIds || [];
+      if (!allowedRestaurants.includes(rid)) {
+        return res.status(403).json({ error: "You can only add users to your own restaurant." });
+      }
       const { resolveRestaurantPlan } = await import("../billing/planFeatures.js");
       const planInfo = await resolveRestaurantPlan(knex, rid);
       if (!planInfo.features.staff_management) {
@@ -200,6 +244,17 @@ router.post("/create-team-member", optionalAuth, requireAuth, async (req, res) =
 
     // Check or create profile
     let profile = await knex("profiles").whereRaw("lower(email) = lower(?)", [em]).first();
+    if (profile) {
+      const isPlatformAdmin = await knex("user_roles")
+        .where({ user_id: profile.id, role: "super_admin" })
+        .first();
+      if (isPlatformAdmin) {
+        return res.status(400).json({
+          error: "Super Admin accounts cannot be added as restaurant staff.",
+        });
+      }
+    }
+
     if (!profile) {
       const hash = await bcrypt.hash(String(password), 10);
       const [newProf] = await knex("profiles")
@@ -225,6 +280,9 @@ router.post("/create-team-member", optionalAuth, requireAuth, async (req, res) =
       await knex("user_roles").where({ user_id: profile.id }).del();
       await knex("user_roles").insert({ user_id: profile.id, role: memberRole });
     }
+
+    // Staff belong to one restaurant portal only
+    await knex("restaurant_members").where({ user_id: profile.id }).whereNot({ restaurant_id: rid }).del();
 
     // Add or update restaurant_members
     const existingMembership = await knex("restaurant_members")

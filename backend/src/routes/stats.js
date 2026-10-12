@@ -569,14 +569,56 @@ router.get("/all-restaurants", optionalAuth, requireAuth, async (req, res) => {
       .first();
     if (!roleRow) return res.status(403).json({ error: "Super admin only." });
 
+    // Repair bad data: one email → one restaurant portal (except super_admin)
+    try {
+      const multi = await knex("restaurant_members")
+        .select("user_id")
+        .groupBy("user_id")
+        .havingRaw("count(*) > 1");
+      for (const row of multi) {
+        const isSuper = await knex("user_roles")
+          .where({ user_id: row.user_id, role: "super_admin" })
+          .first();
+        if (isSuper) continue;
+        const memberships = await knex("restaurant_members")
+          .where({ user_id: row.user_id })
+          .select("*");
+        const rank = (role) =>
+          role === "owner" ? 0 : role === "admin" ? 1 : role === "manager" ? 2 : 3;
+        memberships.sort((a, b) => {
+          const byRole = rank(a.member_role) - rank(b.member_role);
+          if (byRole !== 0) return byRole;
+          const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return aTime - bTime;
+        });
+        const keep = memberships[0];
+        if (keep) {
+          await knex("restaurant_members")
+            .where({ user_id: row.user_id })
+            .whereNot({ id: keep.id })
+            .del();
+        }
+      }
+    } catch (repairErr) {
+      console.warn("Membership exclusivity repair skipped:", repairErr.message);
+    }
+
+    // Every restaurant row (parents + branches) so Super Admin sees the full tenant count
+    const hasBranchCol = await knex.schema.hasColumn("restaurants", "is_branch");
+    const hasParentCol = await knex.schema.hasColumn("restaurants", "parent_restaurant_id");
+    const selectCols = [
+      "id", "name", "slug", "phone", "contact_email", "address",
+      "logo_url", "cover_image_url", "twilio_phone_number", "elevenlabs_agent_id",
+      "is_active", "created_at", "agent_language", "agent_voice_id",
+      "agent_first_message", "agent_system_prompt", "commission_rate",
+      "allows_delivery", "allows_pickup",
+    ];
+    if (hasBranchCol) selectCols.push("is_branch");
+    if (hasParentCol) selectCols.push("parent_restaurant_id");
+
     const restaurants = await knex("restaurants")
-      .select(
-        "id", "name", "slug", "phone", "contact_email", "address",
-        "logo_url", "cover_image_url", "twilio_phone_number", "elevenlabs_agent_id",
-        "is_active", "created_at", "agent_language", "agent_voice_id",
-        "agent_first_message", "agent_system_prompt", "commission_rate",
-        "allows_delivery", "allows_pickup"
-      )
+      .select(...selectCols)
       .orderBy("created_at", "desc");
 
     const ids = restaurants.map((r) => r.id);
@@ -585,8 +627,9 @@ router.get("/all-restaurants", optionalAuth, requireAuth, async (req, res) => {
 
     if (ids.length) {
       const members = await knex("restaurant_members")
-        .select("restaurant_id", "user_id")
-        .whereIn("restaurant_id", ids);
+        .select("restaurant_id", "user_id", "member_role")
+        .whereIn("restaurant_id", ids)
+        .orderByRaw(`case when member_role = 'owner' then 0 when member_role = 'admin' then 1 else 2 end`);
 
       const userIds = [...new Set(members.map((m) => m.user_id))];
       if (userIds.length) {

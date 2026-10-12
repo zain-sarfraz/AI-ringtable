@@ -4,7 +4,7 @@ export const PRODUCT_NAME = "Ringtable";
 export const PRODUCT_EMAIL = "join@ringtable.io";
 export const PRODUCT_TAGLINE = "Never miss a restaurant order again.";
 export const PRODUCT_DESCRIPTION =
-  "Ringtable answers every call, takes pickup orders, books tables, and sends phone, QR, website and staff orders straight to your kitchen — in one order inbox.";
+  "Ringtable answers every call, takes pickup orders, books tables, and sends phone, QR, website and staff orders straight to your kitchen - in one order inbox.";
 
 export const BRAND_ASSETS = {
   /** Square app mark (dark tile) — favicon / compact UI */

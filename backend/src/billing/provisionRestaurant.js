@@ -105,6 +105,8 @@ export async function provisionPaidSignup(knex, subscription, {
         email,
       });
 
+      // One restaurant portal per owner email
+      await trx("restaurant_members").where({ user_id: userId }).del();
       await trx("restaurant_members").insert({
         user_id: userId,
         restaurant_id: restaurantId,
