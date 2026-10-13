@@ -68,8 +68,11 @@ export function branchOrderingSection(branches) {
   if (!plan.rows.length) {
     return [
       "## Branch ordering",
-      "This restaurant has no branches.",
-      "Do not ask for a city or an area. Pass branch_name as none.",
+      "This restaurant has NO branches and NO areas list.",
+      "ABSOLUTE: Never ask which city, which area, which branch, or which location.",
+      "Never invent an area name. Never say \"just tell me the area\".",
+      "After delivery vs pickup: if delivery, ask only for the street address; if pickup, skip address and continue to email/phone.",
+      "Always pass branch_name as none to place_order and reserve_table.",
     ].join("\n");
   }
 

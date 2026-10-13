@@ -22,8 +22,11 @@ export async function pushBranchListToAgent(knex, parentRestaurantId) {
     ...catalog,
   });
   const saved = String(restaurant.agent_system_prompt || "").trim();
+  // Our generated templates must rebuild from code so language/branch fixes ship on sync.
+  const looksLikeOurTemplate =
+    /PRIMARY MISSION|CRITICAL RULES|LANGUAGE MATCHING|## Branch ordering/i.test(saved);
   const base =
-    saved && /your order number is/i.test(saved)
+    saved && !looksLikeOurTemplate
       ? saved
       : defaultSynthflowPrompt(restaurant.name, knowledge);
   const prompt = applyBranchOrdering(

@@ -58,7 +58,7 @@ const FAQS = [
   },
   {
     q: 'Can it handle modifiers like "no onion, extra cheese"?',
-    a: "Yes. Your menu is loaded as structured data - sizes, crusts, add-ons and removals — and the AI reads the full order back before sending it to the kitchen.",
+    a: "Yes. Your menu is loaded as structured data - sizes, crusts, add-ons and removals - and the AI reads the full order back before sending it to the kitchen.",
   },
   {
     q: "Do I need to change my phone number?",
@@ -394,7 +394,7 @@ function RoiCalculator() {
             Email Me This Report →
           </a>
           <div className="text-center mt-2" style={{ fontSize: 12, color: "#7F8BA0" }}>
-            Estimate based on your inputs — not a guarantee.
+            Estimate based on your inputs - not a guarantee.
           </div>
         </div>
       </div>
@@ -478,7 +478,7 @@ export default function Landing() {
                   <i />
                 </div>
                 <span>
-                  <b className="text-white">Built for independent restaurants</b> · 1–5 locations · 20–150 seats
+                  <b className="text-white">Built for independent restaurants</b> · 1-5 locations · 20-150 seats
                 </span>
               </div>
             </div>
@@ -599,7 +599,7 @@ export default function Landing() {
             </div>
             <div className="col-6 col-lg-3">
               <b>
-                10 <em>min</em>
+                30 <em>min</em>
               </b>
               <p>Demo built on your actual menu</p>
             </div>
@@ -645,7 +645,7 @@ export default function Landing() {
           </div>
           <LandingVideo
             src="/videos/explainer-2min.mp4"
-            title="Ringtable explainer — 2 minutes"
+            title="Ringtable explainer - 2 minutes"
             variant="wide"
           />
         </div>
@@ -1157,10 +1157,10 @@ export default function Landing() {
                 We'll call your restaurant like a real customer - and show you what we find.
               </h2>
               <p className="text-mut" style={{ fontSize: 18, lineHeight: 1.6 }}>
-                At your busiest hours we try to book a table, place a pickup order and ask a menu question. You get a scored report in 48 hours — and a demo of the AI handling the same calls, on your own menu.
+                At your busiest hours we try to book a table, place a pickup order and ask a menu question. You get a scored report in 48 hours - and a demo of the AI handling the same calls, on your own menu.
               </p>
               <div className="pilot">
-                <b>🗽 NYC Founding Pilot Program</b> — Growth at $400/mo, locked for 1 year, direct line to our product team.
+                <b>🗽 NYC Founding Pilot Program</b> - Growth at $400/mo, locked for 1 year, direct line to our product team.
                 <div className="spots">
                   <i />
                   <i />
@@ -1193,15 +1193,15 @@ export default function Landing() {
                   </div>
                 </div>
                 <div className="ai2">
-                  <span>Call 1 — Table for 4 tonight</span>
+                  <span>Call 1 - Table for 4 tonight</span>
                   <span className="bad">Not answered</span>
                 </div>
                 <div className="ai2">
-                  <span>Call 2 — Pickup order</span>
+                  <span>Call 2 - Pickup order</span>
                   <span className="mid">Answered after 6 rings</span>
                 </div>
                 <div className="ai2">
-                  <span>Call 3 — "What's in the chicken pasta?"</span>
+                  <span>Call 3 - "What's in the chicken pasta?"</span>
                   <span className="mid">Put on hold 2 min</span>
                 </div>
                 <div className="ai2">
@@ -1234,8 +1234,8 @@ export default function Landing() {
           <div className="row g-4">
             {[
               ["1", "Free audit & 30-min demo", "We mystery-call your restaurant, then show the AI taking the same calls on your menu.", "Day 1"],
-              ["2", "Menu & tables loaded", "We structure your menu, modifiers, combos, hours, tables and locations.", "Day 2–4"],
-              ["3", "AI trained & tested", "Your receptionist learns your FAQs and policies. You test-call it until you're happy.", "Day 5–6"],
+              ["2", "Menu & tables loaded", "We structure your menu, modifiers, combos, hours, tables and locations.", "Day 2-4"],
+              ["3", "AI trained & tested", "Your receptionist learns your FAQs and policies. You test-call it until you're happy.", "Day 5-6"],
               ["4", "Go live", "Forward your number, place QR codes, and watch orders land in one inbox.", "Day 7"],
             ].map(([n, title, body, time]) => (
               <div className="col-md-6 col-lg-3" key={n}>

@@ -105,10 +105,10 @@ async function findOrder(knex, { code, restaurantId, phone }) {
     }
   }
 
-  // 3) Fallback: latest non-cancelled order on this caller phone
-  //    Prefer a phone match whose digits overlap the spoken number when available.
+  // 3) Optional help: if caller gave SOME order digits, match among their recent orders.
+  // NEVER return "latest order by phone" alone — agent must ask for an order number first.
   const phoneVariants = phoneMatchVariants(phone);
-  if (phoneVariants.length) {
+  if (phoneVariants.length && digitKey && digitKey.length >= 4) {
     let q = knex("orders")
       .whereNotIn("status", ["cancelled"])
       .andWhere(function () {
@@ -116,12 +116,9 @@ async function findOrder(knex, { code, restaurantId, phone }) {
       });
     q = scope(q);
     const recent = await q.select(ORDER_LOOKUP_COLUMNS).orderBy("created_at", "desc").limit(5);
-    if (digitKey && digitKey.length >= 2 && recent.length) {
-      const seq = digitKey.slice(-2);
-      const bySeq = recent.find((row) => String(row.order_number || "").replace(/\D/g, "").endsWith(seq));
-      if (bySeq) return bySeq;
-    }
-    if (recent[0]) return recent[0];
+    const seq = digitKey.slice(-2);
+    const bySeq = recent.find((row) => String(row.order_number || "").replace(/\D/g, "").endsWith(seq));
+    if (bySeq) return bySeq;
   }
 
   return null;
@@ -152,11 +149,13 @@ export async function aiOrderStatus(req, res) {
     console.log("📍 Candidates:", expandOrderNumberCandidates(code).join(", ") || "none");
     console.log("-".repeat(40) + "\n");
 
-    if (!code && !phoneMatchVariants(phone).length) {
+    const hasOrderNumber = Boolean(code) && orderNumberDigits(code).length >= 2;
+    if (!hasOrderNumber) {
       return res.json({
         found: false,
+        order_number_required: true,
         message:
-          "Respond ONLY in the caller's LOCKED language: I need your order number, for example ORD-261008-14. Please say the digits slowly.",
+          "Respond ONLY in the caller's LOCKED language: Ask for their order number first (example ORD-261013-03). Do NOT tell any kitchen/status guess. STOP and WAIT for the number, then call get_order_status again.",
       });
     }
 

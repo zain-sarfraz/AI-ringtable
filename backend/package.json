@@ -18,6 +18,7 @@
     "db:import:menu": "node scripts/import-menu-seed.js",
     "db:setup": "npm run db:migrate && npm run db:seed:admin && npm run db:seed:cuisines && npm run db:seed:restaurant && npm run db:seed:royal",
     "sync:synthflow-webhooks": "node scripts/sync-synthflow-webhooks.js",
+    "sync:synthflow-ringtable": "node scripts/sync-synthflow-to-ringtable.js --also-stale-assistants",
     "fetch-orders": "node scripts/fetch-orders.js",
     "uber:check": "node scripts/uber-check.js",
     "test": "node --test src/uber/webhookHandler.test.js src/integrations/integrations.test.js src/lib/safeLogger.test.js src/billing/plans.test.js",

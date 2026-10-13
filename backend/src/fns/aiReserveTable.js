@@ -1,8 +1,44 @@
 import { getKnex } from "../db.js";
 import { resolveSpokenBranchId } from "../lib/branchLocation.js";
-import { resolveRestaurantFamilyIds } from "../lib/tableSessions.js";
-import { normalizeElevenLabsToolBody, phoneMatchVariants, resolveRestaurantIdForVoiceTools } from "../lib/voiceWebhookUtils.js";
+import { normalizeElevenLabsToolBody, resolveRestaurantIdForVoiceTools } from "../lib/voiceWebhookUtils.js";
 import { findAvailableTable, createReservation, parseReservationDate, parseReservationTime, lastSpokenReservationTime } from "../lib/tableReservationService.js";
+
+function phoneDigitCount(value) {
+  return String(value || "").replace(/\D/g, "").length;
+}
+
+function looksLikePhone(value) {
+  const n = phoneDigitCount(value);
+  return n >= 8 && n <= 15;
+}
+
+function isSamePhonePhrase(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return true;
+  const s = raw.toLowerCase();
+  if (/^<[^>]+>$/.test(s)) return true;
+  if (/^(none|null|n\/a|na|unknown)$/i.test(s)) return true;
+  if (looksLikePhone(raw) && !/(same|this|calling|dial|yehi|yahi|isi|wahi)/i.test(s)) return false;
+  if (
+    /\b(same|this|calling|caller|dial(l)?ed?|my)\b/.test(s) ||
+    /\b(yehi|yahi|isi|wahi|ye wala|usi|call wala|dial wala)\b/.test(s) ||
+    /(यही|इसी|वही|नंबर|नम्बर|फोन|मोबाइल|اسی|یہی|وہی|نمبر|فون)/.test(raw)
+  ) {
+    return phoneDigitCount(raw) < 8;
+  }
+  return false;
+}
+
+function resolveCustomerPhone(body, customerPhone) {
+  const caller =
+    body.caller_phone || body.twilio_from || body.from || body.user_phone_number || body.user_number || null;
+  let phone = customerPhone;
+  if (isSamePhonePhrase(phone) || !looksLikePhone(phone)) {
+    phone = looksLikePhone(caller) ? caller : null;
+  }
+  if (phone && /^<[^>]+>$/.test(String(phone).trim())) phone = null;
+  return phone ? String(phone).trim() : null;
+}
 
 export async function aiReserveTable(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
@@ -32,7 +68,7 @@ export async function aiReserveTable(req, res) {
       return res.status(200).json({
         success: false,
         message:
-          "Translate and tell the caller in their language: I need a few more details: your name, date of reservation, preferred time, and number of guests. Could you provide those?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask for any missing details: name, date, time, and guest count. Do not switch languages.",
       });
     }
 
@@ -41,7 +77,10 @@ export async function aiReserveTable(req, res) {
     const restaurantId = resolved.id;
 
     if (!restaurantId) {
-      return res.status(200).json({ success: false, message: `Translate and tell the caller in their language: ${resolved.error || "Could not identify the restaurant."}` });
+      return res.status(200).json({
+        success: false,
+        message: `CRITICAL: Reply ONLY in the caller's LOCKED language. ${resolved.error || "Could not identify the restaurant."}`,
+      });
     }
     const branchRestaurantId = await resolveSpokenBranchId(
       knex,
@@ -60,39 +99,14 @@ export async function aiReserveTable(req, res) {
     if (!isoTime) {
       return res.status(200).json({
         success: false,
-        message: "Translate and tell the caller in their language: What time would you like to book? Please say the time once, for example 7 PM.",
+        message:
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask the booking time once (example 7 PM). Do not switch languages.",
       });
     }
 
     console.log(`👤 Customer: ${customer_name} | Party: ${pSize} | Date: ${isoDate} | Time: ${isoTime} (raw=${reservation_time}) | Duration: ${duration}h`);
 
-    let phoneToUse = customer_phone;
-    if (phoneToUse && /same|this|my|number|<user_phone_number>/i.test(phoneToUse)) {
-      phoneToUse = body.caller_phone || body.twilio_from || body.from || customer_phone;
-    }
-    if (phoneToUse === "<user_phone_number>") phoneToUse = null;
-
-    const phoneVariants = phoneMatchVariants(phoneToUse);
-    if (phoneVariants.length) {
-      const familyIds = await resolveRestaurantFamilyIds(knex, restaurantId);
-      const existing = await knex("table_reservations")
-        .whereIn("restaurant_id", familyIds.length ? familyIds : [branchRestaurantId])
-        .andWhere(function () {
-          for (const v of phoneVariants) this.orWhere("customer_phone", v);
-        })
-        .whereIn("status", ["pending", "confirmed"])
-        .where("reservation_date", ">=", knex.raw("CURRENT_DATE"))
-        .orderBy("reservation_date", "asc")
-        .first();
-
-      if (existing) {
-        return res.status(200).json({
-          success: false,
-          available: false,
-          message: `Translate and tell the caller in their language: You already have an active table reservation for ${existing.reservation_date} at ${String(existing.start_time).slice(0, 5)}. Your previous booking must be completed before you can reserve a new table.`,
-        });
-      }
-    }
+    const phoneToUse = resolveCustomerPhone(body, customer_phone);
 
     const availableTable = await findAvailableTable(knex, {
       restaurantId: branchRestaurantId,
@@ -107,8 +121,7 @@ export async function aiReserveTable(req, res) {
         success: false,
         available: false,
         message:
-          `Translate and tell the caller in their language: I'm sorry, no table is free at ${isoTime} on ${isoDate}. ` +
-          `Would you like a different time?`,
+          `CRITICAL: Reply ONLY in the caller's LOCKED language. No table is free at ${isoTime} on ${isoDate}. Ask for a different time once. Do not switch languages.`,
       });
     }
 
@@ -152,11 +165,9 @@ export async function aiReserveTable(req, res) {
     console.log(`✅ Reservation created: id=${reservation.id} table=${availableTable.table_number}`);
 
     const confirmMsg =
-      `Translate and tell the caller in their language: Your table reservation is confirmed! Table ${availableTable.table_number} ` +
-      `(seats up to ${availableTable.capacity}) has been reserved for ${pSize} guest(s) ` +
-      `on ${isoDate} at ${isoTime}. ` +
-      `Your reservation ID is ${reservation.id.slice(0, 8).toUpperCase()}. ` +
-      `We look forward to seeing you!`;
+      `CRITICAL: Reply ONLY in the caller's LOCKED language — do not switch. ` +
+      `Table ${availableTable.table_number} is reserved for ${pSize} guest(s) on ${isoDate} at ${isoTime}. ` +
+      `Confirm briefly and say thank you. Never say order number or bill.`;
 
     return res.json({
       success: true,

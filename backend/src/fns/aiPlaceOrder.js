@@ -2,6 +2,49 @@ import { getKnex } from "../db.js";
 import { normalizeElevenLabsToolBody, resolveRestaurantIdForVoiceTools } from "../lib/voiceWebhookUtils.js";
 import { createPhoneOrder } from "../lib/phoneOrderService.js";
 
+function phoneDigitCount(value) {
+  return String(value || "").replace(/\D/g, "").length;
+}
+
+function looksLikePhone(value) {
+  const n = phoneDigitCount(value);
+  return n >= 8 && n <= 15;
+}
+
+/** Caller said "same number" / "yahi number" / dialed line — use caller ID instead. */
+function isSamePhonePhrase(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return true;
+  const s = raw.toLowerCase();
+  if (/^<[^>]+>$/.test(s)) return true;
+  if (/^(none|null|n\/a|na|unknown)$/i.test(s)) return true;
+  if (looksLikePhone(raw) && !/(same|this|calling|dial|yehi|yahi|isi|wahi)/i.test(s)) return false;
+  if (
+    /\b(same|this|calling|caller|dial(l)?ed?|my)\b/.test(s) ||
+    /\b(yehi|yahi|isi|wahi|ye wala|usi|call wala|dial wala)\b/.test(s) ||
+    /(यही|इसी|वही|नंबर|नम्बर|फोन|मोबाइल|اسی|یہی|وہی|نمبر|فون)/.test(raw)
+  ) {
+    return phoneDigitCount(raw) < 8;
+  }
+  return false;
+}
+
+function resolveCustomerPhone(body) {
+  const caller =
+    body.caller_phone ||
+    body.twilio_from ||
+    body.from ||
+    body.user_phone_number ||
+    body.user_number ||
+    null;
+  let phone = body.customer_phone;
+  if (isSamePhonePhrase(phone) || !looksLikePhone(phone)) {
+    phone = looksLikePhone(caller) ? caller : null;
+  }
+  if (phone && /^<[^>]+>$/.test(String(phone).trim())) phone = null;
+  return phone ? String(phone).trim() : null;
+}
+
 export async function aiPlaceOrder(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
 
@@ -56,11 +99,15 @@ export async function aiPlaceOrder(req, res) {
       callId = c?.id ?? null;
     }
 
-    let phoneToUse = body.customer_phone;
-    if (phoneToUse && /same|this|my|number|<user_phone_number>/i.test(phoneToUse)) {
-      phoneToUse = body.caller_phone || body.twilio_from || body.from || body.customer_phone;
+    const phoneToUse = resolveCustomerPhone(body);
+    if (!phoneToUse) {
+      return res.status(200).json({
+        success: false,
+        phone_required: true,
+        message:
+          "Respond ONLY in the caller's LOCKED language (do not switch). Ask once for their contact phone number, then call place_order again. If they said same/this/calling/dial number, pass customer_phone as \"same\" so we use the dialed caller ID.",
+      });
     }
-    if (phoneToUse === "<user_phone_number>") phoneToUse = null;
 
     const { order, reservation, reservationError, unmatched, coupon, totals, assignedBranchName, assignmentStatus } = await createPhoneOrder(knex, {
       restaurantId,
@@ -125,8 +172,8 @@ export async function aiPlaceOrder(req, res) {
       total: totals.total,
       branch_name: assignedBranchName,
       discount_amount: coupon.amount,
-      speak: `Your order number is ${order.order_number}. Please save it. You can call back with this number to track your order.`,
-      message: `Translate and tell the caller in their language: Your order number is ${order.order_number}. Please save it. You can call back with this number to track your order.${branchNote} Total ${totals.total.toFixed(2)}.${couponNote}`,
+      speak: order.order_number,
+      message: `CRITICAL: Reply in the caller's LOCKED language ONLY — do not switch to English or any other language. Say the order number ${order.order_number} and ask them to save it.${branchNote} Total ${totals.total.toFixed(2)}.${couponNote}`,
     });
   } catch (e) {
     console.error("❌ Order Error:", e);

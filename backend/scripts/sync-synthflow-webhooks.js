@@ -2,6 +2,9 @@
  * Push PUBLIC_API_URL post-call webhook onto every restaurant Synthflow agent.
  *
  *   node scripts/sync-synthflow-webhooks.js
+ *
+ * Prefer `npm run sync:synthflow-ringtable` when migrating off AI Restaurant —
+ * that also rewrites place_order / order-status tool URLs and any stale assistants.
  */
 import "dotenv/config";
 import { getKnex } from "../src/db.js";

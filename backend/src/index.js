@@ -59,7 +59,7 @@ app.get("/api/health", (_req, res) => {
   const present = (key) => Boolean(String(process.env[key] || "").trim());
   res.json({
     ok: true,
-    service: "airestaurantorder-api",
+    service: "ringtable-api",
     env_file: envFilePath || null,
     cwd: process.cwd(),
     config: {

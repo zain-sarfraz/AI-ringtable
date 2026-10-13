@@ -158,13 +158,17 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "place_order",
         description:
-          "FOOD ORDERS ONLY. Save the caller's food order and return the real order number. Never call this when the caller is reserving a table. Call this once after the caller confirms a food order. ALWAYS pass branch_name as the exact branch name from the Branch ordering section (not a translated label). Pickup orders fail without a valid branch_name. Then read order_number out loud in the caller's language.",
+          "FOOD ORDERS ONLY. Save the caller's food order and return the real order number. Never call this when reserving a table. Call once after the caller confirms. ALWAYS pass branch_name from Branch ordering (none if no branches). After success, speak the order number ONLY in the caller's LOCKED language — never switch languages.",
         speech_while_using_the_tool: "",
         failure_timeout: 20,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
           duringCallVar("customer_name", "Customer full name", "Ali Ahmed"),
-          duringCallVar("customer_phone", "Contact phone number", "03238439467"),
+          duringCallVar(
+            "customer_phone",
+            'Contact phone. If caller says same/this/calling/dial/yahi/yehi/isi number, pass exactly "same" (never invent digits). Real digits only when they speak a new number.',
+            "same",
+          ),
           duringCallVar("delivery_address", "Delivery address, or Pickup", "House 12, G-9, Islamabad"),
           duringCallVar("order_items", "Items with quantity, size, and flavor", "1 Large Classic Pizza Chicken Fajita"),
           duringCallVar("fulfillment_type", "delivery or pickup", "delivery"),
@@ -200,14 +204,14 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "get_order_status",
         description:
-          "Look up an existing food order and return its status. Pass the best ORD-YYMMDD-NN you heard (dashes optional). Accept spoken digits. Also pass caller phone so we can fall back to their latest order. Call once, then at most one retry. Tell the result in the caller's locked language (Roman Hindi/Urdu when that is locked).",
+          "TRACK ORDER ONLY after the caller spoke an order number in ANY language. REQUIRED: ask order number first in the LOCKED language, wait, then call with ORD-YYMMDD-NN. NEVER call with empty order_number. NEVER invent status from phone alone. Speak the result ONLY in the caller's LOCKED language — zero words in any other language.",
         speech_while_using_the_tool: "",
         failure_timeout: 15,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
           duringCallVar(
             "order_number",
-            "Best ORD-YYMMDD-NN from what the caller said, e.g. ORD-261008-02",
+            "REQUIRED. Exact ORD-YYMMDD-NN the caller just said. Never leave empty. Never invent.",
             "ORD-261008-02",
           ),
         ],
@@ -227,18 +231,26 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "reserve_table",
         description:
-          "TABLE RESERVATIONS ONLY. Book a restaurant table at the branch the caller chose. Never use place_order for a table. Never say order, bill, or order number. Pass branch_name as the exact branch for the city and area they chose.",
+          "TABLE RESERVATIONS ONLY. Use this whenever the caller wants to reserve/book a table (any language). Never use place_order. Never say order/bill/order number. Collect name, guests, date, time, phone in the LOCKED language, then call once. If Branch ordering says no branches, pass branch_name as none. If they say same/dial number, pass customer_phone as same. Speak results only in the locked language.",
         speech_while_using_the_tool: "",
         failure_timeout: 20,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
           duringCallVar("customer_name", "Guest full name", "Ali Ahmed"),
-          duringCallVar("customer_phone", "Phone number the guest gave for the reservation", "03238439467"),
+          duringCallVar(
+            "customer_phone",
+            'Guest phone. If they say same/this/calling/dial/yahi number, pass exactly "same".',
+            "same",
+          ),
           duringCallVar("party_size", "Number of guests", "5"),
-          duringCallVar("reservation_date", "Date as YYYY-MM-DD", "2026-09-29"),
+          duringCallVar("reservation_date", "Date as YYYY-MM-DD or today/tomorrow", "today"),
           duringCallVar("reservation_time", "Latest booking time as HH:MM 24-hour", "19:00"),
           duringCallVar("slot_duration_hours", "Always 1", "1"),
-          duringCallVar("branch_name", "Exact branch name for the city and area the caller chose, or none", "Royal Restaurant Iqbal Town Branch"),
+          duringCallVar(
+            "branch_name",
+            "Exact branch/area from Branch ordering, or none when there are no branches",
+            "none",
+          ),
         ],
         json_body_stringified: JSON.stringify({
           ...lookup,
@@ -262,7 +274,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "check_previous_order",
         description:
-          "Returning-caller lookup. Call silently when the caller wants food or a table. Returns previous items plus saved name, phone, branch, and fulfillment. If they want to repeat: tell them those details and ask what to change — do not re-collect everything. Speak only in the caller's locked language.",
+          "Returning-caller lookup for NEW food orders or table reservations ONLY. Call silently when they want food or a table. Do NOT use this for order tracking/status — for track, ask order number first then use get_order_status. Returns previous items plus saved name, phone, branch, and fulfillment. Speak only in the caller's locked language.",
         speech_while_using_the_tool: "",
         failure_timeout: 10,
         headers: [{ key: "Content-Type", value: "application/json" }],
@@ -425,9 +437,12 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       body.phone_number || r.telnyx_phone_number || r.twilio_phone_number || null;
 
     const webhookUrl = postCallWebhookUrl();
-    const webhookWarning = webhookUrl
-      ? null
-      : "PUBLIC_API_URL is not set. Agent will be created, but post-call orders will not work until you set a public HTTPS API URL (e.g. ngrok) and update the agent.";
+    const publicApi = String(process.env.PUBLIC_API_URL || "").trim();
+    const webhookWarning = !webhookUrl
+      ? "PUBLIC_API_URL is not set. Agent will be created, but post-call orders will not work until you set a public HTTPS API URL (e.g. ngrok) and update the agent."
+      : /airestaurantbackend\.toolkitpro\.cloud|airestaurant\.toolkitpro\.cloud/i.test(publicApi)
+        ? `PUBLIC_API_URL still points at the old AI Restaurant host (${publicApi}). Set it to https://ringtable.io/backend so orders land in Ringtable.`
+        : null;
 
     const catalog = await loadRestaurantVoiceCatalog(knex, restaurant_id);
     const knowledge = buildRestaurantVoiceKnowledge({

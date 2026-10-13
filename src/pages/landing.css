@@ -139,6 +139,14 @@
 .lp .ann a { color: #fff; text-decoration: none; background: rgba(255, 255, 255, 0.22); padding: 4px 12px; border-radius: 99px; margin-left: 8px; white-space: nowrap; border: 1px solid rgba(255, 255, 255, 0.28); }
 .lp .ann a:hover { background: rgba(255, 255, 255, 0.34); }
 .lp .navwrap { position: sticky; top: 0; z-index: 40; background: rgba(12, 22, 38, 0.92); backdrop-filter: blur(16px); border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.lp #demo,
+.lp #watch,
+.lp #how,
+.lp #engine,
+.lp #ai,
+.lp #results,
+.lp #roi,
+.lp #pricing { scroll-margin-top: 72px; }
 .lp .navrow { display: flex; align-items: center; gap: 28px; flex-wrap: nowrap; min-height: 72px; }
 .lp .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 17px; color: #fff; text-decoration: none; white-space: nowrap; flex: none; letter-spacing: -0.02em; }
 .lp .brand-name { display: flex; flex-direction: column; line-height: 1.05; }
@@ -365,6 +373,12 @@
 .lp .tb { background: rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 14px; font-size: 14px; height: 100%; }
 .lp .tb b { display: block; font-size: 15px; margin-bottom: 3px; }
 .lp .demo { background: #fff; border-radius: 20px; padding: 28px; color: var(--ink); }
+/* .cta p is peach for dark CTA copy — reset inside the white demo card */
+.lp .cta .demo,
+.lp .cta .demo p,
+.lp .cta .demo .text-mut { color: var(--mut); }
+.lp .cta .demo b,
+.lp .cta .demo .fw-bold { color: var(--ink); }
 .lp .cal-demo { padding-bottom: 20px; }
 .lp .cal-embed-wrap {
   min-height: 520px;
