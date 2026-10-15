@@ -918,6 +918,7 @@ async function seed() {
   console.log("🌱 Seeding full restaurant catalog & menu data…\n");
 
   try {
+    await client.query("ALTER TABLE public.discounts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()");
     const adminId = await getAdminId(client);
     const restaurantId = await ensureRestaurant(client);
     await ensureSettings(client, restaurantId);

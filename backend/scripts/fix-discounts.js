@@ -10,8 +10,14 @@ await client.query(`
     ADD COLUMN IF NOT EXISTS max_uses INTEGER,
     ADD COLUMN IF NOT EXISTS used_count INTEGER DEFAULT 0,
     ADD COLUMN IF NOT EXISTS starts_at TIMESTAMP WITH TIME ZONE,
-    ADD COLUMN IF NOT EXISTS ends_at TIMESTAMP WITH TIME ZONE
-`);
+    ADD COLUMN IF NOT EXISTS ends_at TIMESTAMP WITH TIME ZONE,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+
+  ALTER TABLE public.discounts DROP CONSTRAINT IF EXISTS discounts_code_key;
+  DO $$ BEGIN
+    ALTER TABLE public.discounts ADD CONSTRAINT discounts_restaurant_code_unique UNIQUE (restaurant_id, code);
+  EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
+  END $$;
 
 const r = await client.query(`
   SELECT column_name FROM information_schema.columns 
