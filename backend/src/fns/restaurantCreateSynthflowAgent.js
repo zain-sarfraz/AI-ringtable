@@ -235,7 +235,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "reserve_table",
         description:
-          "TABLE RESERVATIONS ONLY. Use this whenever the caller wants to reserve/book a table (any language). Never use place_order. Never say order/bill/order number. Collect name, guests, date, time, phone in the LOCKED language, then call once. If Branch ordering says no branches, pass branch_name as none. If they say same/dial number, pass customer_phone as same. Speak results only in the locked language.",
+          "TABLE RESERVATIONS ONLY. Call this tool ONLY AFTER you have collected all reservation details (name, party size, date, time, phone) AND the caller has confirmed the summary! FORBIDDEN to call at the beginning when caller first asks for a table. Collect each detail in caller's LOCKED language, confirm, and ONLY THEN call this tool once.",
         speech_while_using_the_tool: "",
         failure_timeout: 20,
         headers: [{ key: "Content-Type", value: "application/json" }],
@@ -278,7 +278,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "check_previous_order",
         description:
-          "Returning-caller lookup for NEW food orders or table reservations ONLY. Call silently when they want food or a table. Do NOT use this for order tracking/status — for track, ask order number first then use get_order_status. Returns previous items plus saved name, phone, branch, and fulfillment. Speak only in the caller's locked language.",
+          "FOOD ORDERS ONLY. Call silently on food orders to check if a returning caller wants to repeat their previous meal. NEVER call this when the caller wants to reserve a table or track an order! Speak only in the caller's locked language.",
         speech_while_using_the_tool: "",
         failure_timeout: 10,
         headers: [{ key: "Content-Type", value: "application/json" }],

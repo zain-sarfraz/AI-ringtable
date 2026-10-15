@@ -166,8 +166,9 @@ export async function aiReserveTable(req, res) {
 
     const confirmMsg =
       `CRITICAL: Reply ONLY in the caller's LOCKED language — do not switch. ` +
-      `Table ${availableTable.table_number} is reserved for ${pSize} guest(s) on ${isoDate} at ${isoTime}. ` +
-      `Confirm briefly and say thank you. Never say order number or bill.`;
+      `If English locked: Your table is reserved for ${pSize} guest(s) on ${isoDate} at ${isoTime}. Thank you! ` +
+      `If Roman locked: ${pSize} logon ke liye ${isoDate} ko ${isoTime} baje table reserve ho chuki hai. Shukriya! ` +
+      `Never say order number or bill.`;
 
     return res.json({
       success: true,
