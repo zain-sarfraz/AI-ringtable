@@ -158,7 +158,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "place_order",
         description:
-          "FOOD ORDERS ONLY. Save the caller's food order and return the real order number. Never call this when reserving a table. Call once after the caller confirms. ALWAYS pass branch_name from Branch ordering (none if no branches). After success, speak the order number ONLY in the caller's LOCKED language — never switch languages.",
+          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN to call until caller explicitly confirms the final spoken summary with quantity and total! Default item quantity is 1 (never treat 'OG 20' or '20 burger' as 20). Call once after caller confirms. ALWAYS pass branch_name from Branch ordering (none if no branches). After success, speak the order number ONLY in the caller's LOCKED language — never switch languages.",
         speech_while_using_the_tool: "",
         failure_timeout: 20,
         headers: [{ key: "Content-Type", value: "application/json" }],
@@ -170,7 +170,11 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
             "same",
           ),
           duringCallVar("delivery_address", "Delivery address, or Pickup", "House 12, G-9, Islamabad"),
-          duringCallVar("order_items", "Items with quantity, size, and flavor", "1 Large Classic Pizza Chicken Fajita"),
+          duringCallVar(
+            "order_items",
+            "Items with quantity, size, and flavor. Default quantity is 1 (e.g. 1 The OG Beef). In Hindi/Urdu, '20' or 'bees' near burger/beef is STT error for 'Beef', NEVER pass quantity 20 for 'OG 20' or '20 burger'.",
+            "1 Large Classic Pizza Chicken Fajita",
+          ),
           duringCallVar("fulfillment_type", "delivery or pickup", "delivery"),
           duringCallVar("customer_email", "Email or none", "none"),
           duringCallVar("coupon_code", "Coupon code or none", "none"),

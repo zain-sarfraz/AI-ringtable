@@ -7,6 +7,7 @@ import {
   loadRestaurantVoiceCatalog,
   applyBranchOrdering,
 } from "../lib/restaurantVoiceContext.js";
+import { refreshSynthflowPlaceOrderTool } from "./restaurantCreateSynthflowAgent.js";
 
 /**
  * Refresh Synthflow agent prompt with current menu + coupons/promotions.
@@ -69,6 +70,12 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
       agent_menu_synced_at: knex.fn.now(),
       updated_at: knex.fn.now(),
     });
+
+    try {
+      await refreshSynthflowPlaceOrderTool(r);
+    } catch (toolErr) {
+      console.warn("Tool refresh error during menu sync:", toolErr.message);
+    }
 
     return res.json({
       success: true,

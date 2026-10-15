@@ -152,6 +152,18 @@ export async function findNearestBranch(knex, parentRestaurantId, deliveryLat, d
 }
 
 /**
+ * Normalize common speech-to-text phonetic mistakes in item names.
+ * In Hindi/Urdu, "Beef" sounds like "20", "बीस", "bees".
+ */
+export function normalizeSpokenItemName(rawName) {
+  let s = String(rawName || "").trim();
+  s = s.replace(/\b(the\s+)?og\s*(20|twenty|बीस|bees)\b/gi, "The OG Beef");
+  s = s.replace(/\boklahoma\s*(20|twenty|बीस|bees)\b/gi, "Oklahoma Beef");
+  s = s.replace(/\b(20|twenty|बीस|bees)\s+burger\b/gi, "The OG Beef");
+  return s;
+}
+
+/**
  * Parse free-text item lists from AI extractors into { name, quantity, notes? }[].
  * Examples: "2 Burgers, 1 Coke" | "Burger x2 and Fries"
  * @param {unknown} raw
@@ -163,11 +175,19 @@ export function parseOrderItemsText(raw) {
       .map((it) => {
         if (!it) return null;
         if (typeof it === "string") return parseOrderItemsText(it)[0] || null;
-        const name = String(it.name || it.item_name || it.item || "").trim();
+        let name = String(it.name || it.item_name || it.item || "").trim();
         if (!name) return null;
+        let quantity = Math.max(1, Number(it.quantity ?? it.qty ?? 1) || 1);
+
+        // Safeguard: if quantity is 20 and item is a beef burger, "20" was the word "Beef" from "OG 20"
+        if (quantity === 20 && (/\b(og|beef|oklahoma|burger)\b/i.test(name) || /\b(20|बीस)\b/.test(name))) {
+          quantity = 1;
+        }
+        name = normalizeSpokenItemName(name);
+
         return {
           name,
-          quantity: Math.max(1, Number(it.quantity ?? it.qty ?? 1) || 1),
+          quantity,
           notes: it.notes != null ? String(it.notes) : null,
         };
       })
@@ -175,8 +195,15 @@ export function parseOrderItemsText(raw) {
   }
 
   if (raw == null) return [];
-  const itemStr = String(raw).trim();
+  let itemStr = String(raw).trim();
   if (!itemStr) return [];
+
+  // STT Hindi/Urdu phonetic confusion: caller said "Beef burger" or "OG Beef", transcribed as "20 burger" or "20 The OG Beef"
+  if (/^20\s+(the\s+)?og\b/i.test(itemStr) || /^20\s+burger\b/i.test(itemStr) || /^20\s+oklahoma\b/i.test(itemStr) || /^(बीस|20)\s+बर्गर/i.test(itemStr)) {
+    itemStr = itemStr.replace(/^20\s+/i, "1 ");
+    itemStr = itemStr.replace(/^(बीस|20)\s+/i, "1 ");
+  }
+  itemStr = normalizeSpokenItemName(itemStr);
 
   // Prefer explicit separators over "and"
   const parts = itemStr
@@ -195,12 +222,22 @@ export function parseOrderItemsText(raw) {
         const b = match[2];
         const qtyA = parseInt(a, 10);
         if (!Number.isNaN(qtyA) && String(qtyA) === a.trim()) {
-          return { name: b.trim(), quantity: Math.max(1, qtyA), notes: null };
+          let name = b.trim();
+          let qty = Math.max(1, qtyA);
+          if (qty === 20 && (/\b(og|beef|oklahoma|burger)\b/i.test(name) || /\b(20|बीस)\b/.test(name))) {
+            qty = 1;
+          }
+          return { name: normalizeSpokenItemName(name), quantity: qty, notes: null };
         }
         const qtyB = parseInt(b, 10);
-        return { name: a.trim(), quantity: Math.max(1, qtyB || 1), notes: null };
+        let name = a.trim();
+        let qty = Math.max(1, qtyB || 1);
+        if (qty === 20 && (/\b(og|beef|oklahoma|burger)\b/i.test(name) || /\b(20|बीस)\b/.test(name))) {
+          qty = 1;
+        }
+        return { name: normalizeSpokenItemName(name), quantity: qty, notes: null };
       }
-      return { name: part, quantity: 1, notes: null };
+      return { name: normalizeSpokenItemName(part), quantity: 1, notes: null };
     })
     .filter((it) => it.name);
 }
@@ -241,6 +278,12 @@ export function matchMenuLines(menu, items, variants = [], addons = [], itemAddo
       m = menu.find(
         (x) => x.name.toLowerCase().includes(needle) || needle.includes(x.name.toLowerCase()),
       );
+    }
+    if (!m) {
+      const normalized = normalizeSpokenItemName(needle).toLowerCase();
+      if (normalized !== needle) {
+        m = menu.find((x) => x.name.toLowerCase() === normalized || x.name.toLowerCase().includes(normalized));
+      }
     }
 
     // 2. If not matched in menu_items, check if needle matches a flavor or variant (e.g. "Chicken Fajita", "Malai Boti")
