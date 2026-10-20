@@ -27,19 +27,8 @@ export async function syncRestaurantMenuToVoiceAgent(
     return { success: false, provider: "none", error: fetchErr.message };
   }
 
-  const preferSynthflow =
-    Boolean(restaurant?.synthflow_agent_id) ||
-    restaurant?.voice_provider === "synthflow_telnyx";
-
-  if (preferSynthflow) {
-    if (!restaurant?.synthflow_agent_id) {
-      return {
-        success: false,
-        provider: "synthflow",
-        error: "Create a Synthflow agent for this restaurant first",
-      };
-    }
-
+  // If the restaurant has a Synthflow agent, sync to Synthflow
+  if (restaurant?.synthflow_agent_id) {
     const { data, error } = await supabase.functions.invoke("sync-restaurant-menu-to-synthflow", {
       body: { restaurant_id: restaurantId },
     });
@@ -56,26 +45,24 @@ export async function syncRestaurantMenuToVoiceAgent(
     return { success: true, provider: "synthflow" };
   }
 
-  if (!restaurant?.elevenlabs_agent_id) {
-    return {
-      success: false,
-      provider: "none",
-      error: "No Synthflow or ElevenLabs agent configured for this restaurant",
-    };
+  // Only sync to ElevenLabs if the restaurant explicitly uses ElevenLabs as voice provider
+  if (restaurant?.voice_provider === "elevenlabs" && restaurant?.elevenlabs_agent_id) {
+    const { data, error } = await supabase.functions.invoke("sync-restaurant-menu-to-agent", {
+      body: { restaurant_id: restaurantId },
+    });
+    if (error || (data as { success?: boolean })?.success === false) {
+      return {
+        success: false,
+        provider: "elevenlabs",
+        error:
+          error?.message ||
+          (data as { error?: string })?.error ||
+          "ElevenLabs sync failed",
+      };
+    }
+    return { success: true, provider: "elevenlabs" };
   }
 
-  const { data, error } = await supabase.functions.invoke("sync-restaurant-menu-to-agent", {
-    body: { restaurant_id: restaurantId },
-  });
-  if (error || (data as { success?: boolean })?.success === false) {
-    return {
-      success: false,
-      provider: "elevenlabs",
-      error:
-        error?.message ||
-        (data as { error?: string })?.error ||
-        "ElevenLabs sync failed",
-    };
-  }
-  return { success: true, provider: "elevenlabs" };
+  // No active voice agent created yet for this restaurant
+  return { success: true, provider: "none" };
 }

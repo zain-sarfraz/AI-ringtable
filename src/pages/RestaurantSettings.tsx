@@ -178,15 +178,15 @@ export default function RestaurantSettings() {
 
   /** Soft voice sync after settings changes — never blocks or looks like a failed save. */
   const quietVoiceSync = useCallback(async (rid: string) => {
-    const result = await syncRestaurantMenuToVoiceAgent(rid);
-    if (!result.success && result.provider !== "none") {
-      toast({
-        variant: "destructive",
-        title: "Settings saved, voice sync failed",
-        description: result.error,
-      });
+    try {
+      const result = await syncRestaurantMenuToVoiceAgent(rid);
+      if (!result.success && result.provider !== "none") {
+        console.warn("Soft voice sync note:", result.error);
+      }
+    } catch (e) {
+      console.warn("Quiet voice sync error:", e);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
