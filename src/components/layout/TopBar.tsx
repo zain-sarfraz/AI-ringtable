@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Search, LogOut, User, ChevronDown } from "lucide-react";
+import { useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { ArrowLeft, LogOut, User, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,124 +13,73 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
-import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
 import { OrderNotificationBell } from "@/components/notifications/OrderNotificationBell";
 import { LanguageSwitcher } from "@/components/common/LanguageSwitcher";
-import { filterSidebarNavItems } from "@/config/sidebarNav";
-import { cn } from "@/lib/utils";
 
 export function TopBar() {
   const { t } = useTranslation(["sidebar", "common", "auth"]);
-  const { user, profile, signOut, role, isReceptionist, isStaff, isKitchen } = useAuth();
-  const { restaurantId, activeRestaurant, restaurants, setRestaurantId } = useActiveRestaurant();
+  const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
-  const isSuperAdmin = role === "super_admin";
-  const listId = useId();
+  const location = useLocation();
 
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const isPosPage = location.pathname === "/pos" || location.pathname.startsWith("/pos");
+  const isDashboard = location.pathname === "/dashboard";
 
-  const isBranch = Boolean(
-    activeRestaurant?.is_branch ||
-    (activeRestaurant?.parent_restaurant_id != null && activeRestaurant.parent_restaurant_id !== "")
-  );
-
-  const results = useMemo(
-    () => filterSidebarNavItems(query, { isSuperAdmin, isBranch, isReceptionist, isStaff, isKitchen }),
-    [query, isSuperAdmin, isBranch, isReceptionist, isStaff, isKitchen],
-  );
-
-  const close = useCallback(() => {
-    setOpen(false);
-    setQuery("");
-  }, []);
-
-  const pick = useCallback(
-    (href: string) => {
-      navigate(href);
-      close();
-    },
-    [navigate, close],
-  );
-
+  // Track the last non-POS action page so user can navigate back
   useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
+    if (
+      location.pathname &&
+      !location.pathname.startsWith("/pos") &&
+      location.pathname !== "/login" &&
+      location.pathname !== "/signup"
+    ) {
+      sessionStorage.setItem("pos_last_action_page", location.pathname + location.search);
+    }
+  }, [location.pathname, location.search]);
+
+  const handleBackToLastAction = () => {
+    const lastPage = sessionStorage.getItem("pos_last_action_page");
+    if (lastPage && !lastPage.startsWith("/pos")) {
+      navigate(lastPage);
+    } else if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/dashboard");
+    }
+  };
 
   const displayName = profile?.full_name || "User";
 
   return (
     <header className="sticky top-0 z-30 h-16 border-b border-border/70 bg-background/75 backdrop-blur-xl">
       <div className="flex h-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-        <div ref={containerRef} className="relative w-full max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-[1]" />
-          <Input
-            placeholder={t("sidebar:searchPlaceholder", "Search pages and sections...")}
-            className="pl-10 h-10 rounded-lg border border-border/80 bg-card/80 shadow-none focus-visible:ring-2 focus-visible:ring-primary/25"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setOpen(true);
-            }}
-            onFocus={() => setOpen(true)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                close();
-              }
-            }}
-            aria-expanded={open}
-            aria-controls={listId}
-            aria-autocomplete="list"
-            role="combobox"
-            autoComplete="off"
-          />
-          {open && (
-            <div
-              id={listId}
-              role="listbox"
-              className="absolute left-0 right-0 top-full mt-2 max-h-72 overflow-auto rounded-xl border border-border bg-popover text-popover-foreground shadow-xl z-[70] animate-rise"
+        {/* Top-Left: On POS pages, show 'Back to last action page' button */}
+        <div className="flex items-center min-w-0">
+          {isPosPage && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleBackToLastAction}
+              className="flex items-center gap-2 h-9 px-3 text-xs sm:text-sm font-semibold rounded-lg border-border/80 bg-card/80 hover:bg-accent hover:text-accent-foreground shadow-xs transition-all"
             >
-              {results.length === 0 ? (
-                <p className="px-3 py-6 text-sm text-center text-muted-foreground">{t("sidebar:noMatchingPages", "No pages match your search.")}</p>
-              ) : (
-                <ul className="p-1.5">
-                  {results.map((item) => (
-                    <li key={`${item.href}-${item.label}`} role="option">
-                      <button
-                        type="button"
-                        className={cn(
-                          "w-full text-left rounded-lg px-3 py-2.5 text-sm outline-none",
-                          "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
-                        )}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => pick(item.href)}
-                      >
-                        <span className="font-medium">{item.label}</span>
-                        <span className="block text-xs text-muted-foreground truncate">{item.section}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+              <ArrowLeft className="h-4 w-4 text-primary" />
+              <span>{t("common:backToLastAction", "Back to last action page")}</span>
+            </Button>
           )}
         </div>
 
+        {/* Top-Right: Language Switcher & Notification Bell (Dashboard only) + Profile Dropdown */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <LanguageSwitcher />
+          {isDashboard && (
+            <>
+              <LanguageSwitcher />
 
-          <div className="[&_button]:rounded-lg [&_button]:bg-card [&_button]:border [&_button]:border-border/80 [&_button]:text-foreground [&_button]:hover:bg-muted [&_button]:shadow-sm">
-            <OrderNotificationBell />
-          </div>
+              <div className="[&_button]:rounded-lg [&_button]:bg-card [&_button]:border [&_button]:border-border/80 [&_button]:text-foreground [&_button]:hover:bg-muted [&_button]:shadow-sm">
+                <OrderNotificationBell />
+              </div>
+            </>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

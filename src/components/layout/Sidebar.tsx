@@ -35,6 +35,8 @@ import {
   UserCog,
   TableProperties,
   Shield,
+  Calculator,
+  type LucideIcon,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -66,6 +68,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const [menuOpen, setMenuOpen] = useState(location.pathname === "/menu");
   const [reportsOpen, setReportsOpen] = useState(location.pathname.startsWith("/reports"));
   const [usersOpen, setUsersOpen] = useState(location.pathname.startsWith("/users"));
+  const [posOpen, setPosOpen] = useState(
+    location.pathname === "/pos" || location.pathname.startsWith("/pos")
+  );
 
   const isBranch = Boolean(
     activeRestaurant?.is_branch ||
@@ -117,6 +122,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     [t]
   );
 
+  const posChildren = useMemo(
+    () => [
+      { icon: Calculator, label: t("sidebar:posTerminal", "POS Register"), href: "/pos?tab=terminal" },
+      { icon: BarChart3, label: t("sidebar:posOverview", "Sales vs Purchases"), href: "/pos?tab=overview" },
+      { icon: ShoppingBag, label: t("sidebar:posPurchases", "Purchases & Invoices"), href: "/pos?tab=purchases" },
+      { icon: Boxes, label: t("sidebar:posRawMaterials", "Raw Materials"), href: "/pos?tab=raw-materials" },
+      { icon: ListTree, label: t("sidebar:posUsage", "Where Used (Traceability)"), href: "/pos?tab=usage" },
+      { icon: ChefHat, label: t("sidebar:posRecipes", "Recipes & Costing"), href: "/pos?tab=recipes" },
+    ],
+    [t]
+  );
+
   const usersChildren = useMemo(
     () =>
       planFeatures.staff_management
@@ -158,7 +175,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     if (location.pathname.startsWith("/users")) setUsersOpen(true);
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (location.pathname.startsWith("/pos")) setPosOpen(true);
+  }, [location.pathname]);
+
   const menuGroupActive = location.pathname === "/menu";
+  const posGroupActive = location.pathname === "/pos" || location.pathname.startsWith("/pos");
 
   useEffect(() => {
     if (activeRestaurant?.name) {
@@ -198,6 +220,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         const tab = new URLSearchParams(location.search).get("tab");
         return !tab || tab === "reservations" || tab === "bookings";
       }
+      if (path === "/pos") {
+        const tab = new URLSearchParams(location.search).get("tab");
+        return !tab || tab === "terminal";
+      }
       return true;
     }
     const want = new URLSearchParams(qs);
@@ -215,7 +241,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     indent,
     activeOverride,
   }: {
-    icon: any;
+    icon: LucideIcon;
     label: string;
     href: string;
     indent?: boolean;
@@ -273,7 +299,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     open: boolean;
     onToggleOpen: () => void;
     active: boolean;
-    icon: any;
+    icon: LucideIcon;
     label: string;
   }) => (
     <button
@@ -443,6 +469,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 )}
               </>
             )}
+
+            <NavItem icon={Calculator} label={t("sidebar:pos", "Point of Sale (POS)")} href="/pos" activeOverride={posGroupActive} />
 
             {collapsed ? (
               <NavItem
@@ -665,6 +693,34 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   </div>
                 )}
               </>
+            )}
+
+            {/* Point of Sale (POS) & Inventory */}
+            {collapsed ? (
+              <NavItem
+                icon={Calculator}
+                label={t("sidebar:pos", "POS & Inventory")}
+                href="/pos"
+                activeOverride={posGroupActive}
+              />
+            ) : (
+              <div className="space-y-0.5">
+                <GroupButton
+                  open={posOpen}
+                  onToggleOpen={() => setPosOpen((v) => !v)}
+                  active={posGroupActive}
+                  icon={Calculator}
+                  label={t("sidebar:pos", "POS & Inventory")}
+                />
+                {posOpen && (
+                  <div className="space-y-0.5">
+                    <NavItem icon={Calculator} label={t("sidebar:posTerminal", "POS Terminal")} href="/pos?tab=terminal" indent />
+                    {posChildren.slice(1).map((item) => (
+                      <NavItem key={item.href} {...item} indent />
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Menu is only visible to Parent Restaurant admins, hidden for Branches */}

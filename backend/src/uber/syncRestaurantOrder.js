@@ -7,6 +7,7 @@ import { getUberConfig } from "./config.js";
 import { uberLog } from "./logger.js";
 import { notifyNewOrderLater } from "../lib/orderAlerts.js";
 import { kitchenToMarketplaceStatus, wouldDowngrade } from "../integrations/status.js";
+import { deductStockForOrder, restoreStockForOrder } from "../lib/stockDeduction.js";
 
 const UBER_STATE_TO_STATUS = {
   CREATED: "pending",
@@ -321,10 +322,15 @@ export async function syncUberOrderToRestaurant(uberPayload, opts = {}) {
   }
 
   if (lines.length && (!existing || !skipStatus)) {
+    const dbMenuItems = await knex("menu_items")
+      .where({ restaurant_id: restaurantId })
+      .select("id", "name");
+    const nameMap = new Map(dbMenuItems.map((m) => [String(m.name || "").toLowerCase().trim(), m.id]));
+
     await knex("order_items").insert(
       lines.map((l) => ({
         order_id: local.id,
-        menu_item_id: null,
+        menu_item_id: nameMap.get(String(l.item_name || "").toLowerCase().trim()) || null,
         item_name: l.item_name,
         quantity: l.quantity,
         unit_price: l.unit_price,
@@ -338,6 +344,17 @@ export async function syncUberOrderToRestaurant(uberPayload, opts = {}) {
     local_order_id: local.id,
     updated_at: new Date().toISOString(),
   });
+
+  // Consistent trigger: deduct stock when confirmed/ready/delivered; restore if cancelled
+  try {
+    if (status === "cancelled") {
+      await restoreStockForOrder(knex, local.id);
+    } else if (["confirmed", "ready", "delivered"].includes(status)) {
+      await deductStockForOrder(knex, local.id);
+    }
+  } catch (stockErr) {
+    uberLog.warn("Stock deduction/restoration warning on Uber order sync:", { error: stockErr.message });
+  }
 
   if (created && opts.notify !== false && (status === "pending" || status === "confirmed")) {
     notifyNewOrderLater(knex, local);
@@ -378,5 +395,16 @@ export async function syncUberStateToRestaurant(uberOrderId, uberState) {
   };
   if (status === "cancelled") patch.payment_status = "unpaid";
   const [updated] = await knex("orders").where({ id: existing.id }).update(patch).returning("*");
+
+  try {
+    if (status === "cancelled") {
+      await restoreStockForOrder(knex, existing.id);
+    } else if (["confirmed", "ready", "delivered"].includes(status)) {
+      await deductStockForOrder(knex, existing.id);
+    }
+  } catch (stockErr) {
+    uberLog.warn("Stock deduction/restoration warning on Uber state sync:", { error: stockErr.message });
+  }
+
   return updated;
 }

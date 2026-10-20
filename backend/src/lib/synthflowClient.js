@@ -167,14 +167,29 @@ export async function listWorkspaceNumbers() {
  * Create an inbound Synthflow voice agent.
  */
 export async function createInboundAgent(payload) {
+  const flattened = {
+    ...payload,
+    ...(payload?.agent || {}),
+  };
+  if (flattened.min_words_to_interrupt === 1) {
+    flattened.min_words_to_interrupt = 2;
+  }
+  const body = {
+    type: "inbound",
+    voice_engine_version: "2.0",
+    is_recording: true,
+    ...flattened,
+    agent: {
+      ...(payload?.agent || {}),
+      prompt: flattened.prompt,
+      greeting_message: flattened.greeting_message,
+      language: flattened.language,
+      min_words_to_interrupt: flattened.min_words_to_interrupt || 2,
+    },
+  };
   return synthflowRequest("/assistants", {
     method: "POST",
-    body: {
-      type: "inbound",
-      voice_engine_version: "2.0",
-      is_recording: true,
-      ...payload,
-    },
+    body,
   });
 }
 
@@ -200,9 +215,26 @@ export async function startOutboundCall({ modelId, phone, name }) {
 }
 
 export async function updateAgent(modelId, payload) {
+  const flattened = {
+    ...payload,
+    ...(payload?.agent || {}),
+  };
+  if (flattened.min_words_to_interrupt === 1) {
+    flattened.min_words_to_interrupt = 2;
+  }
+  const body = {
+    ...flattened,
+    agent: {
+      ...(payload?.agent || {}),
+      prompt: flattened.prompt,
+      greeting_message: flattened.greeting_message,
+      language: flattened.language,
+      min_words_to_interrupt: flattened.min_words_to_interrupt || 2,
+    },
+  };
   return synthflowRequest(`/assistants/${encodeURIComponent(modelId)}`, {
     method: "PUT",
-    body: payload,
+    body,
   });
 }
 

@@ -16,6 +16,7 @@ import reservationsRoutes from "./routes/reservations.js";
 import tableSessionsRoutes from "./routes/tableSessions.js";
 import uberOrdersRoutes from "./routes/uberOrders.js";
 import billingRoutes, { billingWebhookHandler } from "./routes/billing.js";
+import posRoutes from "./routes/pos.js";
 import { billingMode } from "./billing/plans.js";
 import { twilioInboundWebhook } from "./fns/twilioInboundWebhook.js";
 import { uberWebhookHttpHandler } from "./uber/webhookHandler.js";
@@ -120,6 +121,7 @@ app.use("/api", jsonParser, reservationsRoutes);
 app.use("/api", jsonParser, tableSessionsRoutes);
 app.use("/api", jsonParser, uberOrdersRoutes);
 app.use("/api/billing", jsonParser, billingRoutes);
+app.use("/api/pos", jsonParser, posRoutes);
 
 app.post(
   "/api/functions/twilio-inbound-webhook",

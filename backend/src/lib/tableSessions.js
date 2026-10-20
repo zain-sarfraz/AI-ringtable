@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { deductStockForOrder } from "./stockDeduction.js";
 
 export function normalizeTableNumber(value) {
   return String(value || "")
@@ -183,6 +184,11 @@ export async function closeTableSession(trx, sessionId, closedBy) {
     .returning("*");
 
   if (session) {
+    const ordersToDeliver = await trx("orders")
+      .where({ table_session_id: sessionId })
+      .whereNotIn("status", ["cancelled", "delivered"])
+      .select("id");
+
     await trx("orders")
       .where({ table_session_id: sessionId })
       .whereNot({ status: "cancelled" })
@@ -192,6 +198,14 @@ export async function closeTableSession(trx, sessionId, closedBy) {
         delivered_at: now,
         updated_at: now,
       });
+
+    for (const o of ordersToDeliver) {
+      try {
+        await deductStockForOrder(trx, o.id);
+      } catch (err) {
+        console.warn(`[tableSessions] Stock deduction warning for order ${o.id}:`, err.message);
+      }
+    }
   }
   return session;
 }
@@ -230,12 +244,22 @@ export async function closeTableByIdentity(trx, { restaurantId, tableId, tableNu
     });
   }
 
+  const ordersToDeliver = await closeOrders.clone().select("id");
+
   const updated = await closeOrders.update({
     payment_status: "paid",
     status: "delivered",
     delivered_at: now,
     updated_at: now,
   });
+
+  for (const o of ordersToDeliver) {
+    try {
+      await deductStockForOrder(trx, o.id);
+    } catch (err) {
+      console.warn(`[tableSessions] Stock deduction warning for order ${o.id}:`, err.message);
+    }
+  }
 
   return { closed_sessions: openSessions.length, closed_orders: Number(updated) || 0 };
 }

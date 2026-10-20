@@ -57,6 +57,7 @@ import TableReservations from "@/pages/TableReservations";
 import StaffTables from "@/pages/StaffTables";
 import Permissions from "@/pages/Permissions";
 import Kitchen from "@/pages/Kitchen";
+import Pos from "@/pages/Pos";
 import Landing from "@/pages/Landing";
 import Subscribe from "@/pages/Subscribe";
 import SubscribeSuccess from "@/pages/SubscribeSuccess";
@@ -128,7 +129,8 @@ const App = () => (
                 <Route path="live-queue" element={<LiveQueue />} />
                 <Route path="menu" element={<Menu />} />
                 <Route path="menu/items/:itemId" element={<MenuItemDetail />} />
-                <Route path="inventory" element={<Menu />} />
+                <Route path="pos" element={<Pos />} />
+                <Route path="inventory" element={<Navigate to="/pos?tab=raw-materials" replace />} />
                 <Route path="deals" element={<Deals />} />
                 <Route path="orders" element={<Orders />} />
                 <Route path="orders/new" element={<OrdersNew />} />

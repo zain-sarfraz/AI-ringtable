@@ -278,7 +278,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "check_previous_order",
         description:
-          "FOOD ORDERS ONLY. Call silently on food orders to check if a returning caller wants to repeat their previous meal. NEVER call this when the caller wants to reserve a table or track an order! Speak only in the caller's locked language.",
+          "REPEAT PREVIOUS ORDER ONLY. Call ONLY at the very start of the call if the caller has NOT mentioned any food items yet. STRICTLY FORBIDDEN to call after the caller has already chosen items or during name, address, or phone collection!",
         speech_while_using_the_tool: "",
         failure_timeout: 10,
         headers: [{ key: "Content-Type", value: "application/json" }],

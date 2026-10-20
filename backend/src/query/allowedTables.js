@@ -38,6 +38,16 @@ export const ALLOWED_TABLES = new Set([
   "cuisines",
   "restaurant_cuisines",
   "notifications",
+  "inventory_categories",
+  "inventory_items",
+  "suppliers",
+  "purchases",
+  "purchase_items",
+  "recipes",
+  "recipe_ingredients",
+  "inventory_transactions",
+  "stock_adjustments",
+  "restaurant_tables",
 ]);
 
 /**
@@ -60,6 +70,13 @@ export const RESTAURANT_SCOPED = new Set([
   "agent_knowledge",
   "restaurant_hours",
   "restaurant_cuisines",
+  "inventory_categories",
+  "inventory_items",
+  "suppliers",
+  "purchases",
+  "recipes",
+  "stock_adjustments",
+  "restaurant_tables",
 ]);
 
 /** No per-row restaurant_id — tenant users get no rows via generic query API */

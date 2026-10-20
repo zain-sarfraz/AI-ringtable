@@ -1184,59 +1184,67 @@ export default function RestaurantSettings() {
                   type="number"
                   step="0.01"
                   min="0"
-                  value={Number(s.tax_rate) || 0}
-                  onChange={(e) => setS({ ...s, tax_rate: parseFloat(e.target.value) || 0 })}
+                  value={s.tax_rate ?? ""}
+                  onChange={(e) => setS({ ...s, tax_rate: e.target.value })}
                   className="pr-8"
                   placeholder="0.00"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
                   %
                 </span>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="rs-delivery-fee">
-                {t("restaurantSettings:deliveryFee", "Delivery fee")} ({getCurrencySymbol(String(s.currency || "USD"))})
-              </Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
-                  {getCurrencySymbol(String(s.currency || "USD"))}
-                </span>
-                <Input
-                  id="rs-delivery-fee"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={Number(s.delivery_fee) || 0}
-                  onChange={(e) => setS({ ...s, delivery_fee: parseFloat(e.target.value) || 0 })}
-                  className="pl-8"
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="rs-min-order">
-                {t("restaurantSettings:minimumOrder", "Minimum order amount")} ({getCurrencySymbol(String(s.currency || "USD"))})
-              </Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
-                  {getCurrencySymbol(String(s.currency || "USD"))}
-                </span>
-                <Input
-                  id="rs-min-order"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={Number(s.min_order_amount) || 0}
-                  onChange={(e) => setS({ ...s, min_order_amount: parseFloat(e.target.value) || 0 })}
-                  className="pl-8"
-                  placeholder="0.00"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("restaurantSettings:minimumOrderDesc", "Orders below this amount cannot be placed by customers.")}
-              </p>
-            </div>
+            {(() => {
+              const currencySymbol = getCurrencySymbol(String(s.currency || "USD"));
+              const paddingLeft = `${Math.max(2.5, currencySymbol.length * 0.75 + 1.25)}rem`;
+              return (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="rs-delivery-fee">
+                      {t("restaurantSettings:deliveryFee", "Delivery fee")} ({currencySymbol})
+                    </Label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
+                        {currencySymbol}
+                      </span>
+                      <Input
+                        id="rs-delivery-fee"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={s.delivery_fee ?? ""}
+                        onChange={(e) => setS({ ...s, delivery_fee: e.target.value })}
+                        style={{ paddingLeft }}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="rs-min-order">
+                      {t("restaurantSettings:minimumOrder", "Minimum order amount")} ({currencySymbol})
+                    </Label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
+                        {currencySymbol}
+                      </span>
+                      <Input
+                        id="rs-min-order"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={s.min_order_amount ?? ""}
+                        onChange={(e) => setS({ ...s, min_order_amount: e.target.value })}
+                        style={{ paddingLeft }}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("restaurantSettings:minimumOrderDesc", "Orders below this amount cannot be placed by customers.")}
+                    </p>
+                  </div>
+                </>
+              );
+            })()}
           </div>
           <Button variant="secondary" onClick={() => void saveSettings()} disabled={savingSettings}>
             {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}

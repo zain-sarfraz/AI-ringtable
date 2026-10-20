@@ -1,4 +1,5 @@
 import { ALLOWED_TABLES, RESTAURANT_SCOPED, TENANT_QUERY_DENY } from "./allowedTables.js";
+import { deductStockForOrder, restoreStockForOrder } from "../lib/stockDeduction.js";
 
 function parseValue(raw) {
   if (raw === "true") return true;
@@ -244,6 +245,45 @@ function applyScope(knex, q, table, user) {
     return;
   }
 
+  if (table === "purchase_items") {
+    const ids = user.restaurantIds || [];
+    if (!ids.length) {
+      q.whereRaw("1=0");
+    } else {
+      q.whereIn(
+        "purchase_items.purchase_id",
+        knex("purchases").select("id").whereIn("restaurant_id", ids),
+      );
+    }
+    return;
+  }
+
+  if (table === "recipe_ingredients") {
+    const ids = user.restaurantIds || [];
+    if (!ids.length) {
+      q.whereRaw("1=0");
+    } else {
+      q.whereIn(
+        "recipe_ingredients.recipe_id",
+        knex("recipes").select("id").whereIn("restaurant_id", ids),
+      );
+    }
+    return;
+  }
+
+  if (table === "inventory_transactions") {
+    const ids = user.restaurantIds || [];
+    if (!ids.length) {
+      q.whereRaw("1=0");
+    } else {
+      q.whereIn(
+        "inventory_transactions.inventory_item_id",
+        knex("inventory_items").select("id").whereIn("restaurant_id", ids),
+      );
+    }
+    return;
+  }
+
   if (RESTAURANT_SCOPED.has(table)) {
     const ids = user.restaurantIds || [];
     if (!ids.length) {
@@ -428,6 +468,19 @@ export async function executeQuery(knex, body, user) {
     if (body.returning) {
       const out = await q.returning("*");
       const list = Array.isArray(out) ? out : [out];
+
+      if (table === "orders") {
+        for (const o of list) {
+          if (o?.id && ["confirmed", "preparing", "ready", "delivered"].includes(o.status)) {
+            try {
+              await deductStockForOrder(knex, o.id);
+            } catch (stockErr) {
+              console.error(`[queryExecutor] Stock deduction on insert failed for order ${o.id}:`, stockErr.message);
+            }
+          }
+        }
+      }
+
       if (body.single === "one") {
         return { data: list[0] ?? null, error: null };
       }
@@ -441,9 +494,22 @@ export async function executeQuery(knex, body, user) {
   }
 
   if (action === "update") {
+    let targetOrders = [];
+    const newStatus = body.values?.status;
+    const isStatusUpdate = table === "orders" && typeof newStatus === "string";
+
+    if (isStatusUpdate) {
+      const matchQ = knex("orders").select("id", "status");
+      applyScope(knex, matchQ, "orders", user);
+      applyFilters(matchQ, body.filters);
+      targetOrders = await matchQ;
+    }
+
     let q = knex(table).update(body.values || {});
     applyScope(knex, q, table, user);
     applyFilters(q, body.filters);
+
+    let result;
     if (body.returning) {
       const out = await q.returning("*");
       const list = Array.isArray(out) ? out : out != null ? [out] : [];
@@ -454,15 +520,32 @@ export async function executeQuery(knex, body, user) {
             error: { message: list.length === 0 ? "No rows updated" : "Multiple rows updated" },
           };
         }
-        return { data: list[0], error: null };
+        result = { data: list[0], error: null };
+      } else if (body.single === "maybe") {
+        result = { data: list[0] ?? null, error: null };
+      } else {
+        result = { data: list, error: null };
       }
-      if (body.single === "maybe") {
-        return { data: list[0] ?? null, error: null };
-      }
-      return { data: list, error: null };
+    } else {
+      await q;
+      result = { data: null, error: null };
     }
-    await q;
-    return { data: null, error: null };
+
+    if (isStatusUpdate && Array.isArray(targetOrders) && targetOrders.length > 0) {
+      for (const order of targetOrders) {
+        try {
+          if (newStatus === "cancelled") {
+            await restoreStockForOrder(knex, order.id);
+          } else if (["confirmed", "preparing", "ready", "delivered"].includes(newStatus)) {
+            await deductStockForOrder(knex, order.id);
+          }
+        } catch (stockErr) {
+          console.error(`[queryExecutor] Stock operation failed for order ${order.id}:`, stockErr.message);
+        }
+      }
+    }
+
+    return result;
   }
 
   if (action === "delete") {
