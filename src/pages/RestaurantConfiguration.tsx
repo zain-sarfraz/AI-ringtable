@@ -96,6 +96,7 @@ export default function RestaurantConfiguration() {
   const [manualTelnyxNumber, setManualTelnyxNumber] = useState("");
   const [telnyxSearchBusy, setTelnyxSearchBusy] = useState(false);
   const [telnyxProvisionBusy, setTelnyxProvisionBusy] = useState(false);
+  const [unassigningNumberBusy, setUnassigningNumberBusy] = useState(false);
   const [synthflowBusy, setSynthflowBusy] = useState(false);
   const [synthflowSyncBusy, setSynthflowSyncBusy] = useState(false);
 
@@ -368,6 +369,7 @@ export default function RestaurantConfiguration() {
           restaurant_id: restaurant.id,
           phone_number: phone,
           skip_purchase: !!opts?.skipPurchase,
+          reassign: true,
         },
       });
       if (error) throw new Error(error.message);
@@ -388,6 +390,36 @@ export default function RestaurantConfiguration() {
       });
     } finally {
       setTelnyxProvisionBusy(false);
+    }
+  };
+
+  const unassignTelnyxNumber = async () => {
+    if (!restaurant?.id || !restaurant.telnyx_phone_number) return;
+    const confirmed = window.confirm(
+      `Remove phone number ${restaurant.telnyx_phone_number} from ${restaurant.name}? You can re-assign it to another restaurant anytime.`,
+    );
+    if (!confirmed) return;
+    setUnassigningNumberBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("restaurant-unassign-telnyx-number", {
+        body: { restaurant_id: restaurant.id },
+      });
+      if (error) throw new Error(error.message);
+      const d = data as { success?: boolean; error?: string; message?: string };
+      if (!d?.success) throw new Error(d?.error || "Failed to remove number");
+      toast({
+        title: "Number removed",
+        description: d.message || "Phone number removed successfully.",
+      });
+      await load();
+    } catch (e: unknown) {
+      toast({
+        variant: "destructive",
+        title: "Remove failed",
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setUnassigningNumberBusy(false);
     }
   };
 
@@ -486,9 +518,24 @@ export default function RestaurantConfiguration() {
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="rounded-lg border bg-muted/15 px-4 py-3 text-xs text-muted-foreground space-y-1">
-            <div>
-              Telnyx number:{" "}
-              <code className="text-foreground">{restaurant.telnyx_phone_number || "not assigned"}</code>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                Telnyx number:{" "}
+                <code className="text-foreground font-semibold">{restaurant.telnyx_phone_number || "not assigned"}</code>
+              </div>
+              {restaurant.telnyx_phone_number ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs px-2.5 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                  disabled={unassigningNumberBusy}
+                  onClick={() => void unassignTelnyxNumber()}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  {unassigningNumberBusy ? "Removing…" : "Remove number"}
+                </Button>
+              ) : null}
             </div>
             <div>
               Synthflow agent:{" "}

@@ -19,6 +19,7 @@ import {
   restaurantTelnyxSearch,
   restaurantTelnyxList,
   restaurantProvisionTelnyxNumber,
+  restaurantUnassignTelnyxNumber,
 } from "../fns/restaurantProvisionTelnyxNumber.js";
 import { restaurantCreateSynthflowAgent } from "../fns/restaurantCreateSynthflowAgent.js";
 import { syncRestaurantMenuToSynthflow } from "../fns/syncRestaurantMenuToSynthflow.js";
@@ -57,6 +58,7 @@ const AUTH_HANDLERS = {
   "restaurant-telnyx-search": restaurantTelnyxSearch,
   "restaurant-telnyx-list": restaurantTelnyxList,
   "restaurant-provision-telnyx-number": restaurantProvisionTelnyxNumber,
+  "restaurant-unassign-telnyx-number": restaurantUnassignTelnyxNumber,
   "restaurant-create-synthflow-agent": restaurantCreateSynthflowAgent,
   "sync-restaurant-menu-to-synthflow": syncRestaurantMenuToSynthflow,
   "synthflow-test-call": synthflowTestCall,
