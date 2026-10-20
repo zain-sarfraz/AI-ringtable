@@ -11,6 +11,7 @@ import {
   parseReservationTime,
   lastSpokenReservationTime,
 } from "../lib/tableReservationService.js";
+import { cleanUrduText } from "../lib/devanagariTransliterator.js";
 
 function truthyYes(v) {
   if (v == null) return false;
@@ -156,7 +157,7 @@ export function extractSynthflowFields(payload) {
       }
       if (found != null && !takeLast) break;
     }
-    out[canon] = found;
+    out[canon] = found ? cleanUrduText(found) : found;
   }
   return out;
 }
@@ -510,7 +511,7 @@ export async function synthflowPostCallWebhook(req, res) {
             turns.map((t) => ({
               call_id: callRow.id,
               speaker: t.speaker,
-              message: t.message,
+              message: cleanUrduText(t.message),
               timestamp: new Date().toISOString(),
             }))
           );

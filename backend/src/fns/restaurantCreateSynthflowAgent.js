@@ -376,6 +376,10 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
  */
 async function resolveAttachablePhone(preferredE164) {
   const preferred = normalizeE164(preferredE164 || "");
+  if (!preferred) {
+    return { phone: null, source: "none", warning: null };
+  }
+
   let numbers = [];
   try {
     numbers = await listWorkspaceNumbers();
@@ -389,28 +393,17 @@ async function resolveAttachablePhone(preferredE164) {
     available: n.is_available !== false,
   })).filter((n) => n.number);
 
-  if (preferred && normalized.some((n) => n.number === preferred)) {
+  if (normalized.some((n) => n.number === preferred)) {
     return { phone: preferred, source: "preferred_in_workspace", warning: null };
   }
 
-  const free = normalized.find((n) => n.available);
-  if (free) {
-    return {
-      phone: free.number,
-      source: "synthflow_available",
-      warning: preferred
-        ? `Telnyx number ${preferred} is not in Synthflow (custom SIP import requires Enterprise). Attached available Synthflow number ${free.number} instead. Forward your Telnyx line to this number, or buy/import a Synthflow number.`
-        : null,
-    };
-  }
-
-  // Create agent without a phone — user must attach one in Synthflow dashboard
+  // Never auto-attach an arbitrary number without explicit assignment
   return {
     phone: null,
     source: "none",
     warning: preferred
-      ? `Telnyx number ${preferred} cannot be imported without Synthflow Enterprise SIP. Create/buy a number in Synthflow Phone Numbers, then update this agent.`
-      : "No Synthflow phone numbers available. Buy one in the Synthflow dashboard and update the agent.",
+      ? `Telnyx number ${preferred} is not attached in Synthflow workspace numbers.`
+      : null,
   };
 }
 

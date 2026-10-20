@@ -9,6 +9,7 @@ import {
   parseReservationDate,
   parseReservationTime,
 } from "./tableReservationService.js";
+import { cleanUrduText } from "./devanagariTransliterator.js";
 
 /** Menu lines and spoken item names that are a table booking, not food. */
 export function isTableReservationLine(name) {
@@ -343,13 +344,64 @@ export function matchMenuLines(menu, items, variants = [], addons = [], itemAddo
         }
       }
 
+      // Determine size and flavor for clean item details (badges in UI)
+      let sizeText = matchedSize ? matchedSize.name : null;
+      if (!sizeText) {
+        const sm = combined.match(/\b(small|medium|large|regular|xl|extra\s+large|\d+[\s-]*(inch|cm|slice|slices|pcs))\b/i);
+        if (sm) {
+          sizeText = sm[1].charAt(0).toUpperCase() + sm[1].slice(1).toLowerCase();
+        }
+      }
+
+      // Check for flavors / non-size variants
+      const flavors = itemVars.filter((v) => v.variant_type !== "size");
+      let flavorText = null;
+      for (const f of flavors) {
+        const fName = (f.name || "").toLowerCase().trim();
+        if (fName && fName.length >= 2 && combined.includes(fName)) {
+          flavorText = f.name;
+          break;
+        }
+      }
+
+      // If no DB variant matched, check leftover words in rawName (e.g. "Classic Pizza Small Cheese Lovers" -> "Cheese Lovers")
+      if (!flavorText && rawName) {
+        let leftover = rawName;
+        // Strip base item name
+        leftover = leftover.replace(new RegExp(m.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), "");
+        // Strip size
+        if (sizeText) {
+          leftover = leftover.replace(new RegExp(`\\b${sizeText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"), "");
+        }
+        // Strip punctuation
+        leftover = leftover.replace(/[\(\)\[\]\-_,;+]/g, " ").replace(/\s+/g, " ").trim();
+        if (leftover && leftover.length >= 2 && !/^(pizza|burger|deal|drink|fries|cold\s*drink)$/i.test(leftover)) {
+          flavorText = leftover
+            .split(/\s+/)
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(" ");
+        }
+      }
+
+      const noteDetails = [];
+      if (sizeText) noteDetails.push(`Size: ${sizeText}`);
+      if (flavorText) noteDetails.push(`Flavor: ${flavorText}`);
+
+      let extraNotes = String(it.notes || "").trim();
+      if (extraNotes && !/^(none|null|undefined)$/i.test(extraNotes)) {
+        if (sizeText) extraNotes = extraNotes.replace(new RegExp(`\\b${sizeText}\\b`, "gi"), "").trim();
+        if (flavorText) extraNotes = extraNotes.replace(new RegExp(`\\b${flavorText}\\b`, "gi"), "").trim();
+        extraNotes = extraNotes.replace(/^[,;\s]+|[,;\s]+$/g, "").trim();
+        if (extraNotes) noteDetails.push(extraNotes);
+      }
+
       lines.push({
         menu_item_id: m.id,
-        item_name: rawName || m.name,
+        item_name: m.name,
         quantity: qty,
         unit_price: Number(price.toFixed(2)),
         line_total: Number((price * qty).toFixed(2)),
-        notes: it.notes ?? null,
+        notes: noteDetails.length > 0 ? noteDetails.join(", ") : null,
         matched: true,
         is_available: !isUnavailable,
       });
@@ -692,9 +744,12 @@ export async function createPhoneOrder(knex, input) {
   const trackingCode = Math.random().toString(36).substr(2, 10).toUpperCase();
 
   const phone = normalizeE164(customer_phone) || String(customer_phone || "0000000000");
-  const address = isPickup
+  const rawAddress = isPickup
     ? delivery_address || "Pickup"
     : delivery_address || "Address not provided";
+  const address = cleanUrduText(rawAddress);
+  const cleanName = cleanUrduText(String(customer_name).trim());
+  const cleanNotes = delivery_notes ? cleanUrduText(delivery_notes) : null;
 
   const result = await knex.transaction(async (trx) => {
     const orderNumber = await nextOrderNumber(trx, targetRestaurantId);
@@ -703,11 +758,11 @@ export async function createPhoneOrder(knex, input) {
         restaurant_id: targetRestaurantId,
         order_number: orderNumber,
         tracking_code: trackingCode,
-        customer_name: String(customer_name).trim(),
+        customer_name: cleanName,
         customer_phone: phone,
         customer_email: customer_email ? String(customer_email).trim() : null,
         delivery_address: address,
-        delivery_notes: delivery_notes || null,
+        delivery_notes: cleanNotes,
         fulfillment_type: isPickup ? "pickup" : "delivery",
         source,
         status: "pending",

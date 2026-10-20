@@ -214,6 +214,23 @@ function parseItemDisplay(rawName: string, itemNotes?: string | null) {
     name = sizePrefixMatch[2].trim();
   }
 
+  // 4b. Match embedded size words anywhere e.g. "Classic Pizza Small Cheese Lovers"
+  if (!size) {
+    const embeddedSizeMatch = name.match(/^(.*?)\s+\b(small|medium|large|regular|xl|extra\s+large|\d+[\s-]*(inch|cm))\b\s*(.*)$/i);
+    if (embeddedSizeMatch) {
+      const partBefore = embeddedSizeMatch[1].trim();
+      const matchedSz = embeddedSizeMatch[2].trim();
+      const partAfter = embeddedSizeMatch[3].trim();
+      if (partBefore) {
+        name = partBefore;
+        size = matchedSz.charAt(0).toUpperCase() + matchedSz.slice(1).toLowerCase();
+        if (partAfter && !flavor) {
+          flavor = partAfter;
+        }
+      }
+    }
+  }
+
   // 5. Capitalize name words nicely
   const formattedName = name
     .split(/\s+/)

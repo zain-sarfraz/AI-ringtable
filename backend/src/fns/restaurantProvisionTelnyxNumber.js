@@ -1,6 +1,6 @@
 import { getKnex } from "../db.js";
 import { searchAvailableNumbers, purchaseNumber, listOwnedNumbers } from "../lib/telnyxClient.js";
-import { importCustomNumber } from "../lib/synthflowClient.js";
+import { importCustomNumber, updateAgent, findAssistantByPhone } from "../lib/synthflowClient.js";
 import { normalizeE164 } from "../lib/voiceWebhookUtils.js";
 
 export async function restaurantTelnyxSearch(req, res) {
@@ -59,6 +59,15 @@ export async function restaurantProvisionTelnyxNumber(req, res) {
     let reassignedFrom = null;
     if (taken) {
       if (body.skip_purchase || body.reassign) {
+        // Detach phone from previous restaurant's Synthflow agent
+        if (taken.synthflow_agent_id) {
+          try {
+            await updateAgent(taken.synthflow_agent_id, { phone_number: null });
+            console.log(`[restaurantProvisionTelnyxNumber] Detached ${phone} from Synthflow agent ${taken.synthflow_agent_id}`);
+          } catch (e) {
+            console.warn("Could not detach phone from previous Synthflow agent:", e.message);
+          }
+        }
         await knex("restaurants").where({ id: taken.id }).update({
           telnyx_phone_number: null,
           telnyx_phone_number_id: null,
@@ -70,6 +79,17 @@ export async function restaurantProvisionTelnyxNumber(req, res) {
       } else {
         throw new Error(`Number ${phone} is already assigned to another restaurant (${taken.name || taken.id})`);
       }
+    }
+
+    // Also verify if any assistant in Synthflow currently holds this number and detach it
+    try {
+      const existingAss = await findAssistantByPhone(phone);
+      if (existingAss?.model_id && existingAss.model_id !== r.synthflow_agent_id) {
+        await updateAgent(existingAss.model_id, { phone_number: null });
+        console.log(`[restaurantProvisionTelnyxNumber] Detached ${phone} from previous Synthflow assistant ${existingAss.model_id}`);
+      }
+    } catch (e) {
+      console.warn("Could not detach phone from previous Synthflow assistant:", e.message);
     }
 
     let provisioned = null;
@@ -97,6 +117,16 @@ export async function restaurantProvisionTelnyxNumber(req, res) {
       // Number may already be imported — continue and let agent attach handle assignment
       importWarning = e.message || "Synthflow import failed";
       console.warn("Synthflow number import warning:", importWarning);
+    }
+
+    // Attach to current restaurant's Synthflow agent if one already exists
+    if (r.synthflow_agent_id) {
+      try {
+        await updateAgent(r.synthflow_agent_id, { phone_number: phone });
+        console.log(`[restaurantProvisionTelnyxNumber] Attached ${phone} to current agent ${r.synthflow_agent_id}`);
+      } catch (attErr) {
+        console.warn(`[restaurantProvisionTelnyxNumber] Agent attach warning:`, attErr.message);
+      }
     }
 
     await knex("restaurants").where({ id: restaurant_id }).update({
@@ -141,6 +171,29 @@ export async function restaurantUnassignTelnyxNumber(req, res) {
 
     const oldNumber = r.telnyx_phone_number;
 
+    // Detach phone from Synthflow agent if attached
+    if (r.synthflow_agent_id) {
+      try {
+        await updateAgent(r.synthflow_agent_id, { phone_number: null });
+        console.log(`[restaurantUnassignTelnyxNumber] Detached phone from Synthflow agent ${r.synthflow_agent_id}`);
+      } catch (e) {
+        console.warn(`[restaurantUnassignTelnyxNumber] Could not detach phone from Synthflow agent:`, e.message);
+      }
+    }
+
+    // Also check if any other assistant in Synthflow has this number and detach it
+    if (oldNumber) {
+      try {
+        const found = await findAssistantByPhone(oldNumber);
+        if (found?.model_id) {
+          await updateAgent(found.model_id, { phone_number: null });
+          console.log(`[restaurantUnassignTelnyxNumber] Detached ${oldNumber} from assistant ${found.model_id}`);
+        }
+      } catch (e) {
+        console.warn(`[restaurantUnassignTelnyxNumber] Could not detach from assistant by phone:`, e.message);
+      }
+    }
+
     await knex("restaurants").where({ id: restaurant_id }).update({
       telnyx_phone_number: null,
       telnyx_phone_number_id: null,
@@ -153,7 +206,7 @@ export async function restaurantUnassignTelnyxNumber(req, res) {
     return res.json({
       success: true,
       removed_number: oldNumber,
-      message: oldNumber ? `Number ${oldNumber} removed successfully.` : "No number was assigned.",
+      message: oldNumber ? `Number ${oldNumber} disconnected successfully.` : "No number was assigned.",
     });
   } catch (e) {
     console.error("Unassign Telnyx number error:", e);

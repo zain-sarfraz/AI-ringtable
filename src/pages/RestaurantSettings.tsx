@@ -647,12 +647,20 @@ export default function RestaurantSettings() {
 
   const provisionTelnyxNumber = async (opts?: { skipPurchase?: boolean; phone?: string }) => {
     if (!r?.id) return;
-    const phone = (opts?.phone || selectedTelnyxNumber || manualTelnyxNumber).trim();
+    const raw = (opts?.phone || selectedTelnyxNumber || manualTelnyxNumber).trim();
+    const digits = raw.replace(/\D/g, "");
+    const phone = raw.startsWith("+")
+      ? "+" + digits
+      : digits.length === 11 && digits.startsWith("1")
+        ? "+" + digits
+        : digits.length === 10
+          ? "+1" + digits
+          : "+" + digits;
     if (!/^\+\d{7,15}$/.test(phone)) {
       toast({
         variant: "destructive",
         title: "Invalid number",
-        description: "Use E.164 format, e.g. +15551234567",
+        description: "Please enter a valid phone number, e.g. +12202650290",
       });
       return;
     }

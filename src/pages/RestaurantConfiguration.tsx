@@ -354,12 +354,20 @@ export default function RestaurantConfiguration() {
   };
 
   const provisionTelnyxNumber = async (opts?: { skipPurchase?: boolean; phone?: string }) => {
-    const phone = (opts?.phone || selectedTelnyxNumber || manualTelnyxNumber).trim();
+    const raw = (opts?.phone || selectedTelnyxNumber || manualTelnyxNumber).trim();
+    const digits = raw.replace(/\D/g, "");
+    const phone = raw.startsWith("+")
+      ? "+" + digits
+      : digits.length === 11 && digits.startsWith("1")
+        ? "+" + digits
+        : digits.length === 10
+          ? "+1" + digits
+          : "+" + digits;
     if (!/^\+\d{7,15}$/.test(phone)) {
       return toast({
         variant: "destructive",
         title: "Invalid number",
-        description: "Use E.164 format, e.g. +15551234567",
+        description: "Please enter a valid phone number, e.g. +12202650290",
       });
     }
     setTelnyxProvisionBusy(true);
@@ -533,7 +541,7 @@ export default function RestaurantConfiguration() {
                   onClick={() => void unassignTelnyxNumber()}
                 >
                   <Trash2 className="h-3.5 w-3.5 mr-1" />
-                  {unassigningNumberBusy ? "Removing…" : "Remove number"}
+                  {unassigningNumberBusy ? "Disconnecting…" : "Disconnect / Free number"}
                 </Button>
               ) : null}
             </div>

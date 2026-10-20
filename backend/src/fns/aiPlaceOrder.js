@@ -1,6 +1,7 @@
 import { getKnex } from "../db.js";
 import { normalizeElevenLabsToolBody, resolveRestaurantIdForVoiceTools } from "../lib/voiceWebhookUtils.js";
 import { createPhoneOrder } from "../lib/phoneOrderService.js";
+import { cleanUrduText } from "../lib/devanagariTransliterator.js";
 
 function phoneDigitCount(value) {
   return String(value || "").replace(/\D/g, "").length;
@@ -68,6 +69,11 @@ export async function aiPlaceOrder(req, res) {
         message:
           "I'm sorry, I missed some details. Could you please provide your name and the items you'd like to order again?",
       });
+    }
+
+    body.customer_name = cleanUrduText(body.customer_name);
+    if (body.delivery_address) {
+      body.delivery_address = cleanUrduText(body.delivery_address);
     }
 
     const knex = getKnex();
