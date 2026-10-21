@@ -252,14 +252,24 @@ export async function aiPlaceOrder(req, res) {
     }
     if (e.isBranchError) {
       const areas = (e.availableAreas || []).filter(Boolean);
-      const areaList = areas.length ? areas.join(" or ") : "one of our branches";
-      console.warn("⚠️ Branch not matched. Requested:", e.requestedBranch, "| areas:", areaList);
+      const areaList = areas.length ? areas.join(" or ") : "";
+      console.warn("⚠️ Branch not matched. Requested:", e.requestedBranch, "| areas:", areaList || "(none)");
+      // No areas configured → do not ask Johar Town / invent cities; tell agent to retry with branch_name none.
+      if (!areas.length) {
+        return res.status(200).json({
+          success: false,
+          branch_required: false,
+          message:
+            "Respond ONLY in Roman Urdu: is restaurant ki koi branch/area list nahi. " +
+            "Dobara place_order call karo with branch_name exactly \"none\". Area/city mat poocho. Order number invent mat karo.",
+        });
+      }
       return res.status(200).json({
         success: false,
         branch_required: true,
         requested_branch: e.requestedBranch || null,
         available_areas: areas,
-        message: `Respond ONLY in the caller's LOCKED language: I need to confirm which area for your order. Which area would you like: ${areaList}? After they answer, call place_order again with branch_name set to that area name (for example Johar Town). Do NOT invent an order number.`,
+        message: `Respond ONLY in the caller's LOCKED language: I need to confirm which area for your order. Which area would you like: ${areaList}? After they answer, call place_order again with branch_name set to that area name. Do NOT invent an order number.`,
       });
     }
     return res.status(500).json({ error: e.message || "failed" });

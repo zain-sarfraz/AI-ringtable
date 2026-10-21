@@ -4,8 +4,15 @@ export { branchOrderingSection };
 
 /** Active child branches the phone agent may offer. */
 export async function loadActiveChildBranches(knex, restaurantId) {
-  const restaurant = await knex("restaurants").where({ id: restaurantId }).select("id", "parent_restaurant_id").first();
-  const parentId = restaurant?.parent_restaurant_id || restaurantId;
+  const restaurant = await knex("restaurants")
+    .where({ id: restaurantId })
+    .select("id", "parent_restaurant_id", "is_branch")
+    .first();
+  // Standalone HQ: only its own children. Branch line: siblings under parent.
+  const parentId =
+    restaurant?.is_branch && restaurant?.parent_restaurant_id
+      ? restaurant.parent_restaurant_id
+      : restaurantId;
   if (!parentId) return [];
   return knex("restaurants")
     .where({ parent_restaurant_id: parentId, is_branch: true, is_active: true, is_accepting_orders: true })

@@ -594,14 +594,37 @@ export async function createPhoneOrder(knex, input) {
     }
   }
 
-  // Always resolve branches under the PARENT so orders land on the correct child branch.
+  // Branch tree:
+  // - Standalone HQ (Pizza Go): ONLY this restaurant's own child branches — never another brand's tree
+  //   even if parent_restaurant_id was wrongly set in the DB.
+  // - Branch location line: siblings under the same parent.
   const restaurantRow = await knex("restaurants")
     .where({ id: restaurantId })
     .select("id", "name", "parent_restaurant_id", "is_branch")
     .first();
-  const parentRestaurantId = restaurantRow?.parent_restaurant_id || restaurantId;
+  const orderingOnBranchLocation = Boolean(
+    restaurantRow?.is_branch && restaurantRow?.parent_restaurant_id,
+  );
+  const parentRestaurantId = orderingOnBranchLocation
+    ? restaurantRow.parent_restaurant_id
+    : restaurantId;
   const branches = await knex("restaurants")
-    .where({ parent_restaurant_id: parentRestaurantId, is_active: true });
+    .where({
+      parent_restaurant_id: parentRestaurantId,
+      is_branch: true,
+      is_active: true,
+    })
+    .select(
+      "id",
+      "name",
+      "address",
+      "city",
+      "area",
+      "latitude",
+      "longitude",
+      "service_radius_km",
+      "is_accepting_orders",
+    );
 
   let targetRestaurantId = restaurantId;
   let autoAssigned = false;
@@ -612,6 +635,13 @@ export async function createPhoneOrder(knex, input) {
   const rawBranch = String(branch_name || "").trim();
   const branchRequested =
     !!rawBranch && !["none", "null", "n/a", "na", "any", "no", "no preference"].includes(rawBranch.toLowerCase());
+
+  // No real branches → never ask Johar/Iqbal/etc.; keep order on this restaurant.
+  if (!branches.length) {
+    console.log(
+      `🏪 Branch resolve: restaurant=${restaurantId} has 0 child branches — skipping area question`,
+    );
+  }
 
   // Try branch_name, then free-text area labels the agent often sends instead of exact names.
   const spokenCandidates = [
@@ -626,6 +656,7 @@ export async function createPhoneOrder(knex, input) {
 
   let chosenBranch = null;
   for (const spoken of spokenCandidates) {
+    if (!branches.length) break;
     chosenBranch = pickNamedBranch(branches, spoken);
     if (chosenBranch) break;
   }
@@ -637,8 +668,9 @@ export async function createPhoneOrder(knex, input) {
   }
 
   console.log(
-    `🏪 Branch resolve: parent=${parentRestaurantId} spoken=${JSON.stringify(spokenCandidates)} ` +
-      `matched=${chosenBranch?.name || "NONE"} branches=${branches.map((b) => b.name).join(" | ")}`,
+    `🏪 Branch resolve: root=${parentRestaurantId} onBranchLine=${orderingOnBranchLocation} ` +
+      `spoken=${JSON.stringify(spokenCandidates)} matched=${chosenBranch?.name || "NONE"} ` +
+      `branches=${branches.map((b) => b.name).join(" | ") || "(none)"}`,
   );
 
   if (chosenBranch) {
