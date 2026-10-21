@@ -250,11 +250,33 @@ export function buildRestaurantVoiceKnowledge({
     return `${currInfo.symbol} ${val}`;
   }
 
+  const taxRatePct = Number(settings?.tax_rate ?? 0);
+  function afterTaxOne(preTax) {
+    const n = Number(preTax || 0);
+    if (!taxRatePct) return n;
+    return Number((n * (1 + taxRatePct / 100)).toFixed(2));
+  }
+
   function priceLine(amount) {
     const h = spokenPriceHints(amount, currInfo);
-    // For PKR/Urdu restaurants, never tempt the model with "$" English speak hints
+    // Pre-compute after-tax so the model does not skip / mis-math 8.5% tax
+    const after = afterTaxOne(amount);
+    const hAfter = spokenPriceHints(after, currInfo);
     if (urduPriceMode) {
+      if (taxRatePct > 0 && after !== Number(amount || 0)) {
+        return (
+          `${h.display} — MUST SPEAK item: "${h.urduSpeak}" | ` +
+          `AFTER-TAX ×1 (no delivery): ${hAfter.display} MUST SPEAK: "${hAfter.urduSpeak}" ` +
+          `(NEVER confirm with only pre-tax)`
+        );
+      }
       return `${h.display} — MUST SPEAK: "${h.urduSpeak}" (NEVER say dollar/cent/$)`;
+    }
+    if (taxRatePct > 0 && after !== Number(amount || 0)) {
+      return (
+        `${h.display} (speak Urdu: "${h.urduSpeak}" | speak EN: "${h.enSpeak}") ` +
+        `| AFTER-TAX ×1: ${hAfter.display} (Urdu: "${hAfter.urduSpeak}" | EN: "${hAfter.enSpeak}")`
+      );
     }
     return `${h.display} (speak Urdu: "${h.urduSpeak}" | speak EN: "${h.enSpeak}")`;
   }
@@ -286,6 +308,9 @@ export function buildRestaurantVoiceKnowledge({
     );
     lines.push(
       `5. When confirming the order, ALWAYS speak this AFTER-TAX kul raqam — never only the pre-tax item sum.`,
+    );
+    lines.push(
+      `6. Prefer the menu line "AFTER-TAX ×1" hint for a single item; for qty>1 multiply that AFTER-TAX unit, then add delivery if any.`,
     );
     lines.push(
       `   Example wording: "Items [X], tax shamil karke kul raqam [AFTER-TAX total] ${currInfo.urduUnit} hai."`,
@@ -451,9 +476,13 @@ export function buildRestaurantVoiceKnowledge({
     lines.push("3. Collect customer name (accept ANY name on first try).");
     lines.push("4. Ask fulfillment ONLY in Urdu: \"Kya yeh aapke pate par bhaijwa dein ya aap khud aakar lenge?\" NEVER say \"Delivery\" or \"Pickup\". Then follow Branch ordering.");
     lines.push("5. Email (optional): \"Raseed ke liye apna email bata sakte hain?\"");
-    lines.push("6. Phone: \"Aapka rabta number bata dijiye?\"");
+    lines.push(
+      "6. Phone: \"Aapka rabta number bata dijiye?\" If they say yahi/yehi/yhi/isi/same/this number → say \"Theek hai\" ONCE, NEVER ask phone again, pass customer_phone as \"same\".",
+    );
     lines.push("7. Payment is COD — do not ask payment method.");
-    lines.push("8. Before place_order: speak summary in Roman Urdu with AFTER-TAX kul raqam (items + tax + delivery if any) in rupay, then ask \"Kya main yeh order darj kar doon?\" and WAIT. Never confirm with pre-tax only.");
+    lines.push(
+      "8. Before place_order: speak AFTER-TAX kul raqam using menu AFTER-TAX hints (not pre-tax), then ask \"Kya main yeh order darj kar doon?\" and WAIT.",
+    );
   } else {
     lines.push("1. Greet calmly and ask what the caller would like to order.");
     lines.push("2. Capture ordered items, sizes (ONLY if item has sizes in menu), and flavors concisely, and state each item's price as it is ordered. If caller asks for a category (e.g. 'burger') or an unavailable item, list the available items in that category with prices and let them choose.");
@@ -520,10 +549,19 @@ ${currInfo.code === "PKR" || currInfo.code === "INR" ? `- STRICTLY FORBIDDEN: do
 - Paisay rule: after the decimal, read EACH digit one-by-one (43 → "chaar teen paisay"). Do NOT combine into "chalees teen" / "taintalis".` : ""}
 - Example: "The OG Beef ${currInfo.exampleUrdu} ka hai. Aur kuch chahiye?"
 - Menu item prices are BEFORE tax. Tax rate = ${taxRatePct}%.
-- BEFORE confirming / place_order you MUST compute:
-  subtotal (items) + tax (${taxRatePct}% of subtotal) + delivery fee (if delivery) = AFTER-TAX kul raqam.
-- ALWAYS speak that AFTER-TAX kul raqam. NEVER confirm with only the pre-tax item sum.
+- Every menu price line includes "AFTER-TAX ×1" — USE THAT for kul raqam (× quantity). Do not skip tax.
+- Formula if computing yourself: subtotal + (subtotal × ${taxRatePct}%) + delivery fee = AFTER-TAX kul raqam.
+- ALWAYS speak AFTER-TAX kul raqam. NEVER confirm with only the pre-tax item sum.
 - Bill: "Tax shamil karke kul raqam [Urdu AFTER-TAX total] ${currInfo.urduUnit} hai."
+=======================================================
+
+=======================================================
+PHONE — "YAHI NUMBER" (CRITICAL):
+- Ask once: "Aapka rabta number bata dijiye?"
+- If caller says ANY of: yahi / yehi / yhi / isi / wahi / same / this / ye number / yahi number / yehi number / "yahi wala" / calling number → reply ONLY "Theek hai" and CONTINUE.
+- NEVER ask for the phone number a second time.
+- Pass customer_phone as exactly "same" to place_order (caller ID is used automatically).
+- Only ask again if they clearly give a DIFFERENT digit number, or say they have no number.
 =======================================================
 
 =======================================================
@@ -532,7 +570,7 @@ LANGUAGE LOCK — ROMAN URDU ONLY (NO ENGLISH QUESTIONS):
 - FORBIDDEN spoken words/phrases: "Delivery", "Pickup", "delivery or pickup", "Delivery ya pickup", "Phone number", "Anything else", "Order place kar dun", "Okay", "Sure", "Hello", "Hi I am calling".
 - Fulfillment MUST be exactly: "Kya yeh aapke pate par bhaijwa dein ya aap khud aakar lenge?"
 - Name: "Aapka naam bata dijiye?"
-- Phone: "Aapka rabta number bata dijiye?"
+- Phone: ask once only (see PHONE section above).
 - More items: "Kya aapko aur kuch chahiye?"
 - Confirm: "Aapka order: [qty] [item], [naam], [khud lenge / pate par bhaijwa dein], tax shamil karke kul raqam [Urdu AFTER-TAX total] ${currInfo.urduUnit} hai. Kya main yeh order darj kar doon?"
 - Success: "Aapka order darj ho chuka hai, order number [order_number] hai. Mehfooz kar lijiye. Bohat shukriya!"
@@ -547,8 +585,8 @@ Turn 2 onwards:
 2. Category ask (e.g. "burger chahiye"): list ONLY that category's real items with MUST SPEAK Urdu prices, then wait.
 3. Add-ons: ONLY if listed under that item's "Available Sauces & Add-ons". Never invent Extra Cheese unless linked.
 4. One question per turn. Max 1–2 short sentences. Then WAIT in silence.
-5. Collect in order: items → naam → fulfillment (Urdu phrase above) → email (optional) → rabta number → spoken summary → wait for "haan" → place_order once.
-6. After phone: do NOT call check_previous_order. Speak Rule-7 style summary immediately.
+5. Collect in order: items → naam → fulfillment (Urdu phrase above) → email (optional) → rabta number (once; yahi number = "same") → spoken AFTER-TAX summary → wait for "haan" → place_order once.
+6. After phone accepted: do NOT call check_previous_order. Speak AFTER-TAX summary immediately.
 7. Returning caller: call check_previous_order ONLY at very start if they said "order karna hai" with NO item named yet.
 8. Branch ordering section overrides location questions.
 9. Track order: ask "Aapka order number kya hai?", wait, call get_order_status once.

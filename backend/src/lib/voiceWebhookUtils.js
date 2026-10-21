@@ -17,9 +17,12 @@ export function isSamePhonePhrase(value) {
   const raw = String(value || "").trim();
   if (!raw) return true;
   if (/^<[^>]+>$/.test(raw)) return true;
+  // Normalize STT garbage: "nuy7mber", "nmbr", "yahii", "yhi"
   const s = raw
     .toLowerCase()
     .replace(/[’']/g, "")
+    .replace(/nuy\d*mber|numbr|nambra|nambar|nmbr/gi, "number")
+    .replace(/\byhii?\b/g, "yahi")
     .replace(/\s+/g, " ")
     .trim();
   if (/^(none|null|n\/a|na|unknown|skip)$/i.test(s)) return true;
@@ -28,18 +31,20 @@ export function isSamePhonePhrase(value) {
   const digits = s.replace(/\D/g, "");
   const hasSameCue =
     /\b(same|this|that|calling|caller|dial(l)?ed?|my)\b/.test(s) ||
-    /\b(yeh?ee?|yeh?i|yah?i|yehe|isi|wahi|usi|ye|woh|yeh)\b/.test(s) ||
+    /\b(yeh?ee?|yeh?i|yah?i|yehe|isi|wahi|usi|ye|woh|yeh|yhi)\b/.test(s) ||
     /(यही|इसी|वही|اسی|یہی|وہی|یہیے|یہیء)/.test(raw);
 
   if (digits.length >= 8 && !hasSameCue) return false;
 
-  // "yehee number", "yehi number", "isi number", "yahi wala number", "call wala"
+  // "yehee number", "yehi number", "yhi number", "isi number", "yahi wala number", "call wala"
   if (
     hasSameCue ||
-    /\b(number|nmbr|nambra|nambar|num|phone|mobile|rabta)\b/.test(s) &&
-      /\b(yeh?ee?|yeh?i|yah?i|yehe|isi|wahi|usi|same|this|ye|woh|yeh|call|dial)\b/.test(s) ||
-    /^(yeh?ee?|yeh?i|yah?i|isi|wahi)\s*(number|nmbr|nambar)?$/i.test(s) ||
-    /\byehee\b|\byehe\b|\byehi\s*number\b|\byahi\s*number\b|\bisi\s*number\b/i.test(s)
+    (/\b(number|nmbr|nambra|nambar|num|phone|mobile|rabta)\b/.test(s) &&
+      /\b(yeh?ee?|yeh?i|yah?i|yehe|isi|wahi|usi|same|this|ye|woh|yeh|yhi|call|dial)\b/.test(s)) ||
+    /^(yeh?ee?|yeh?i|yah?i|isi|wahi|yhi)\s*(number|nmbr|nambar)?$/i.test(s) ||
+    /\byehee\b|\byehe\b|\byehi\s*number\b|\byahi\s*number\b|\byhi\s*number\b|\bisi\s*number\b/i.test(
+      s,
+    )
   ) {
     return digits.length < 8;
   }
