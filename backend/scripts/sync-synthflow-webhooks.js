@@ -40,6 +40,7 @@ async function main() {
       await updateAgent(r.synthflow_agent_id, {
         is_recording: true,
         external_webhook_url: webhookUrl,
+        inbound_call_webhook_url: webhookUrl,
       });
       await knex("restaurants").where({ id: r.id }).update({
         synthflow_synced_at: knex.fn.now(),

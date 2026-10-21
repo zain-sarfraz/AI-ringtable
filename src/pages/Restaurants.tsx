@@ -280,7 +280,7 @@ export default function Restaurants() {
       agent_voice_id: r.agent_voice_id ?? "",
       agent_first_message: r.agent_first_message ?? "",
       agent_system_prompt: r.agent_system_prompt ?? "",
-      auto_create_agent: !r.elevenlabs_agent_id,
+      auto_create_agent: false,
       auto_attach_twilio: false,
       commission_rate: r.commission_rate ?? 10,
       allows_delivery: r.allows_delivery ?? true,

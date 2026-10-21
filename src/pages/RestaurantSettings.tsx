@@ -38,7 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
 import { getApiBase, resolveMediaUrl } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
-import { getCurrencySymbol } from "@/lib/restaurant";
+import { getCurrencySymbol, setDefaultCurrency } from "@/lib/restaurant";
 import { MINUTE_PACKS, type MinutesBalance, type MinutePackId } from "@/lib/minutePacks";
 import { syncRestaurantMenuToVoiceAgent } from "@/lib/syncRestaurantMenuToVoiceAgent";
 import { Progress } from "@/components/ui/progress";
@@ -49,6 +49,7 @@ interface Restaurant {
   id: string;
   name: string;
   slug: string;
+  currency?: string | null;
   phone: string | null;
   contact_email: string | null;
   address: string | null;
@@ -140,16 +141,33 @@ function mergeDisplaySettings(
   if (isEmpty(out.address)) out.address = restaurant.address ?? "";
   if (isEmpty(out.logo_url)) out.logo_url = restaurant.logo_url ?? "";
   if (isEmpty(out.name)) out.name = restaurant.name ?? "";
+  if (isEmpty(out.currency)) out.currency = restaurant.currency ?? "USD";
   return out;
 }
 
+const POPULAR_CURRENCIES = [
+  { code: "PKR", label: "PKR — Pakistani Rupee (Rs / rupay)" },
+  { code: "USD", label: "USD — US Dollar ($ / dollar)" },
+  { code: "AED", label: "AED — UAE Dirham (AED / dirham)" },
+  { code: "SAR", label: "SAR — Saudi Riyal (SAR / riyal)" },
+  { code: "GBP", label: "GBP — British Pound (£ / pound)" },
+  { code: "EUR", label: "EUR — Euro (€ / euro)" },
+  { code: "CAD", label: "CAD — Canadian Dollar (C$ / dollar)" },
+  { code: "AUD", label: "AUD — Australian Dollar (A$ / dollar)" },
+  { code: "INR", label: "INR — Indian Rupee (₹ / rupay)" },
+  { code: "QAR", label: "QAR — Qatari Riyal (QAR / riyal)" },
+  { code: "KWD", label: "KWD — Kuwaiti Dinar (KWD / dinar)" },
+  { code: "OMR", label: "OMR — Omani Rial (OMR / rial)" },
+  { code: "BHD", label: "BHD — Bahraini Dinar (BHD / dinar)" },
+];
+
 const RESTAURANT_SELECT =
-  "id, name, slug, phone, contact_email, address, logo_url, cover_image_url, twilio_phone_number, elevenlabs_agent_id, telnyx_phone_number, telnyx_phone_number_id, synthflow_agent_id, voice_provider, synthflow_synced_at, agent_language, agent_voice_id, agent_first_message, agent_system_prompt, agent_knowledge_doc_id, agent_menu_synced_at, allows_delivery, allows_pickup";
+  "id, name, slug, currency, phone, contact_email, address, logo_url, cover_image_url, twilio_phone_number, elevenlabs_agent_id, telnyx_phone_number, telnyx_phone_number_id, synthflow_agent_id, voice_provider, synthflow_synced_at, agent_language, agent_voice_id, agent_first_message, agent_system_prompt, agent_knowledge_doc_id, agent_menu_synced_at, allows_delivery, allows_pickup";
 
 export default function RestaurantSettings() {
   const { t } = useTranslation(["restaurantSettings", "common"]);
   const { toast } = useToast();
-  const { restaurantId, loading: activeRestaurantLoading } = useActiveRestaurant();
+  const { restaurantId, loading: activeRestaurantLoading, refreshRestaurants } = useActiveRestaurant();
   const [s, setS] = useState<Record<string, unknown> | null>(null);
   const [r, setR] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
@@ -175,6 +193,8 @@ export default function RestaurantSettings() {
   const [minutesBalance, setMinutesBalance] = useState<MinutesBalance | null>(null);
   const [minutesLoading, setMinutesLoading] = useState(false);
   const [buyingPackId, setBuyingPackId] = useState<string | null>(null);
+  const [linkAgentId, setLinkAgentId] = useState("");
+  const [linkingAgentBusy, setLinkingAgentBusy] = useState(false);
 
   /** Soft voice sync after settings changes — never blocks or looks like a failed save. */
   const quietVoiceSync = useCallback(async (rid: string) => {
@@ -528,6 +548,7 @@ export default function RestaurantSettings() {
             logo_url: logoUrl,
             cover_image_url: coverUrl,
             is_accepting_orders: isOpen,
+            currency,
           })
           .eq("id", r.id)
           .select("id"),
@@ -557,6 +578,8 @@ export default function RestaurantSettings() {
         return;
       }
 
+      setDefaultCurrency(currency);
+      await refreshRestaurants();
       toast({ title: "Settings saved" });
       await loadRestaurantData();
       void quietVoiceSync(restaurantId);
@@ -749,11 +772,18 @@ export default function RestaurantSettings() {
           system_prompt: r.agent_system_prompt?.trim() || undefined,
         },
       });
-      if (error) throw new Error(error.message);
+      if (error) {
+        let errMsg = error.message;
+        try {
+          const body = await (error as any).context?.json();
+          if (body?.error) errMsg = body.error;
+        } catch {}
+        throw new Error(errMsg);
+      }
       const d = data as { success?: boolean; error?: string; synthflow_agent_id?: string; action?: string };
       if (!d?.success) throw new Error(d?.error || "Failed");
       toast({
-        title: d.action === "updated" ? "Synthflow agent updated" : "Synthflow agent created",
+        title: "Synthflow agent updated",
         description: d.synthflow_agent_id
           ? `Agent ID: ${d.synthflow_agent_id}. Post-call orders will be created automatically.`
           : "Agent configured.",
@@ -1207,14 +1237,42 @@ export default function RestaurantSettings() {
         <CardContent className="space-y-6 pt-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="rs-currency">{t("restaurantSettings:currencyIso", "Currency (ISO)")}</Label>
+              <Label htmlFor="rs-currency">{t("restaurantSettings:currencyIso", "Restaurant Currency")}</Label>
+              <Select
+                value={
+                  POPULAR_CURRENCIES.some((c) => c.code === String(s.currency || "USD").toUpperCase())
+                    ? String(s.currency || "USD").toUpperCase()
+                    : "CUSTOM"
+                }
+                onValueChange={(val) => {
+                  if (val !== "CUSTOM") {
+                    setS({ ...s, currency: val });
+                  }
+                }}
+              >
+                <SelectTrigger id="rs-currency" className="w-full">
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  {POPULAR_CURRENCIES.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="CUSTOM">Custom currency code...</SelectItem>
+                </SelectContent>
+              </Select>
               <Input
-                id="rs-currency"
+                id="rs-currency-custom"
                 value={String(s.currency || "USD")}
                 onChange={(e) => setS({ ...s, currency: e.target.value.toUpperCase() })}
                 maxLength={8}
-                placeholder="USD"
+                placeholder="USD / PKR / AED"
+                className="mt-1 font-mono uppercase tracking-wider text-xs"
               />
+              <p className="text-[11px] text-muted-foreground">
+                All voice orders, Urdu pricing, menu quotes, and dashboard reports will strictly use this currency.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="rs-tax">{t("restaurantSettings:taxRate", "Tax rate (%)")}</Label>
@@ -1482,9 +1540,26 @@ export default function RestaurantSettings() {
                 </Button>
               ) : null}
             </div>
-            <div>
-              {t("restaurantSettings:synthflowAgent", "Synthflow agent:")}{" "}
-              <span className="font-mono text-foreground">{r.synthflow_agent_id || t("restaurantSettings:notCreated", "not created")}</span>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                {t("restaurantSettings:synthflowAgent", "Synthflow agent:")}{" "}
+                <span className="font-mono text-foreground">{r.synthflow_agent_id || t("restaurantSettings:notCreated", "not created")}</span>
+              </div>
+              {r.synthflow_agent_id ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground border border-border/50"
+                  onClick={async () => {
+                    await supabase.from("restaurants").update({ synthflow_agent_id: null }).eq("id", r.id);
+                    toast({ title: "Agent reset", description: "Agent ID cleared. You can now link a valid Agent ID." });
+                    await loadRestaurantData();
+                  }}
+                >
+                  Reset / Clear
+                </Button>
+              ) : null}
             </div>
             {r.synthflow_synced_at ? (
               <div>{t("restaurantSettings:lastSynced", "Last synced:")} {new Date(r.synthflow_synced_at).toLocaleString()}</div>
@@ -1556,20 +1631,52 @@ export default function RestaurantSettings() {
           </div>
 
           <div className="space-y-3 rounded-lg border p-4">
-            <p className="text-sm font-medium">{t("restaurantSettings:step2Title", "2. Create / update Synthflow AI agent")}</p>
+            <p className="text-sm font-medium">{t("restaurantSettings:step2Title", "2. Sync Synthflow AI order assistant")}</p>
             <p className="text-xs text-muted-foreground">
-              {t("restaurantSettings:step2Desc", "Uses greeting and system prompt from the AI agent section below (menu + active coupons are injected automatically).")}
+              Link your existing Synthflow agent and keep menu, coupons, and phone settings synchronized.
             </p>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" disabled={synthflowBusy || !r.telnyx_phone_number} onClick={() => void createOrUpdateSynthflowAgent()}>
+
+            <div className="space-y-1.5 pt-1">
+              <Label className="text-xs">Link an existing Synthflow Agent ID</Label>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  value={linkAgentId}
+                  onChange={(e) => setLinkAgentId(e.target.value)}
+                  placeholder="Paste model_id from Synthflow (e.g. 8294235e-...)"
+                  className="max-w-md font-mono text-xs"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!linkAgentId.trim() || linkingAgentBusy}
+                  onClick={async () => {
+                    const id = linkAgentId.trim();
+                    if (!id) return;
+                    setLinkingAgentBusy(true);
+                    try {
+                      await supabase.from("restaurants").update({ synthflow_agent_id: id }).eq("id", r.id);
+                      toast({ title: "Agent linked", description: `Synthflow Agent ${id} linked successfully.` });
+                      setLinkAgentId("");
+                      await loadRestaurantData();
+                    } catch (e: any) {
+                      toast({ variant: "destructive", title: "Link failed", description: e.message || String(e) });
+                    } finally {
+                      setLinkingAgentBusy(false);
+                    }
+                  }}
+                >
+                  {linkingAgentBusy ? "Linking…" : "Link Agent"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-2 border-t">
+              <Button type="button" disabled={synthflowBusy || !r.synthflow_agent_id} onClick={() => void createOrUpdateSynthflowAgent()}>
                 <Sparkles className="h-4 w-4 mr-2" />
-                {r.synthflow_agent_id
-                  ? synthflowBusy
-                    ? t("restaurantSettings:updating", "Updating…")
-                    : t("restaurantSettings:updateSynthflowAgent", "Update Synthflow agent")
-                  : synthflowBusy
-                    ? t("restaurantSettings:creating", "Creating…")
-                    : t("restaurantSettings:createSynthflowAgent", "Create Synthflow agent")}
+                {synthflowBusy
+                  ? t("restaurantSettings:updating", "Updating…")
+                  : t("restaurantSettings:updateSynthflowAgent", "Update Synthflow agent")}
               </Button>
               <Button
                 type="button"

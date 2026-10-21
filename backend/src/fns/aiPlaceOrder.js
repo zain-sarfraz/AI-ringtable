@@ -2,6 +2,7 @@ import { getKnex } from "../db.js";
 import { normalizeElevenLabsToolBody, resolveRestaurantIdForVoiceTools } from "../lib/voiceWebhookUtils.js";
 import { createPhoneOrder } from "../lib/phoneOrderService.js";
 import { cleanUrduText } from "../lib/devanagariTransliterator.js";
+import { getCurrencyDetails } from "../lib/restaurantVoiceContext.js";
 
 function phoneDigitCount(value) {
   return String(value || "").replace(/\D/g, "").length;
@@ -171,15 +172,23 @@ export async function aiPlaceOrder(req, res) {
           : "";
     const branchNote = assignedBranchName ? ` This order is for the ${assignedBranchName} branch.` : "";
 
+    const targetRest = await knex("restaurants").where({ id: order.restaurant_id }).select("currency").first();
+    const restSettings = await knex("restaurant_settings").where({ restaurant_id: order.restaurant_id }).select("currency").first();
+    const currCode = restSettings?.currency || targetRest?.currency || "USD";
+    const currInfo = getCurrencyDetails(currCode);
+    const urduPrice = `${totals.total.toFixed(0)} ${currInfo.urduUnit}`;
+    const enPrice = `${currInfo.symbol}${totals.total.toFixed(2)}`;
+
     return res.json({
       success: true,
       order_number: order.order_number,
       tracking_code: order.tracking_code,
       total: totals.total,
+      currency: currInfo.code,
       branch_name: assignedBranchName,
       discount_amount: coupon.amount,
       speak: order.order_number,
-      message: `CRITICAL: Reply in the caller's LOCKED language ONLY — do not switch to English or any other language. Say the order number ${order.order_number} and ask them to save it.${branchNote} Total ${totals.total.toFixed(2)}.${couponNote}`,
+      message: `CRITICAL: Reply in the caller's LOCKED language ONLY — do not switch to English or any other language. Say the order number ${order.order_number} and ask them to save it.${branchNote} Total: ${enPrice} (Urdu: ${urduPrice}).${couponNote}`,
     });
   } catch (e) {
     console.error("❌ Order Error:", e);

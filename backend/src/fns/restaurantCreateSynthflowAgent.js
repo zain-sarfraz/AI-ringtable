@@ -1,6 +1,5 @@
 import { getKnex } from "../db.js";
 import {
-  createInboundAgent,
   updateAgent,
   createInformationExtractor,
   createCustomAction,
@@ -17,12 +16,18 @@ import {
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
   applyBranchOrdering,
+  isMaleVoice,
 } from "../lib/restaurantVoiceContext.js";
 import { normalizeE164 } from "../lib/voiceWebhookUtils.js";
 
 function isPhoneAlreadyAttachedError(err) {
   const msg = String(err?.message || err || "");
   return /already attached|already assigned|phone number already/i.test(msg);
+}
+
+function isNotFoundError(err) {
+  const msg = String(err?.message || err || "");
+  return /not found|404|does not exist/i.test(msg);
 }
 
 const ORDER_EXTRACTORS = [
@@ -442,18 +447,26 @@ export async function restaurantCreateSynthflowAgent(req, res) {
         : null;
 
     const catalog = await loadRestaurantVoiceCatalog(knex, restaurant_id);
+    const currency = catalog.settings?.currency || r.currency || body.currency || "USD";
     const knowledge = buildRestaurantVoiceKnowledge({
       restaurantName: r.name,
+      currency,
       ...catalog,
     });
 
-    const lang = toSynthflowLanguage(body.language || r.agent_language || "multi");
+    const agentLanguage = body.language || r.agent_language || "ur";
+    const voiceId = body.voice_id || r.agent_voice_id || undefined;
+    const voiceGender = body.voice_gender || (voiceId && isMaleVoice(voiceId) ? "male" : "female");
+    const lang = toSynthflowLanguage(agentLanguage);
     const savedGreeting = (body.first_message ?? r.agent_first_message)?.trim() || "";
     const greeting =
       !savedGreeting ||
       /^Hi, thanks for calling/i.test(savedGreeting) ||
-      /^Hi, I am calling from /i.test(savedGreeting)
-        ? defaultSynthflowGreeting(r.name)
+      /^Hi, I am calling from /i.test(savedGreeting) ||
+      /^Thanks for calling/i.test(savedGreeting) ||
+      /^Hello, main /i.test(savedGreeting) ||
+      /^ہیلو،/i.test(savedGreeting)
+        ? defaultSynthflowGreeting(r.name, agentLanguage, voiceGender)
         : savedGreeting;
     // Auto-generated prompts (our template) are always rebuilt from code so language/track
     // fixes ship on Update/Sync. Only a truly custom prompt without our markers is kept.
@@ -467,13 +480,12 @@ export async function restaurantCreateSynthflowAgent(req, res) {
     const prompt =
       customPrompt && !looksLikeOurTemplate && !looksLikeLegacyEl
         ? customPrompt
-        : defaultSynthflowPrompt(r.name, knowledge);
+        : defaultSynthflowPrompt(r.name, knowledge, currency, agentLanguage, voiceGender);
     const fullPrompt = applyBranchOrdering(
       prompt.includes("## Menu") || prompt.includes("# ") ? prompt : `${prompt}\n\n${knowledge}`,
       catalog.branches,
     );
 
-    const voiceId = body.voice_id || r.agent_voice_id || undefined;
     const agentName = body.name || `${r.name} Order Agent`;
 
     const phoneInfo = await resolveAttachablePhone(
@@ -490,7 +502,8 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       interruption_fade_out: 1,
       send_user_idle_reminders: false,
       transcriber_speech_recognition: "high_accuracy",
-      ...(voiceId ? { voice_id: voiceId } : {}),
+      voice_id: voiceId || "cgSgspJ2msm6clMCkdW9",
+      voice_gender: voiceGender,
     };
 
     // Optional: link an existing Fine-tuner agent by id from the UI/body
@@ -506,51 +519,35 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       name: agentName,
       is_recording: true,
       ...(phoneInfo.phone ? { phone_number: phoneInfo.phone } : {}),
-      ...(webhookUrl ? { external_webhook_url: webhookUrl } : {}),
+      ...(webhookUrl
+        ? { external_webhook_url: webhookUrl, inbound_call_webhook_url: webhookUrl }
+        : {}),
       agent: agentConfig,
     };
 
-    if (modelId) {
-      // When updating an existing agent, omit phone_number so Synthflow doesn't reject with "Phone number already attached"
-      const { phone_number: _omitPhone, ...updatePayload } = agentPayload;
-      try {
-        await updateAgent(modelId, updatePayload);
-      } catch (upErr) {
-        if (isPhoneAlreadyAttachedError(upErr)) {
-          await updateAgent(modelId, updatePayload);
-        } else {
-          throw upErr;
-        }
-      }
+    if (!modelId) {
+      return res.status(200).json({
+        success: false,
+        error: "No Synthflow agent is linked to this restaurant. Automatic creation of new agents is disabled. Please link an existing Synthflow Agent ID.",
+      });
+    }
+
+    // When updating an existing agent, omit phone_number so Synthflow doesn't reject with "Phone number already attached"
+    const { phone_number: _omitPhone, ...updatePayload } = agentPayload;
+    try {
+      await updateAgent(modelId, updatePayload);
       action = "updated";
-    } else {
-      try {
-        const created = await createInboundAgent(agentPayload);
-        modelId =
-          created?.response?.model_id ||
-          created?.model_id ||
-          created?.response?.id ||
-          null;
-        if (!modelId) {
-          throw new Error(`Synthflow did not return model_id: ${JSON.stringify(created)}`);
-        }
-      } catch (createErr) {
-        // Number already owns an inbound agent in Synthflow (common after manual Fine-tuner setup).
-        // Adopt that agent, update webhook/prompt, and save id to our DB so UI shows Agent ready.
-        if (!isPhoneAlreadyAttachedError(createErr) || !phoneInfo.phone) {
-          throw createErr;
-        }
-        const existing = await findAssistantByPhone(phoneInfo.phone);
-        if (!existing?.model_id) {
-          throw new Error(
-            `${createErr.message}. Could not find that agent in Synthflow — open Fine-tuner, copy the agent model_id, and pass synthflow_agent_id when creating.`,
-          );
-        }
-        modelId = existing.model_id;
-        // Update without re-sending phone_number (already attached)
-        const { phone_number: _omitPhone, ...updatePayload } = agentPayload;
+    } catch (upErr) {
+      if (isPhoneAlreadyAttachedError(upErr)) {
         await updateAgent(modelId, updatePayload);
-        action = "linked_existing";
+        action = "updated";
+      } else if (isNotFoundError(upErr)) {
+        return res.status(200).json({
+          success: false,
+          error: `Agent ${modelId} was not found in Synthflow. Please verify this agent exists in your Synthflow dashboard or reset the Agent ID.`,
+        });
+      } else {
+        throw upErr;
       }
     }
 
@@ -608,8 +605,8 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       warnings,
     });
   } catch (e) {
-    console.error("Create Synthflow agent error:", e);
-    return res.status(500).json({
+    console.error("Update Synthflow agent error:", e);
+    return res.status(200).json({
       success: false,
       error: e.message || "failed",
       cause: e.cause?.code || e.cause?.message || undefined,

@@ -99,6 +99,8 @@ export default function RestaurantConfiguration() {
   const [unassigningNumberBusy, setUnassigningNumberBusy] = useState(false);
   const [synthflowBusy, setSynthflowBusy] = useState(false);
   const [synthflowSyncBusy, setSynthflowSyncBusy] = useState(false);
+  const [linkAgentId, setLinkAgentId] = useState("");
+  const [linkingAgentBusy, setLinkingAgentBusy] = useState(false);
 
   // Hours
   const [hours, setHours] = useState<WorkingHour[]>([]);
@@ -432,22 +434,38 @@ export default function RestaurantConfiguration() {
   };
 
   const createOrUpdateSynthflowAgent = async () => {
+    if (!restaurant?.synthflow_agent_id) {
+      toast({
+        variant: "destructive",
+        title: "No agent linked",
+        description: "Please link an existing Synthflow Agent ID first. Automatic agent creation is disabled.",
+      });
+      return;
+    }
     setSynthflowBusy(true);
     try {
       const { data, error } = await supabase.functions.invoke("restaurant-create-synthflow-agent", {
         body: {
           restaurant_id: restaurant.id,
+          synthflow_agent_id: restaurant.synthflow_agent_id,
           language: newAgent.language || restaurant.agent_language || "en",
           voice_id: newAgent.voice_id || restaurant.agent_voice_id || undefined,
           first_message: newAgent.first_message || restaurant.agent_first_message || undefined,
           system_prompt: newAgent.system_prompt || restaurant.agent_system_prompt || undefined,
         },
       });
-      if (error) throw new Error(error.message);
-      const d = data as { success?: boolean; error?: string; synthflow_agent_id?: string; action?: string };
+      if (error) {
+        let errMsg = error.message;
+        try {
+          const body = await (error as any).context?.json();
+          if (body?.error) errMsg = body.error;
+        } catch {}
+        throw new Error(errMsg);
+      }
+      const d = data as { success?: boolean; error?: string; synthflow_agent_id?: string; action?: string; attached_phone_number?: string; warning?: string };
       if (!d?.success) throw new Error(d?.error || "Failed");
       toast({
-        title: d.action === "updated" ? "Synthflow agent updated" : "Synthflow agent created",
+        title: "Synthflow agent updated",
         description: [
           d.synthflow_agent_id ? `Agent: ${d.synthflow_agent_id}` : null,
           d.attached_phone_number ? `Phone: ${d.attached_phone_number}` : null,
@@ -545,9 +563,26 @@ export default function RestaurantConfiguration() {
                 </Button>
               ) : null}
             </div>
-            <div>
-              Synthflow agent:{" "}
-              <code className="text-foreground">{restaurant.synthflow_agent_id || "not created"}</code>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                Synthflow agent:{" "}
+                <code className="text-foreground">{restaurant.synthflow_agent_id || "not created"}</code>
+              </div>
+              {restaurant.synthflow_agent_id ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground border border-border/50"
+                  onClick={async () => {
+                    await supabase.from("restaurants").update({ synthflow_agent_id: null }).eq("id", restaurant.id);
+                    toast({ title: "Agent reset", description: "Agent ID cleared. You can now link a valid Agent ID." });
+                    await load();
+                  }}
+                >
+                  Reset / Clear
+                </Button>
+              ) : null}
             </div>
             {restaurant.synthflow_synced_at ? (
               <div>Last synced: {new Date(restaurant.synthflow_synced_at).toLocaleString()}</div>
@@ -626,19 +661,54 @@ export default function RestaurantConfiguration() {
           </div>
 
           <div className="space-y-3 rounded-lg border p-4">
-            <p className="text-sm font-medium">2. Create / update Synthflow AI agent</p>
+            <p className="text-sm font-medium">2. Sync Synthflow AI order assistant</p>
             <p className="text-xs text-muted-foreground">
-              Menu items and active coupons are injected into the agent prompt. Requires{" "}
-              <code>PUBLIC_API_URL</code>, <code>SYNTHFLOW_API_KEY</code>, and Telnyx SIP env vars on the API.
+              Link your existing Synthflow agent and keep menu, coupons, and phone settings synchronized.
             </p>
-            <div className="flex flex-wrap gap-2">
+
+            <div className="space-y-1.5 pt-1">
+              <Label className="text-xs">Link an existing Synthflow Agent ID</Label>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  value={linkAgentId}
+                  onChange={(e) => setLinkAgentId(e.target.value)}
+                  placeholder="Paste model_id from Synthflow (e.g. 8294235e-...)"
+                  className="max-w-md font-mono text-xs"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!linkAgentId.trim() || linkingAgentBusy}
+                  onClick={async () => {
+                    const linkedId = linkAgentId.trim();
+                    if (!linkedId) return;
+                    setLinkingAgentBusy(true);
+                    try {
+                      await supabase.from("restaurants").update({ synthflow_agent_id: linkedId }).eq("id", restaurant.id);
+                      toast({ title: "Agent linked", description: `Synthflow Agent ${linkedId} linked successfully.` });
+                      setLinkAgentId("");
+                      await load();
+                    } catch (e: any) {
+                      toast({ variant: "destructive", title: "Link failed", description: e.message || String(e) });
+                    } finally {
+                      setLinkingAgentBusy(false);
+                    }
+                  }}
+                >
+                  {linkingAgentBusy ? "Linking…" : "Link Agent"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-2 border-t">
               <Button
                 type="button"
-                disabled={synthflowBusy || !restaurant.telnyx_phone_number}
+                disabled={synthflowBusy || !restaurant.synthflow_agent_id}
                 onClick={() => void createOrUpdateSynthflowAgent()}
               >
                 {synthflowBusy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
-                {restaurant.synthflow_agent_id ? "Update Synthflow agent" : "Create Synthflow agent"}
+                Update Synthflow agent
               </Button>
               <Button
                 type="button"

@@ -122,6 +122,7 @@ async function main() {
         is_recording: true,
         name: `${r.name} Order Agent`,
         external_webhook_url: webhookUrl,
+        inbound_call_webhook_url: webhookUrl,
       });
 
       // Rebuild prompt with current restaurant name + branch list
@@ -163,10 +164,11 @@ async function main() {
     );
     for (const a of stale) {
       try {
-        await updateAgent(a.model_id || a.id, {
-          is_recording: true,
-          external_webhook_url: webhookUrl,
-        });
+          await updateAgent(a.model_id || a.id, {
+            is_recording: true,
+            external_webhook_url: webhookUrl,
+            inbound_call_webhook_url: webhookUrl,
+          });
         console.log(`OK stale assistant ${a.name} (${a.model_id || a.id})`);
         ok += 1;
       } catch (e) {

@@ -30,10 +30,12 @@ import {
   CheckCircle,
   XCircle,
   Info,
+  Languages,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getApiBase } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
+import { cleanUrduText, toUrduScript } from "@/lib/devanagariTransliterator";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Tables } from "@/integrations/supabase/types";
@@ -358,6 +360,8 @@ export function CallDetailDialog({ call, open, onOpenChange }: CallDetailDialogP
     enabled: !!call?.customer_id,
   });
 
+  const [transcriptLanguageView, setTranscriptLanguageView] = useState<"roman" | "urdu">("roman");
+
   if (!call) return null;
 
   const metadata = (call as Call & { metadata?: CallMetadata }).metadata as CallMetadata | null;
@@ -403,7 +407,43 @@ export function CallDetailDialog({ call, open, onOpenChange }: CallDetailDialogP
             <MetadataSection metadata={metadata} />
           </TabsContent>
 
-          <TabsContent value="transcript" className="mt-4">
+          <TabsContent value="transcript" className="mt-4 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-border/50">
+              <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                <MessageSquare className="h-3.5 w-3.5 text-primary" />
+                Transcript View:
+              </span>
+              <div className="inline-flex items-center rounded-lg border border-border/70 p-0.5 bg-muted/40">
+                <button
+                  type="button"
+                  onClick={() => setTranscriptLanguageView("roman")}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5",
+                    transcriptLanguageView === "roman"
+                      ? "bg-background text-primary shadow-2xs font-bold"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Show in Roman Urdu / English"
+                >
+                  <Languages className="h-3.5 w-3.5" />
+                  <span>Roman Urdu / English</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTranscriptLanguageView("urdu")}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 font-medium",
+                    transcriptLanguageView === "urdu"
+                      ? "bg-background text-primary shadow-2xs font-bold"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Show in Urdu script (اردو)"
+                >
+                  <span>اردو</span>
+                </button>
+              </div>
+            </div>
+
             <ScrollArea className="h-[400px] pr-4">
               {conversations.length > 0 ? (
                 <div className="space-y-4">
@@ -438,7 +478,17 @@ export function CallDetailDialog({ call, open, onOpenChange }: CallDetailDialogP
                             {conv.timestamp ? format(new Date(conv.timestamp), "p") : ""}
                           </span>
                         </div>
-                        <p className="text-sm">{conv.message}</p>
+                        <p
+                          dir={transcriptLanguageView === "urdu" ? "rtl" : "ltr"}
+                          className={cn(
+                            "text-sm leading-relaxed",
+                            transcriptLanguageView === "urdu" ? "font-medium text-[15px] leading-loose" : ""
+                          )}
+                        >
+                          {transcriptLanguageView === "urdu"
+                            ? toUrduScript(conv.message)
+                            : cleanUrduText(conv.message)}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -447,8 +497,18 @@ export function CallDetailDialog({ call, open, onOpenChange }: CallDetailDialogP
                 <Card className="border-dashed">
                   <CardContent className="pt-4">
                     <p className="text-xs text-muted-foreground mb-3">Full Call Transcript:</p>
-                    <div className="whitespace-pre-wrap text-sm font-mono bg-muted/50 p-4 rounded-lg">
-                      {call.transcript}
+                    <div
+                      dir={transcriptLanguageView === "urdu" ? "rtl" : "ltr"}
+                      className={cn(
+                        "whitespace-pre-wrap text-sm p-4 rounded-lg",
+                        transcriptLanguageView === "urdu"
+                          ? "bg-muted/50 font-medium text-[15px] leading-loose"
+                          : "font-mono bg-muted/50"
+                      )}
+                    >
+                      {transcriptLanguageView === "urdu"
+                        ? toUrduScript(call.transcript)
+                        : cleanUrduText(call.transcript)}
                     </div>
                   </CardContent>
                 </Card>

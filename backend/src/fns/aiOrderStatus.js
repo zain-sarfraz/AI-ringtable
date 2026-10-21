@@ -10,6 +10,7 @@ import {
   phoneMatchVariants,
   resolveRestaurantIdForVoiceTools,
 } from "../lib/voiceWebhookUtils.js";
+import { getCurrencyDetails } from "../lib/restaurantVoiceContext.js";
 
 function statusLabel(status, fulfillmentType) {
   const dineIn = String(fulfillmentType || "").toLowerCase() === "dine_in";
@@ -183,16 +184,24 @@ export async function aiOrderStatus(req, res) {
       ? new Date(order.estimated_delivery_at).toLocaleString("en-US", { hour: "numeric", minute: "2-digit" })
       : null;
 
+    const targetRest = await knex("restaurants").where({ id: order.restaurant_id }).select("currency").first();
+    const restSettings = await knex("restaurant_settings").where({ restaurant_id: order.restaurant_id }).select("currency").first();
+    const currCode = restSettings?.currency || targetRest?.currency || "USD";
+    const currInfo = getCurrencyDetails(currCode);
+    const urduTotal = `${Number(order.total_amount).toFixed(0)} ${currInfo.urduUnit}`;
+    const enTotal = `${currInfo.symbol}${Number(order.total_amount).toFixed(2)}`;
+
     const tableBit = order.table_number ? ` for table ${order.table_number}` : "";
     const message = `Respond ONLY in the caller's LOCKED language: Order ${order.order_number} for ${order.customer_name}${tableBit} is ${statusLabel(order.status, order.fulfillment_type)}.${
       eta ? ` Estimated time around ${eta}.` : ""
-    } Total ${Number(order.total_amount).toFixed(2)}.`;
+    } Total: ${enTotal} (Urdu: ${urduTotal}).`;
 
     return res.json({
       found: true,
       order_number: order.order_number,
       tracking_code: order.tracking_code,
       status: order.status,
+      currency: currInfo.code,
       status_label: statusLabel(order.status, order.fulfillment_type),
       fulfillment_type: order.fulfillment_type,
       estimated_delivery_at: order.estimated_delivery_at,

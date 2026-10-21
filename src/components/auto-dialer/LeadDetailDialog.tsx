@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { StatusBadge, InterestBadge } from "./StatusBadge";
 import { Loader2, Phone, Mail, Building2, ExternalLink, RefreshCw } from "lucide-react";
+import { cleanUrduText } from "@/lib/devanagariTransliterator";
 
 interface Props {
   leadId: string | null;
@@ -263,12 +264,12 @@ export function LeadDetailDialog({ leadId, open, onOpenChange }: Props) {
                         <p className="text-xs font-medium mb-1 text-muted-foreground">
                           {c.speaker === "ai" ? "AI Agent" : "Customer"}
                         </p>
-                        <p className="text-sm">{c.message}</p>
+                        <p className="text-sm">{cleanUrduText(c.message)}</p>
                       </div>
                     ))}
                   </div>
                 ) : call?.transcript ? (
-                  <pre className="text-sm whitespace-pre-wrap">{call.transcript}</pre>
+                  <pre className="text-sm whitespace-pre-wrap">{cleanUrduText(call.transcript)}</pre>
                 ) : (
                   <p className="text-sm text-muted-foreground">No transcript yet.</p>
                 )}

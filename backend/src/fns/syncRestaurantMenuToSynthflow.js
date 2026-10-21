@@ -6,6 +6,7 @@ import {
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
   applyBranchOrdering,
+  isMaleVoice,
 } from "../lib/restaurantVoiceContext.js";
 import { refreshSynthflowPlaceOrderTool } from "./restaurantCreateSynthflowAgent.js";
 
@@ -29,32 +30,44 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
     }
 
     const catalog = await loadRestaurantVoiceCatalog(knex, restaurant_id);
+    const currency = catalog.settings?.currency || r.currency || "USD";
     const knowledge = buildRestaurantVoiceKnowledge({
       restaurantName: r.name,
+      currency,
       ...catalog,
     });
-    // Prefer multilingual auto-detect so STT/TTS follow the caller's language after the English greeting.
-    const agentLanguage = r.agent_language && r.agent_language !== "en" ? r.agent_language : "multi";
+    const agentLanguage = r.agent_language || "ur";
+    const voiceGender = isMaleVoice(r.agent_voice_id) ? "male" : "female";
     const lang = toSynthflowLanguage(agentLanguage);
     const savedGreeting = (r.agent_first_message || "").trim();
     // Refresh auto-generated greetings; keep only a truly custom first message.
     const greeting =
       !savedGreeting ||
       /^Hi, thanks for calling/i.test(savedGreeting) ||
-      /^Hi, I am calling from /i.test(savedGreeting)
-        ? defaultSynthflowGreeting(r.name)
+      /^Hi, I am calling from /i.test(savedGreeting) ||
+      /^Thanks for calling/i.test(savedGreeting) ||
+      /^Hello, main /i.test(savedGreeting) ||
+      /^ہیلو،/i.test(savedGreeting)
+        ? defaultSynthflowGreeting(r.name, agentLanguage, voiceGender)
         : savedGreeting;
-    const prompt = applyBranchOrdering(defaultSynthflowPrompt(r.name, knowledge), catalog.branches);
+    const prompt = applyBranchOrdering(
+      defaultSynthflowPrompt(r.name, knowledge, currency, agentLanguage, voiceGender),
+      catalog.branches
+    );
     const webhookUrl = postCallWebhookUrl();
 
     await updateAgent(r.synthflow_agent_id, {
       // Do not re-send phone_number — number is already attached; re-sending can fail.
       is_recording: true,
-      ...(webhookUrl ? { external_webhook_url: webhookUrl } : {}),
+      ...(webhookUrl
+        ? { external_webhook_url: webhookUrl, inbound_call_webhook_url: webhookUrl }
+        : {}),
       agent: {
         prompt,
         greeting_message: greeting,
         language: lang,
+        voice_id: r.agent_voice_id || "cgSgspJ2msm6clMCkdW9",
+        voice_gender: voiceGender,
         voice_speed: 0.85,
         min_words_to_interrupt: 1,
         interruption_fade_out: 1,

@@ -44,7 +44,7 @@ export async function aiCheckPreviousOrder(req, res) {
         has_active_reservation: false,
         has_previous_order: false,
         message:
-          "Translate and tell the caller in their LOCKED language only: I cannot check previous orders because the caller's phone number is not available. Continue taking a new order normally.",
+          "Respond in the restaurant's locked language: Politely ask what they would like to order today. (Do NOT mention phone or previous orders; simply ask what food items they want to order).",
       });
     }
 
@@ -132,7 +132,7 @@ export async function aiCheckPreviousOrder(req, res) {
         has_active_reservation: false,
         has_previous_order: false,
         message:
-          "Translate and tell the caller in their LOCKED language only: No previous orders or active table reservations found. Continue a new order normally.",
+          "Respond in the restaurant's locked language: Politely ask what they would like to order today. (Do NOT say no previous order or table was found; directly ask what food items they want to order).",
       });
     }
 

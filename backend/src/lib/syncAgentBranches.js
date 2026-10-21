@@ -4,6 +4,7 @@ import {
   buildRestaurantVoiceKnowledge,
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
+  isMaleVoice,
 } from "./restaurantVoiceContext.js";
 import { refreshSynthflowPlaceOrderTool } from "../fns/restaurantCreateSynthflowAgent.js";
 
@@ -17,18 +18,27 @@ export async function pushBranchListToAgent(knex, parentRestaurantId) {
   if (!restaurant?.synthflow_agent_id) return;
 
   const catalog = await loadRestaurantVoiceCatalog(knex, parentRestaurantId);
+  const currency = catalog.settings?.currency || restaurant.currency || "USD";
   const knowledge = buildRestaurantVoiceKnowledge({
     restaurantName: restaurant.name,
+    currency,
     ...catalog,
   });
   const saved = String(restaurant.agent_system_prompt || "").trim();
   // Our generated templates must rebuild from code so language/branch fixes ship on sync.
   const looksLikeOurTemplate =
     /PRIMARY MISSION|CRITICAL RULES|LANGUAGE MATCHING|## Branch ordering/i.test(saved);
+  const voiceGender = isMaleVoice(restaurant.agent_voice_id) ? "male" : "female";
   const base =
     saved && !looksLikeOurTemplate
       ? saved
-      : defaultSynthflowPrompt(restaurant.name, knowledge);
+      : defaultSynthflowPrompt(
+          restaurant.name,
+          knowledge,
+          currency,
+          restaurant.agent_language || "ur",
+          voiceGender
+        );
   const prompt = applyBranchOrdering(
     base.includes("## Menu") || base.includes("# ") ? base : `${base}\n\n${knowledge}`,
     catalog.branches,

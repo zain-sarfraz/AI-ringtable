@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { ClassifierAuditPanel } from "./ClassifierAuditPanel";
 import { supabase } from "@/integrations/supabase/client";
+import { cleanUrduText } from "@/lib/devanagariTransliterator";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Tables } from "@/integrations/supabase/types";
@@ -292,7 +293,7 @@ export function LeadDetailDialog({
                             </p>
                             <div className="bg-muted/50 rounded-lg p-3 max-h-[200px] overflow-y-auto">
                               <pre className="text-xs whitespace-pre-wrap font-sans">
-                                {call.transcript}
+                                {cleanUrduText(call.transcript)}
                               </pre>
                             </div>
                           </div>
@@ -300,7 +301,7 @@ export function LeadDetailDialog({
                         
                         {call.notes && (
                           <p className="mt-2 text-sm text-muted-foreground">
-                            {call.notes}
+                            {cleanUrduText(call.notes)}
                           </p>
                         )}
                         {call.created_at && (

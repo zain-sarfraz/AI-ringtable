@@ -1,6 +1,7 @@
 import { getKnex } from "../db.js";
 import { synthflowRequest } from "../lib/synthflowClient.js";
 import { normalizeE164 } from "../lib/voiceWebhookUtils.js";
+import { cleanUrduText } from "../lib/devanagariTransliterator.js";
 
 function mapCallStatus(raw) {
   const s = String(raw || "").toLowerCase();
@@ -102,8 +103,8 @@ export async function synthflowSyncCalls(req, res) {
           direction: sfCall.type_of_call === "outbound" ? "outbound" : "inbound",
           duration_seconds: durationSeconds,
           recording_url: recordingUrl,
-          transcript: transcript,
-          notes: callNotes,
+          transcript: transcript ? cleanUrduText(transcript) : null,
+          notes: callNotes ? cleanUrduText(callNotes) : null,
           synthflow_call_id: synthflowCallId,
           restaurant_id: rest.id,
           provider: "synthflow",
@@ -129,7 +130,7 @@ export async function synthflowSyncCalls(req, res) {
                 turns.map((t) => ({
                   call_id: callRow.id,
                   speaker: t.speaker,
-                  message: t.message,
+                  message: cleanUrduText(t.message),
                   timestamp: new Date().toISOString(),
                 }))
               );

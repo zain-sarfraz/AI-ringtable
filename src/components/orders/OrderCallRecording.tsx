@@ -25,6 +25,7 @@ import {
   ArrowUp,
   Maximize2,
   Minimize2,
+  Languages,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { getApiBase } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
 import { useToast } from "@/hooks/use-toast";
+import { cleanUrduText, toUrduScript } from "@/lib/devanagariTransliterator";
 import { cn } from "@/lib/utils";
 
 export interface CallData {
@@ -172,6 +174,7 @@ export function OrderCallRecording({
   const [isMuted, setIsMuted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
+  const [transcriptLanguageView, setTranscriptLanguageView] = useState<"roman" | "urdu">("roman");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const transcriptContainerRef = useRef<HTMLDivElement | null>(null);
@@ -343,14 +346,17 @@ export function OrderCallRecording({
   };
 
   const fullTranscriptString = useMemo(() => {
-    if (call?.transcript) return call.transcript;
-    if (parsedTurns.length > 0) {
-      return parsedTurns
+    let raw = "";
+    if (call?.transcript) {
+      raw = call.transcript;
+    } else if (parsedTurns.length > 0) {
+      raw = parsedTurns
         .map((t) => `${t.speaker === "agent" || t.speaker === "ai" ? "AI Agent" : "Customer"}: ${t.message}`)
         .join("\n\n");
     }
-    return "";
-  }, [call?.transcript, parsedTurns]);
+    if (!raw) return "";
+    return transcriptLanguageView === "urdu" ? toUrduScript(raw) : cleanUrduText(raw);
+  }, [call?.transcript, parsedTurns, transcriptLanguageView]);
 
   const copyTranscript = () => {
     if (!fullTranscriptString) return;
@@ -379,7 +385,11 @@ export function OrderCallRecording({
     return isPhoneOrder ? "Voice AI Order" : "Online / Manual";
   }, [call, aiExtractedData, isPhoneOrder]);
 
-  const callNotes = call?.notes || aiExtractedData?.call_summary || aiExtractedData?.fields?.special_notes;
+  const rawCallNotes = call?.notes || aiExtractedData?.call_summary || aiExtractedData?.fields?.special_notes;
+  const callNotes = useMemo(() => {
+    if (!rawCallNotes) return null;
+    return transcriptLanguageView === "urdu" ? toUrduScript(rawCallNotes) : cleanUrduText(rawCallNotes);
+  }, [rawCallNotes, transcriptLanguageView]);
 
   // If loading call data
   if (loading) {
@@ -582,6 +592,37 @@ export function OrderCallRecording({
               <Badge variant="secondary" className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-700 dark:text-orange-400 border border-orange-500/20">
                 {parsedTurns.length} turns
               </Badge>
+
+              {/* Language / Script Toggle (Roman Urdu / Urdu script) */}
+              <div className="inline-flex items-center rounded-lg border border-border/70 p-0.5 bg-muted/40 ml-1">
+                <button
+                  type="button"
+                  onClick={() => setTranscriptLanguageView("roman")}
+                  className={cn(
+                    "px-2 py-0.5 text-[11px] font-semibold rounded-md transition-all flex items-center gap-1",
+                    transcriptLanguageView === "roman"
+                      ? "bg-background text-orange-600 dark:text-orange-400 shadow-2xs font-bold"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Show transcript in Roman Urdu / English"
+                >
+                  <Languages className="h-3 w-3" />
+                  <span>Roman</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTranscriptLanguageView("urdu")}
+                  className={cn(
+                    "px-2 py-0.5 text-[11px] font-semibold rounded-md transition-all flex items-center gap-1",
+                    transcriptLanguageView === "urdu"
+                      ? "bg-background text-orange-600 dark:text-orange-400 shadow-2xs font-bold"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Show transcript in Urdu script (اردو)"
+                >
+                  <span className="font-medium">اردو</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -717,8 +758,18 @@ export function OrderCallRecording({
                           )}
                         </div>
 
-                        <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
-                          {turn.message}
+                        <p
+                          dir={transcriptLanguageView === "urdu" ? "rtl" : "ltr"}
+                          className={cn(
+                            "text-xs leading-relaxed whitespace-pre-wrap",
+                            transcriptLanguageView === "urdu"
+                              ? "text-foreground font-medium text-[13px] leading-loose"
+                              : "text-foreground"
+                          )}
+                        >
+                          {transcriptLanguageView === "urdu"
+                            ? toUrduScript(turn.message)
+                            : cleanUrduText(turn.message)}
                         </p>
                       </div>
                     </div>
@@ -749,8 +800,18 @@ export function OrderCallRecording({
                 "[&::-webkit-scrollbar-track]:bg-muted/40 [&::-webkit-scrollbar-track]:rounded-full"
               )}
             >
-              <pre className="text-xs font-mono text-foreground whitespace-pre-wrap leading-relaxed">
-                {call.transcript}
+              <pre
+                dir={transcriptLanguageView === "urdu" ? "rtl" : "ltr"}
+                className={cn(
+                  "text-xs whitespace-pre-wrap leading-relaxed",
+                  transcriptLanguageView === "urdu"
+                    ? "text-foreground font-sans text-sm leading-loose"
+                    : "font-mono text-foreground"
+                )}
+              >
+                {transcriptLanguageView === "urdu"
+                  ? toUrduScript(call.transcript)
+                  : cleanUrduText(call.transcript)}
               </pre>
             </div>
           ) : (

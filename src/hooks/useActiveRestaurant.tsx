@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { setDefaultCurrency } from "@/lib/restaurant";
 
 export interface RestaurantInfo {
   id: string;
   name: string;
   slug?: string;
+  currency?: string | null;
   is_active?: boolean;
   parent_restaurant_id?: string | null;
   is_branch?: boolean;
@@ -22,6 +24,7 @@ interface ActiveRestaurantContextType {
   restaurantId: string | null;
   activeRestaurant: RestaurantInfo | null;
   restaurants: RestaurantInfo[];
+  currency: string;
   setRestaurantId: (id: string | null) => void;
   loading: boolean;
   isSuperAdmin: boolean;
@@ -32,6 +35,7 @@ const ActiveRestaurantContext = createContext<ActiveRestaurantContextType>({
   restaurantId: null,
   activeRestaurant: null,
   restaurants: [],
+  currency: "USD",
   setRestaurantId: () => {},
   loading: true,
   isSuperAdmin: false,
@@ -50,7 +54,7 @@ export function ActiveRestaurantProvider({ children }: { children: React.ReactNo
     try {
       const { data } = await supabase
         .from("restaurants")
-        .select("id, name, slug, is_active, parent_restaurant_id, is_branch, address, service_radius_km, is_accepting_orders, latitude, longitude, subscription_plan, subscription_status")
+        .select("id, name, slug, currency, is_active, parent_restaurant_id, is_branch, address, service_radius_km, is_accepting_orders, latitude, longitude, subscription_plan, subscription_status")
         .order("name", { ascending: true });
       if (data) {
         setRestaurants(data as RestaurantInfo[]);
@@ -75,7 +79,7 @@ export function ActiveRestaurantProvider({ children }: { children: React.ReactNo
         }
 
         const restaurantSelect =
-          "id, name, slug, is_active, parent_restaurant_id, is_branch, address, service_radius_km, is_accepting_orders, latitude, longitude, subscription_plan, subscription_status";
+          "id, name, slug, currency, is_active, parent_restaurant_id, is_branch, address, service_radius_km, is_accepting_orders, latitude, longitude, subscription_plan, subscription_status";
 
         // 1. Super Admin: Platform-wide control.
         if (role === "super_admin") {
@@ -191,12 +195,21 @@ export function ActiveRestaurantProvider({ children }: { children: React.ReactNo
     return restaurants.find((r) => r.id === restaurantId) || null;
   }, [restaurantId, restaurants]);
 
+  const currency = useMemo(() => {
+    return (activeRestaurant?.currency && String(activeRestaurant.currency).trim().toUpperCase()) || "USD";
+  }, [activeRestaurant]);
+
+  useEffect(() => {
+    setDefaultCurrency(currency);
+  }, [currency]);
+
   return (
     <ActiveRestaurantContext.Provider
       value={{
         restaurantId,
         activeRestaurant,
         restaurants,
+        currency,
         setRestaurantId,
         loading,
         isSuperAdmin,
