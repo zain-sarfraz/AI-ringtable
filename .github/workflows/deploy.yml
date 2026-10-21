@@ -150,35 +150,42 @@ jobs:
             exit 1
           fi
 
-          # Keep PORT / APP_ENV in .env in sync with Apache proxy
-          # CRITICAL: APP_ENV=production is required — API defaults to development and
-          # will refuse to start if PUBLIC_* URLs point at ringtable.io without it.
+          # Keep PORT / APP_ENV / PUBLIC_* in .env in sync with Apache proxy.
+          # CRITICAL: APP_ENV=production — without it the API refuses to boot when
+          # PUBLIC_* points at ringtable.io, Apache then returns 503 on /backend/*.
           if [ -f .env ]; then
-            if grep -q '^PORT=' .env; then
-              sed -i "s/^PORT=.*/PORT=${BACKEND_PORT}/" .env
-            else
-              echo "PORT=${BACKEND_PORT}" >> .env
-            fi
-            if grep -q '^APP_ENV=' .env; then
-              sed -i "s/^APP_ENV=.*/APP_ENV=production/" .env
-            else
-              echo "APP_ENV=production" >> .env
-            fi
-            if ! grep -q '^PUBLIC_APP_URL=' .env; then
+            # Strip any prior PORT / APP_ENV lines (handles spaces/quotes/duplicates)
+            sed -i -E '/^[[:space:]]*PORT[[:space:]]*=/d' .env
+            sed -i -E '/^[[:space:]]*APP_ENV[[:space:]]*=/d' .env
+            sed -i -E '/^[[:space:]]*RINGTABLE_DEPLOYMENT[[:space:]]*=/d' .env
+            printf '\nPORT=%s\nAPP_ENV=production\nRINGTABLE_DEPLOYMENT=1\n' "${BACKEND_PORT}" >> .env
+            if ! grep -qE '^[[:space:]]*PUBLIC_APP_URL[[:space:]]*=' .env; then
               echo "PUBLIC_APP_URL=https://ringtable.io" >> .env
             fi
-            if ! grep -q '^PUBLIC_API_URL=' .env; then
+            if ! grep -qE '^[[:space:]]*PUBLIC_API_URL[[:space:]]*=' .env; then
               echo "PUBLIC_API_URL=https://ringtable.io/backend" >> .env
             fi
           else
-            echo "::warning::backend/.env missing on server — create it before API will work"
+            echo "::error::backend/.env missing on server — login/API will 503 until it exists"
+            exit 1
           fi
 
           # Release port if held by an orphan process and restart clean
           fuser -k "${BACKEND_PORT}/tcp" 2>/dev/null || true
           "$PM2" delete ringtable-api 2>/dev/null || true
-          PORT="$BACKEND_PORT" "$PM2" start src/index.js --name ringtable-api --update-env
+          # Pass production flags in the process env so a stale .env cannot win
+          RINGTABLE_DEPLOYMENT=1 APP_ENV=production PORT="$BACKEND_PORT" \
+            "$PM2" start src/index.js --name ringtable-api --update-env
           "$PM2" save
           "$PM2" status ringtable-api
+
+          # Fail deploy if API did not come up (avoids silent 503 after ship)
+          sleep 3
+          if ! curl -sf --max-time 10 "http://127.0.0.1:${BACKEND_PORT}/api/health" >/dev/null; then
+            echo "::error::API health check failed on 127.0.0.1:${BACKEND_PORT} — dumping pm2 logs"
+            "$PM2" logs ringtable-api --lines 80 --nostream || true
+            exit 1
+          fi
+          echo "API health OK"
           echo "Backend deploy finished at $(date -u)"
           EOF

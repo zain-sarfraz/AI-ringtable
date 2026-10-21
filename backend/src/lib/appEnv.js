@@ -65,8 +65,23 @@ export function isNonLocalDatabaseUrl(databaseUrl) {
 /**
  * Refuse to start the API in development when env points at production resources.
  * Call once at process boot (after loadEnv).
+ * Never blocks the live ringtable.io host (path / RINGTABLE_DEPLOYMENT=1).
  */
 export function assertSafeEnvironmentOrThrow() {
+  const cwd = `${process.cwd()}`.toLowerCase().replace(/\\/g, "/");
+  const onLiveHost =
+    String(process.env.RINGTABLE_DEPLOYMENT || "").trim() === "1" ||
+    cwd.includes("ringtable.io") ||
+    cwd.includes("public_html/ringtable");
+  if (onLiveHost) {
+    // Live must always boot — login 503s if we throw here.
+    if (getAppEnv() !== "production") {
+      process.env.APP_ENV = "production";
+      console.warn("[env] assertSafeEnvironment: live host — APP_ENV forced to production");
+    }
+    return;
+  }
+
   const appEnv = getAppEnv();
   if (appEnv !== "development") return;
 
