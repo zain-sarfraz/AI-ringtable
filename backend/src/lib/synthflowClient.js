@@ -221,23 +221,71 @@ export async function createInboundAgent(payload) {
 
 /**
  * Place an outbound call from a Synthflow agent to a phone number.
- * Used for the dashboard test call.
+ * Used for the dashboard test call. Posts to the region that owns the agent
+ * (US workspace keys get 401/404 on the global host).
  */
 export async function startOutboundCall({ modelId, phone, name }) {
-  const json = await synthflowRequest("/calls", {
-    method: "POST",
-    body: {
-      model_id: modelId,
-      phone,
-      name: name || "Test call",
-    },
-  });
-  const callId =
-    json?.response?.call_id ||
-    json?.call_id ||
-    json?.response?.id ||
-    null;
-  return { raw: json, call_id: callId };
+  const id = String(modelId || "").trim();
+  if (!id) throw new Error("model_id is required");
+  const to = String(phone || "").trim();
+  if (!to) throw new Error("phone is required");
+
+  const body = {
+    model_id: id,
+    phone: to,
+    name: name || "Test call",
+  };
+
+  let preferredBases = [...SYNTHFLOW_REGION_BASES];
+  try {
+    const found = await getAssistant(id);
+    if (found?.api_base) {
+      preferredBases = [
+        found.api_base,
+        ...SYNTHFLOW_REGION_BASES.filter((b) => b !== found.api_base),
+      ];
+    }
+  } catch {
+    // still try PUT-style regional scan below
+  }
+
+  let lastErr = null;
+  for (const base of preferredBases) {
+    try {
+      const json = await synthflowRequest(`${base}/calls`, {
+        method: "POST",
+        body,
+      });
+      const callId =
+        json?.response?.call_id ||
+        json?.call_id ||
+        json?.response?.id ||
+        null;
+      return { raw: json, call_id: callId, api_base: base };
+    } catch (err) {
+      lastErr = err;
+      const status = Number(err?.status);
+      const msg = String(err?.message || "");
+      // Wrong-region hosts often return 401 or generic Not Found for US agents.
+      if (
+        status === 401 ||
+        status === 403 ||
+        status === 404 ||
+        /not found|unauthorized|invalid or expired token/i.test(msg)
+      ) {
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw Object.assign(
+    new Error(
+      lastErr?.message ||
+        `Test call failed for agent ${id} (tried US/global/EU). Confirm the agent exists and SYNTHFLOW_API_BASE=https://api.us.synthflow.ai/v2 on the live server.`,
+    ),
+    { status: Number(lastErr?.status) || 404, payload: lastErr?.payload },
+  );
 }
 
 export async function updateAgent(modelId, payload) {
