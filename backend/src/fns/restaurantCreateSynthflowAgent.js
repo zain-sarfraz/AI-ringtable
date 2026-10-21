@@ -164,7 +164,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "place_order",
         description:
-          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN to call until caller explicitly confirms the final spoken summary with quantity and total! Default item quantity is 1. Call once after caller confirms. ALWAYS pass branch_name from Branch ordering (none if no branches). After success: speak EXACTLY the returned order_number from the tool JSON — never invent or reuse an older number. FORBIDDEN wait lines: 'Ek lamha', 'main order darj kar leti hoon', 'Ek chhoti si der', 'bas thodi dair aur'.",
+          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name from Branch ordering (none if none). After success: READ ALOUD the response field \"speak\" (or message) EXACTLY — it already expands the order number digit-by-digit. NEVER invent or change any digit. NEVER reuse an older ORD number. FORBIDDEN wait lines: Ek lamha, main order darj kar leti hoon, Ek chhoti si der, bas thodi dair aur.",
         // Fixed short filler — empty string lets the LLM invent long "please wait" loops
         speech_while_using_the_tool: "Ek second.",
         failure_timeout: 25,

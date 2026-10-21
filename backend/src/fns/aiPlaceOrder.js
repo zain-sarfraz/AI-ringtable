@@ -9,7 +9,11 @@ import {
 } from "../lib/voiceWebhookUtils.js";
 import { createPhoneOrder } from "../lib/phoneOrderService.js";
 import { cleanUrduText } from "../lib/devanagariTransliterator.js";
-import { getCurrencyDetails, spokenPriceHints } from "../lib/restaurantVoiceContext.js";
+import {
+  getCurrencyDetails,
+  spokenPriceHints,
+  speakOrderNumberForPhone,
+} from "../lib/restaurantVoiceContext.js";
 
 export async function aiPlaceOrder(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
@@ -215,17 +219,18 @@ export async function aiPlaceOrder(req, res) {
     const currInfo = getCurrencyDetails(currCode);
     const totalHints = spokenPriceHints(totals.total, currInfo);
     const urduPrice = totalHints.urduSpeak;
-    const enPrice = totalHints.enSpeak;
-    const taxPart = Number(totals.tax || 0);
-    const billBreakdown =
-      `Subtotal ${currInfo.symbol}${Number(totals.subtotal || 0).toFixed(2)}, ` +
-      `tax ${currInfo.symbol}${taxPart.toFixed(2)}, ` +
-      `delivery ${currInfo.symbol}${Number(totals.deliveryFee || 0).toFixed(2)}, ` +
-      `AFTER-TAX total ${enPrice} (Urdu MUST SPEAK: ${urduPrice})`;
+    const orderSpeak = speakOrderNumberForPhone(order.order_number);
+    // Locked script only — no English debug in `message` (LLM paraphrases and invents wrong ORD suffixes).
+    const spokenScript =
+      `Aapka order daraj ho chuka hai. Order number ${orderSpeak} hai. Mehfooz kar lijiye. ` +
+      `Tax shamil karke kul raqam ${urduPrice} hai. Bohot shukriya!` +
+      (branchNote ? ` ${branchNote.trim()}` : "") +
+      (couponNote ? ` ${couponNote.trim()}` : "");
 
     return res.json({
       success: true,
       order_number: order.order_number,
+      order_number_speak: orderSpeak,
       tracking_code: order.tracking_code,
       total: totals.total,
       subtotal: totals.subtotal,
@@ -234,13 +239,8 @@ export async function aiPlaceOrder(req, res) {
       currency: currInfo.code,
       branch_name: assignedBranchName,
       discount_amount: coupon.amount,
-      speak: order.order_number,
-      message:
-        `CRITICAL: Roman Urdu only. Do NOT say Ek lamha / main order darj kar leti hoon / any wait filler. ` +
-        `Speak EXACTLY this (use THIS order_number only, never an older one): ` +
-        `Aapka order daraj ho chuka hai, order number ${order.order_number} hai. Mehfooz kar lijiye. ` +
-        `Tax shamil karke kul raqam ${urduPrice} hai.${branchNote}${couponNote} ` +
-        `(EN check: ${billBreakdown})`,
+      speak: spokenScript,
+      message: `READ ALOUD EXACTLY — zero changes to any digit/word: ${spokenScript}`,
     });
   } catch (e) {
     console.error("❌ Order Error:", e);

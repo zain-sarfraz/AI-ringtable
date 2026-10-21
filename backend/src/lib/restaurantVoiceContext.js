@@ -197,6 +197,27 @@ export function paisaToRomanUrduDigits(cents) {
 }
 
 /**
+ * Phone-safe order number speech. TTS / LLM often mangle "ORD-261021-15" into a wrong suffix
+ * (e.g. saying 04). Force every digit aloud so the agent cannot invent another number.
+ * Example: ORD-261021-15 → "O R D, do chhe ek sifar do ek, ek paanch"
+ */
+export function speakOrderNumberForPhone(orderNumber) {
+  const raw = String(orderNumber || "").trim().toUpperCase();
+  if (!raw) return "";
+  const chunks = [];
+  for (const ch of raw) {
+    if (ch >= "0" && ch <= "9") {
+      chunks.push(URDU_DIGIT[Number(ch)] || ch);
+    } else if (ch >= "A" && ch <= "Z") {
+      chunks.push(ch);
+    } else if (ch === "-") {
+      chunks.push("dash");
+    }
+  }
+  return chunks.join(" ");
+}
+
+/**
  * How the agent should SPEAK a price (Urdu lock vs English lock).
  * Always includes the exact numeric amount so the agent never invents prices.
  * Whole rupees = natural number words; paisay after the point = each digit separately.
@@ -593,9 +614,9 @@ LANGUAGE LOCK — ROMAN URDU ONLY (NO ENGLISH QUESTIONS):
 - Phone: ask once only (see PHONE section above) — "Aapka raabta number bata dijiye?"
 - More items: "Kya aapko aur kuch chahiye?"
 - Confirm: "Aapka order: [qty] [item], [naam], [khud lenge / pate par bhejwa dein], tax shamil karke kul raqam [Urdu AFTER-TAX total] ${currInfo.urduUnit} hai. Kya main yeh order daraj kar doon?"
-- Success: "Aapka order daraj ho chuka hai, order number [order_number] hai. Mehfooz kar lijiye. Bohot shukriya!"
+- Success: speak EXACTLY the place_order tool's "speak" / "order_number_speak" text (digits already expanded). NEVER invent ORD-… numbers. NEVER reuse an older order number from memory.
 - Sizes: Chota / Darmiyana / Bara (never Small/Medium/Large).
-- NEVER output Devanagari Hindi. Use Assalam-o-Alaikum / Shukriya (not Namaste / Dhanyawaad).
+- NEVER output Devanagari Hindi. Use Assalamualaikum / Shukriya (not Namaste / Dhanyawaad).
 =======================================================
 
 =======================================================
@@ -617,7 +638,7 @@ Turn 2 onwards:
 8. Branch ordering section overrides location questions.
 9. Track order: ask "Aapka order number kya hai?", wait, call get_order_status once.
 10. Payment is COD — never ask how they will pay.
-11. After place_order: ONLY "Ek second." then speak EXACTLY the tool's order_number string (e.g. ORD-261021-15). NEVER invent/reuse an older number. NEVER say "Ek lamha" / "main order darj kar leti hoon". If tool fails, say once order save nahi hua.
+11. After place_order: ONLY "Ek second." then READ ALOUD the tool "speak" field EXACTLY (it already has order number digit-by-digit, e.g. "O R D do chhe … ek paanch"). NEVER invent/reuse ORD numbers. NEVER say "Ek lamha" / "main order darj kar leti hoon". If tool fails, say once order save nahi hua.
 12. NEVER invent item prices or mix another dish's AFTER-TAX. Chicken Burger kul raqam = that line's AFTER-TAX MUST SPEAK only.
 
 FINAL: Pure Roman Urdu only. Prices only as "${currInfo.urduUnit}" with Urdu numbers. Never mix English.
