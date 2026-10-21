@@ -520,7 +520,7 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       r.name,
       ...(catalog.items || []).slice(0, 30).map((i) => i.name),
       "order", "burger", "pizza", "rupay", "rupiya", "chota", "darmiyana", "bara",
-      "bhaijwa", "aakar", "lenge", "darj", "shukriya",
+      "bhejwa", "bhaijwa", "aakar", "lenge", "daraj", "darj", "raabta", "rabta", "shukriya", "paanch",
     ].filter(Boolean);
 
     const agentConfig = {
@@ -529,12 +529,13 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       greeting_message: greeting,
       llm: body.llm || "gpt-4.1-Mini",
       language: lang,
-      voice_speed: 0.85,
+      // Slightly under 1.0 keeps clarity without the sluggish / laggy feel of 0.85.
+      voice_speed: 0.95,
       min_words_to_interrupt: 2,
       interruption_fade_out: 1,
       noise_cancellation: "standard",
       suppression_level: 0.3,
-      patience_level: "medium",
+      patience_level: "low",
       transcriber_keywords: menuKeywords,
       send_user_idle_reminders: false,
       voice_id: voiceId || "cgSgspJ2msm6clMCkdW9",
