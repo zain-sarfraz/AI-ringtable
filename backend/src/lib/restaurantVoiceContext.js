@@ -251,23 +251,27 @@ export function buildRestaurantVoiceKnowledge({
   }
 
   const taxRatePct = Number(settings?.tax_rate ?? 0);
+  /** Same tax math as phoneOrderService, then whole rupay for PKR speak (matches dashboard). */
   function afterTaxOne(preTax) {
     const n = Number(preTax || 0);
     if (!taxRatePct) return n;
-    return Number((n * (1 + taxRatePct / 100)).toFixed(2));
+    const tax = Number((n * (taxRatePct / 100)).toFixed(2));
+    const total = Number((n + tax).toFixed(2));
+    if (urduPriceMode) return Math.round(total);
+    return total;
   }
 
   function priceLine(amount) {
     const h = spokenPriceHints(amount, currInfo);
-    // Pre-compute after-tax so the model does not skip / mis-math 8.5% tax
+    // Pre-compute after-tax so the model copies the string (no LLM math → no 1606 vs 1628)
     const after = afterTaxOne(amount);
     const hAfter = spokenPriceHints(after, currInfo);
     if (urduPriceMode) {
       if (taxRatePct > 0 && after !== Number(amount || 0)) {
         return (
           `${h.display} — MUST SPEAK item: "${h.urduSpeak}" | ` +
-          `AFTER-TAX ×1 (no delivery): ${hAfter.display} MUST SPEAK: "${hAfter.urduSpeak}" ` +
-          `(NEVER confirm with only pre-tax)`
+          `AFTER-TAX ×1 (no delivery): ${hAfter.display} — COPY EXACTLY MUST SPEAK: "${hAfter.urduSpeak}" ` +
+          `(do NOT invent another total; NEVER confirm with only pre-tax)`
         );
       }
       return `${h.display} — MUST SPEAK: "${h.urduSpeak}" (NEVER say dollar/cent/$)`;
@@ -275,7 +279,7 @@ export function buildRestaurantVoiceKnowledge({
     if (taxRatePct > 0 && after !== Number(amount || 0)) {
       return (
         `${h.display} (speak Urdu: "${h.urduSpeak}" | speak EN: "${h.enSpeak}") ` +
-        `| AFTER-TAX ×1: ${hAfter.display} (Urdu: "${hAfter.urduSpeak}" | EN: "${hAfter.enSpeak}")`
+        `| AFTER-TAX ×1: ${hAfter.display} — COPY EXACTLY (Urdu: "${hAfter.urduSpeak}" | EN: "${hAfter.enSpeak}")`
       );
     }
     return `${h.display} (speak Urdu: "${h.urduSpeak}" | speak EN: "${h.enSpeak}")`;
@@ -549,10 +553,10 @@ ${currInfo.code === "PKR" || currInfo.code === "INR" ? `- STRICTLY FORBIDDEN: do
 - Paisay rule: after the decimal, read EACH digit one-by-one (43 → "chaar teen paisay"). Do NOT combine into "chalees teen" / "taintalis".` : ""}
 - Example: "The OG Beef ${currInfo.exampleUrdu} ka hai. Aur kuch chahiye?"
 - Menu item prices are BEFORE tax. Tax rate = ${taxRatePct}%.
-- Every menu price line includes "AFTER-TAX ×1" — USE THAT for kul raqam (× quantity). Do not skip tax.
-- Formula if computing yourself: subtotal + (subtotal × ${taxRatePct}%) + delivery fee = AFTER-TAX kul raqam.
+- Every menu price line includes "AFTER-TAX ×1" with a MUST SPEAK string — COPY THAT STRING EXACTLY for kul raqam (× quantity). Never invent numbers like 1606 when the line says 1628.
+- Do NOT recalculate tax in your head. Prefer the printed AFTER-TAX MUST SPEAK.
 - ALWAYS speak AFTER-TAX kul raqam. NEVER confirm with only the pre-tax item sum.
-- Bill: "Tax shamil karke kul raqam [Urdu AFTER-TAX total] ${currInfo.urduUnit} hai."
+- Bill: "Tax shamil karke kul raqam [exact AFTER-TAX MUST SPEAK] ${currInfo.urduUnit} hai."
 =======================================================
 
 =======================================================

@@ -51,7 +51,7 @@ function isFloorStaffOnly(roles) {
   const list = roles || [];
   if (!list.includes("staff")) return false;
   return !list.some((role) =>
-    ["kitchen", "chef", "admin", "manager", "super_admin"].includes(role),
+    ["kitchen", "chef", "admin", "manager", "owner", "super_admin"].includes(role),
   );
 }
 

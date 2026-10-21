@@ -134,11 +134,16 @@ function canSeeNotification(
   if (!role) return false;
   const isReservation = n.type === "new_reservation" || n.source === "reservation";
   const isKitchen = role === "kitchen" || role === "chef";
-  const isAdmin = role === "admin" || role === "manager" || role === "super_admin";
+  // Restaurant owners must hear phone/AI order bells (same as admin/manager).
+  const isAdmin =
+    role === "admin" ||
+    role === "manager" ||
+    role === "owner" ||
+    role === "super_admin";
   const isStaff = role === "staff";
   if (isReservation) return isReceptionist || isAdmin;
   if (isReceptionist) return false;
-  // Phone/AI orders: kitchen + management (+ cashier). Floor staff never sees them.
+  // Phone/AI orders: kitchen + management/owner (+ cashier). Floor staff never sees them.
   if (isCallAgentSource(n.source)) {
     return isKitchen || isAdmin || role === "cashier";
   }
@@ -347,7 +352,11 @@ export function OrderNotificationBell() {
           duration: 7000,
         });
 
-        const isAdmin = role === "admin" || role === "manager" || role === "super_admin";
+        const isAdmin =
+          role === "admin" ||
+          role === "manager" ||
+          role === "owner" ||
+          role === "super_admin";
         if (prefsRef.current.enabled && (!isReservation || isReceptionist || isAdmin)) {
           startRinging();
         }

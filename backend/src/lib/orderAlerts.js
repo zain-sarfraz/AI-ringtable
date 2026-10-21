@@ -105,7 +105,7 @@ function orderAlertMessage(order) {
 
 export async function notifyStaffNewOrder(knex, order) {
   if (!order?.id || !order.restaurant_id) return null;
-  const source = order.source || (order.call_id ? "phone" : null);
+  const source = String(order.source || "").trim() || (order.call_id ? "phone" : null);
   return createNotification(knex, {
     restaurant_id: order.restaurant_id,
     order_id: order.id,
