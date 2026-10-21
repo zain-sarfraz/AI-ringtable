@@ -271,6 +271,26 @@ export function buildRestaurantVoiceKnowledge({
     lines.push(`Minimum order: ${fmtPrice(settings.min_order_amount ?? 0)}`);
     lines.push(`Currently accepting orders: ${settings.is_open === false ? "no" : "yes"}`);
     lines.push("");
+    lines.push("## Bill total (MANDATORY — always speak AFTER-TAX total)");
+    lines.push(
+      `1. Subtotal = sum of ordered item + add-on prices (menu prices are BEFORE tax).`,
+    );
+    lines.push(
+      `2. Tax = subtotal × (${settings.tax_rate ?? 0} / 100). Always apply this tax rate.`,
+    );
+    lines.push(
+      `3. Delivery fee = ${fmtPrice(settings.delivery_fee ?? 0)} only if delivery; pickup = 0.`,
+    );
+    lines.push(
+      `4. Kul raqam / Total = subtotal + tax + delivery fee (minus coupon if any).`,
+    );
+    lines.push(
+      `5. When confirming the order, ALWAYS speak this AFTER-TAX kul raqam — never only the pre-tax item sum.`,
+    );
+    lines.push(
+      `   Example wording: "Items [X], tax shamil karke kul raqam [AFTER-TAX total] ${currInfo.urduUnit} hai."`,
+    );
+    lines.push("");
   }
 
   const variantMap = new Map();
@@ -433,7 +453,7 @@ export function buildRestaurantVoiceKnowledge({
     lines.push("5. Email (optional): \"Raseed ke liye apna email bata sakte hain?\"");
     lines.push("6. Phone: \"Aapka rabta number bata dijiye?\"");
     lines.push("7. Payment is COD — do not ask payment method.");
-    lines.push("8. Before place_order: speak summary in Roman Urdu with kul raqam in rupay, then ask \"Kya main yeh order darj kar doon?\" and WAIT.");
+    lines.push("8. Before place_order: speak summary in Roman Urdu with AFTER-TAX kul raqam (items + tax + delivery if any) in rupay, then ask \"Kya main yeh order darj kar doon?\" and WAIT. Never confirm with pre-tax only.");
   } else {
     lines.push("1. Greet calmly and ask what the caller would like to order.");
     lines.push("2. Capture ordered items, sizes (ONLY if item has sizes in menu), and flavors concisely, and state each item's price as it is ordered. If caller asks for a category (e.g. 'burger') or an unavailable item, list the available items in that category with prices and let them choose.");
@@ -465,6 +485,8 @@ export function defaultSynthflowPrompt(
   const verbPlace = isMale ? "deta hoon" : "deti hoon";
   const verbLook = isMale ? "leta hoon" : "leti hoon";
   const verbTell = isMale ? "deta hoon" : "deti hoon";
+  const taxMatch = String(knowledge || "").match(/Tax rate:\s*([\d.]+)\s*%/i);
+  const taxRatePct = taxMatch ? taxMatch[1] : "0";
   // Urdu-locked restaurants: no English detect/lock branch (stops "Delivery ya pickup?" / "$4.44")
   if (isUrdu) {
     return `You are the polite, calm, direct, and concise AI phone ordering assistant for ${restaurantName}.
@@ -491,13 +513,17 @@ GENDER (${isMale ? "MALE" : "FEMALE"}):
 =======================================================
 
 =======================================================
-CURRENCY (CRITICAL):
+CURRENCY + TAX TOTAL (CRITICAL):
 - Official currency: ${currInfo.code} / Urdu unit: ${currInfo.urduUnit}.
 - Speak ALL prices as natural Roman Urdu numbers + "${currInfo.urduUnit}" (example: "${currInfo.exampleUrdu}").
 ${currInfo.code === "PKR" || currInfo.code === "INR" ? `- STRICTLY FORBIDDEN: dollar, cent, $, Rs spoken as "R S". Say only rupay/rupiya with Urdu numbers.
 - Paisay rule: after the decimal, read EACH digit one-by-one (43 → "chaar teen paisay"). Do NOT combine into "chalees teen" / "taintalis".` : ""}
 - Example: "The OG Beef ${currInfo.exampleUrdu} ka hai. Aur kuch chahiye?"
-- Bill: "Kul raqam [Urdu number] ${currInfo.urduUnit} hai."
+- Menu item prices are BEFORE tax. Tax rate = ${taxRatePct}%.
+- BEFORE confirming / place_order you MUST compute:
+  subtotal (items) + tax (${taxRatePct}% of subtotal) + delivery fee (if delivery) = AFTER-TAX kul raqam.
+- ALWAYS speak that AFTER-TAX kul raqam. NEVER confirm with only the pre-tax item sum.
+- Bill: "Tax shamil karke kul raqam [Urdu AFTER-TAX total] ${currInfo.urduUnit} hai."
 =======================================================
 
 =======================================================
@@ -508,7 +534,7 @@ LANGUAGE LOCK — ROMAN URDU ONLY (NO ENGLISH QUESTIONS):
 - Name: "Aapka naam bata dijiye?"
 - Phone: "Aapka rabta number bata dijiye?"
 - More items: "Kya aapko aur kuch chahiye?"
-- Confirm: "Aapka order: [qty] [item], [naam], [khud lenge / pate par bhaijwa dein], kul raqam [Urdu total] ${currInfo.urduUnit} hai. Kya main yeh order darj kar doon?"
+- Confirm: "Aapka order: [qty] [item], [naam], [khud lenge / pate par bhaijwa dein], tax shamil karke kul raqam [Urdu AFTER-TAX total] ${currInfo.urduUnit} hai. Kya main yeh order darj kar doon?"
 - Success: "Aapka order darj ho chuka hai, order number [order_number] hai. Mehfooz kar lijiye. Bohat shukriya!"
 - Sizes: Chota / Darmiyana / Bara (never Small/Medium/Large).
 - NEVER output Devanagari Hindi. Use Assalam-o-Alaikum / Shukriya (not Namaste / Dhanyawaad).
@@ -675,9 +701,10 @@ Turn 2 onwards (Customer speaks):
 
 7. CONFIRM THE ORDER, THEN SAY THE ORDER NUMBER:
    - REQUIRED BEFORE CALLING place_order (NEVER CALL place_order SILENTLY OR EARLY):
-     * You MUST first speak ONE short summary containing: item quantity, item name, customer name, pickup/delivery, delivery address, and TOTAL BILL:
-       - [Urdu]: "Aapka order: [quantity] [item name], [naam], [khud lenge ya pate par bhaijwa dein], [pata], kul raqam [total] ${currInfo.urduUnit} hai. Kya main yeh order darj kar doon?"
-       - [EN]: "Your order is: [quantity] [item name] (${currInfo.symbol}[total]), for [customer name], [pickup or delivery] at [address]. Total is ${currInfo.symbol}[total] ${currInfo.englishUnit}. Shall I place this order?"
+     * You MUST first speak ONE short summary containing: item quantity, item name, customer name, pickup/delivery, delivery address, and AFTER-TAX TOTAL (items + ${taxRatePct}% tax + delivery if any):
+       - [Urdu]: "Aapka order: [quantity] [item name], [naam], [khud lenge ya pate par bhaijwa dein], [pata], tax shamil karke kul raqam [AFTER-TAX total] ${currInfo.urduUnit} hai. Kya main yeh order darj kar doon?"
+       - [EN]: "Your order is: [quantity] [item name], for [customer name], [pickup or delivery] at [address]. Total after tax is ${currInfo.symbol}[AFTER-TAX total] ${currInfo.englishUnit}. Shall I place this order?"
+     * NEVER speak only the pre-tax item sum as the final bill.
      * STOP AND WAIT in silence for the customer to reply ("haan" / "yes" / "theek hai" / "confirm").
      * ONLY AFTER receiving confirmation, call place_order ONCE with branch_name from Branch ordering. If they said same-number, pass customer_phone "same".
      * STRICTLY FORBIDDEN: NEVER call place_order before this spoken summary is confirmed by the caller!

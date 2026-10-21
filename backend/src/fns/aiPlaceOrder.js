@@ -215,17 +215,29 @@ export async function aiPlaceOrder(req, res) {
     const currInfo = getCurrencyDetails(currCode);
     const urduPrice = `${totals.total.toFixed(0)} ${currInfo.urduUnit}`;
     const enPrice = `${currInfo.symbol}${totals.total.toFixed(2)}`;
+    const taxPart = Number(totals.tax || 0);
+    const billBreakdown =
+      `Subtotal ${currInfo.symbol}${Number(totals.subtotal || 0).toFixed(2)}, ` +
+      `tax ${currInfo.symbol}${taxPart.toFixed(2)}, ` +
+      `delivery ${currInfo.symbol}${Number(totals.deliveryFee || 0).toFixed(2)}, ` +
+      `AFTER-TAX total ${enPrice} (Urdu: ${urduPrice})`;
 
     return res.json({
       success: true,
       order_number: order.order_number,
       tracking_code: order.tracking_code,
       total: totals.total,
+      subtotal: totals.subtotal,
+      tax: totals.tax,
+      delivery_fee: totals.deliveryFee,
       currency: currInfo.code,
       branch_name: assignedBranchName,
       discount_amount: coupon.amount,
       speak: order.order_number,
-      message: `CRITICAL: Reply in the caller's LOCKED language ONLY — do not switch to English or any other language. Say the order number ${order.order_number} and ask them to save it.${branchNote} Total: ${enPrice} (Urdu: ${urduPrice}).${couponNote}`,
+      message:
+        `CRITICAL: Reply in the caller's LOCKED language ONLY — do not switch to English or any other language. ` +
+        `Say the order number ${order.order_number} and ask them to save it.${branchNote} ` +
+        `Bill (must mention AFTER-TAX kul raqam): ${billBreakdown}.${couponNote}`,
     });
   } catch (e) {
     console.error("❌ Order Error:", e);
