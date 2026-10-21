@@ -51,7 +51,8 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
       /^Hi[, ]/i.test(savedGreeting) ||
       /^Hello[, ]/i.test(savedGreeting) ||
       /^Thanks for calling/i.test(savedGreeting) ||
-      /^Assalam-o-Alaikum, main /i.test(savedGreeting) ||
+      /^Assalam-o-Alaikum/i.test(savedGreeting) ||
+      /^Assalamualaikum/i.test(savedGreeting) ||
       /^ہیلو،/i.test(savedGreeting)
         ? defaultSynthflowGreeting(r.name, agentLanguage, voiceGender)
         : savedGreeting;
