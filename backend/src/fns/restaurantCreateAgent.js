@@ -1,4 +1,5 @@
 import { getKnex } from "../db.js";
+import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 const EL = "https://api.elevenlabs.io";
 
@@ -11,6 +12,7 @@ function defaultFirstMessage(name) {
 
 export async function restaurantCreateAgent(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  if (rejectVoiceSyncIfDisabled(res)) return;
   try {
     const knex = getKnex();
     const body = req.body || {};

@@ -9,12 +9,14 @@ import {
   isMaleVoice,
 } from "../lib/restaurantVoiceContext.js";
 import { refreshSynthflowPlaceOrderTool } from "./restaurantCreateSynthflowAgent.js";
+import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 /**
  * Refresh Synthflow agent prompt with current menu + coupons/promotions.
  */
 export async function syncRestaurantMenuToSynthflow(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  if (rejectVoiceSyncIfDisabled(res)) return;
   try {
     const knex = getKnex();
     const body = req.body || {};
@@ -31,22 +33,25 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
 
     const catalog = await loadRestaurantVoiceCatalog(knex, restaurant_id);
     const currency = catalog.settings?.currency || r.currency || "USD";
+    const agentLanguage = r.agent_language || "ur";
+    const preferUrduPrices =
+      !agentLanguage || String(agentLanguage).toLowerCase().startsWith("ur") || currency === "PKR";
     const knowledge = buildRestaurantVoiceKnowledge({
       restaurantName: r.name,
       currency,
+      preferUrduPrices,
       ...catalog,
     });
-    const agentLanguage = r.agent_language || "ur";
     const voiceGender = isMaleVoice(r.agent_voice_id) ? "male" : "female";
     const lang = toSynthflowLanguage(agentLanguage);
     const savedGreeting = (r.agent_first_message || "").trim();
-    // Refresh auto-generated greetings; keep only a truly custom first message.
+    // Refresh auto-generated / English greetings; keep only a truly custom first message.
     const greeting =
       !savedGreeting ||
-      /^Hi, thanks for calling/i.test(savedGreeting) ||
-      /^Hi, I am calling from /i.test(savedGreeting) ||
+      /^Hi[, ]/i.test(savedGreeting) ||
+      /^Hello[, ]/i.test(savedGreeting) ||
       /^Thanks for calling/i.test(savedGreeting) ||
-      /^Hello, main /i.test(savedGreeting) ||
+      /^Assalam-o-Alaikum, main /i.test(savedGreeting) ||
       /^ہیلو،/i.test(savedGreeting)
         ? defaultSynthflowGreeting(r.name, agentLanguage, voiceGender)
         : savedGreeting;
@@ -58,7 +63,8 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
     const menuKeywords = [
       r.name,
       ...(catalog.items || []).slice(0, 30).map((i) => i.name),
-      "order", "burger", "pizza", "rupay", "chota", "darmiyana", "bara", "delivery", "pickup"
+      "order", "burger", "pizza", "rupay", "rupiya", "chota", "darmiyana", "bara",
+      "bhaijwa", "aakar", "lenge", "darj", "shukriya",
     ].filter(Boolean);
 
     await updateAgent(r.synthflow_agent_id, {
@@ -72,6 +78,8 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
         prompt,
         greeting_message: greeting,
         language: lang,
+        // Default: ElevenLabs Jessica (cgSgsp…) — strong multilingual EN + South Asian / Urdu phone tone.
+        // Prefer Indian-accent or multilingual conversational voices in Synthflow if Jessica sounds too Western.
         voice_id: r.agent_voice_id || "cgSgspJ2msm6clMCkdW9",
         voice_gender: voiceGender,
         voice_speed: 0.85,
@@ -94,16 +102,38 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
       updated_at: knex.fn.now(),
     });
 
+    let toolWarning = null;
+    const publicApi = String(process.env.PUBLIC_API_URL || "").trim().replace(/\/$/, "");
     try {
-      await refreshSynthflowPlaceOrderTool(r);
+      const actionIds = await refreshSynthflowPlaceOrderTool(r);
+      if (actionIds) {
+        await knex("restaurants").where({ id: restaurant_id }).update({
+          synthflow_action_ids: knex.raw("?::jsonb", [JSON.stringify(actionIds || [])]),
+          updated_at: knex.fn.now(),
+        });
+      }
     } catch (toolErr) {
+      toolWarning = toolErr.message;
       console.warn("Tool refresh error during menu sync:", toolErr.message);
     }
+
+    const ordersLandLocal =
+      String(process.env.APP_ENV || "").toLowerCase() === "development" &&
+      publicApi &&
+      !/ringtable\.io/i.test(publicApi);
 
     return res.json({
       success: true,
       synthflow_agent_id: r.synthflow_agent_id,
       synced_at: new Date().toISOString(),
+      public_api_url: publicApi || null,
+      place_order_url: publicApi ? `${publicApi}/api/functions/ai-place-order` : null,
+      post_call_webhook_url: webhookUrl || null,
+      orders_land_on: ordersLandLocal ? "local" : "remote",
+      warning: toolWarning,
+      message: ordersLandLocal
+        ? "Menu synced. Test-call orders will be saved to your LOCAL database — open http://localhost:8080 Orders (not ringtable.io)."
+        : "Menu synced.",
     });
   } catch (e) {
     console.error("Sync Synthflow menu error:", e);

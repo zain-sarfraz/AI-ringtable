@@ -3,12 +3,31 @@ import { supabase } from "@/integrations/supabase/client";
 export type MenuVoiceSyncResult = {
   success: boolean;
   provider: "synthflow" | "elevenlabs" | "none";
+  skipped?: boolean;
   error?: string;
 };
+
+type VoiceFnPayload = {
+  success?: boolean;
+  skipped?: boolean;
+  code?: string;
+  error?: string;
+  warning?: string;
+  message?: string;
+};
+
+function isVoiceSyncSkipped(data: VoiceFnPayload | null | undefined): boolean {
+  return Boolean(
+    data?.skipped ||
+      data?.code === "VOICE_SYNC_DISABLED" ||
+      /voice sync disabled/i.test(String(data?.error || data?.warning || data?.message || "")),
+  );
+}
 
 /**
  * Push current menu/inventory to the restaurant's voice agent.
  * Prefers Synthflow when configured; otherwise ElevenLabs.
+ * In development (voice sync gated), returns success + skipped — menu save still works.
  */
 export async function syncRestaurantMenuToVoiceAgent(
   restaurantId: string,
@@ -32,13 +51,22 @@ export async function syncRestaurantMenuToVoiceAgent(
     const { data, error } = await supabase.functions.invoke("sync-restaurant-menu-to-synthflow", {
       body: { restaurant_id: restaurantId },
     });
-    if (error || (data as { success?: boolean })?.success === false) {
+    const payload = data as VoiceFnPayload | null;
+    if (isVoiceSyncSkipped(payload)) {
+      return {
+        success: true,
+        skipped: true,
+        provider: "synthflow",
+        error: payload?.warning || payload?.message || payload?.error,
+      };
+    }
+    if (error || payload?.success === false) {
       return {
         success: false,
         provider: "synthflow",
         error:
           error?.message ||
-          (data as { error?: string })?.error ||
+          payload?.error ||
           "Synthflow sync failed",
       };
     }
@@ -50,13 +78,22 @@ export async function syncRestaurantMenuToVoiceAgent(
     const { data, error } = await supabase.functions.invoke("sync-restaurant-menu-to-agent", {
       body: { restaurant_id: restaurantId },
     });
-    if (error || (data as { success?: boolean })?.success === false) {
+    const payload = data as VoiceFnPayload | null;
+    if (isVoiceSyncSkipped(payload)) {
+      return {
+        success: true,
+        skipped: true,
+        provider: "elevenlabs",
+        error: payload?.warning || payload?.message || payload?.error,
+      };
+    }
+    if (error || payload?.success === false) {
       return {
         success: false,
         provider: "elevenlabs",
         error:
           error?.message ||
-          (data as { error?: string })?.error ||
+          payload?.error ||
           "ElevenLabs sync failed",
       };
     }

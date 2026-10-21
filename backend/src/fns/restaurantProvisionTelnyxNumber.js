@@ -2,9 +2,11 @@ import { getKnex } from "../db.js";
 import { searchAvailableNumbers, purchaseNumber, listOwnedNumbers } from "../lib/telnyxClient.js";
 import { importCustomNumber, updateAgent, findAssistantByPhone } from "../lib/synthflowClient.js";
 import { normalizeE164 } from "../lib/voiceWebhookUtils.js";
+import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 export async function restaurantTelnyxSearch(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  if (rejectVoiceSyncIfDisabled(res, { hard: true })) return;
   try {
     const body = req.body || {};
     const numbers = await searchAvailableNumbers({
@@ -22,6 +24,7 @@ export async function restaurantTelnyxSearch(req, res) {
 
 export async function restaurantTelnyxList(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  if (rejectVoiceSyncIfDisabled(res, { hard: true })) return;
   try {
     const numbers = await listOwnedNumbers(100);
     return res.json({ success: true, numbers });
@@ -36,6 +39,8 @@ export async function restaurantTelnyxList(req, res) {
  */
 export async function restaurantProvisionTelnyxNumber(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  // Hard block in development — never buy/move live phone numbers from a laptop
+  if (rejectVoiceSyncIfDisabled(res, { hard: true })) return;
   try {
     const knex = getKnex();
     const body = req.body || {};
@@ -48,49 +53,37 @@ export async function restaurantProvisionTelnyxNumber(req, res) {
     let phone = normalizeE164(body.phone_number || body.telnyx_phone_number || "");
     if (!phone) throw new Error("phone_number is required (E.164)");
 
-    // If already assigned to another restaurant:
-    // When skip_purchase or reassign is true (e.g. moving the 1 demo number to another restaurant),
-    // automatically unassign from the previous restaurant so it can be assigned here.
+    // Never steal a number already assigned to another restaurant (even with reassign flags).
     const taken = await knex("restaurants")
       .where({ telnyx_phone_number: phone })
       .whereNot({ id: restaurant_id })
       .first();
 
-    let reassignedFrom = null;
     if (taken) {
-      if (body.skip_purchase || body.reassign) {
-        // Detach phone from previous restaurant's Synthflow agent
-        if (taken.synthflow_agent_id) {
-          try {
-            await updateAgent(taken.synthflow_agent_id, { phone_number: null });
-            console.log(`[restaurantProvisionTelnyxNumber] Detached ${phone} from Synthflow agent ${taken.synthflow_agent_id}`);
-          } catch (e) {
-            console.warn("Could not detach phone from previous Synthflow agent:", e.message);
-          }
-        }
-        await knex("restaurants").where({ id: taken.id }).update({
-          telnyx_phone_number: null,
-          telnyx_phone_number_id: null,
-          telnyx_order_id: null,
-          updated_at: knex.fn.now(),
-        });
-        reassignedFrom = taken.name || `Restaurant ID ${taken.id}`;
-        console.log(`[restaurantProvisionTelnyxNumber] Reassigned number ${phone} from ${reassignedFrom} to ${r.name}`);
-      } else {
-        throw new Error(`Number ${phone} is already assigned to another restaurant (${taken.name || taken.id})`);
-      }
+      throw new Error(
+        `Number ${phone} is already assigned to another restaurant (${taken.name || taken.id}). Unassign it from that restaurant first — automatic reassignment is disabled.`,
+      );
     }
 
-    // Also verify if any assistant in Synthflow currently holds this number and detach it
+    // Never detach a phone from another Synthflow agent. Refuse if another assistant owns it.
     try {
       const existingAss = await findAssistantByPhone(phone);
-      if (existingAss?.model_id && existingAss.model_id !== r.synthflow_agent_id) {
-        await updateAgent(existingAss.model_id, { phone_number: null });
-        console.log(`[restaurantProvisionTelnyxNumber] Detached ${phone} from previous Synthflow assistant ${existingAss.model_id}`);
+      if (existingAss?.model_id && r.synthflow_agent_id && existingAss.model_id !== r.synthflow_agent_id) {
+        throw new Error(
+          `Number ${phone} is already attached to Synthflow agent ${existingAss.model_id}. Detach it in Synthflow first — this app will not move phones between agents.`,
+        );
+      }
+      if (existingAss?.model_id && !r.synthflow_agent_id) {
+        throw new Error(
+          `Number ${phone} is already attached to Synthflow agent ${existingAss.model_id}. Link that agent ID to this restaurant, or detach the number in Synthflow first.`,
+        );
       }
     } catch (e) {
-      console.warn("Could not detach phone from previous Synthflow assistant:", e.message);
+      if (/already assigned|already attached/i.test(String(e.message || ""))) throw e;
+      console.warn("Could not verify Synthflow phone ownership:", e.message);
     }
+
+    const reassignedFrom = null;
 
     let provisioned = null;
     if (body.skip_purchase) {
@@ -119,13 +112,21 @@ export async function restaurantProvisionTelnyxNumber(req, res) {
       console.warn("Synthflow number import warning:", importWarning);
     }
 
-    // Attach to current restaurant's Synthflow agent if one already exists
+    // Attach only to THIS restaurant's existing agent — never move a number from another agent.
+    let attachWarning = importWarning;
     if (r.synthflow_agent_id) {
       try {
         await updateAgent(r.synthflow_agent_id, { phone_number: phone });
         console.log(`[restaurantProvisionTelnyxNumber] Attached ${phone} to current agent ${r.synthflow_agent_id}`);
       } catch (attErr) {
-        console.warn(`[restaurantProvisionTelnyxNumber] Agent attach warning:`, attErr.message);
+        const msg = String(attErr?.message || attErr || "");
+        if (/already assigned|already attached|belongs to another|in use/i.test(msg)) {
+          throw new Error(
+            `Refusing to move ${phone}: Synthflow reports it is already on another agent. Detach it there first — numbers are never reassigned automatically.`,
+          );
+        }
+        attachWarning = `Number saved on restaurant but Synthflow attach failed: ${msg}`;
+        console.warn(`[restaurantProvisionTelnyxNumber] Agent attach warning:`, msg);
       }
     }
 
@@ -144,10 +145,8 @@ export async function restaurantProvisionTelnyxNumber(req, res) {
       telnyx_phone_number_id: provisioned.phone_number_id,
       telnyx_order_id: provisioned.order_id,
       synthflow_import: synthflowImport,
-      reassigned_from: reassignedFrom,
-      warning: reassignedFrom
-        ? `Number was reassigned from ${reassignedFrom} to ${r.name}.`
-        : importWarning,
+      reassigned_from: null,
+      warning: attachWarning,
     });
   } catch (e) {
     console.error("Provision Telnyx number error:", e);
@@ -160,6 +159,7 @@ export async function restaurantProvisionTelnyxNumber(req, res) {
  */
 export async function restaurantUnassignTelnyxNumber(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  if (rejectVoiceSyncIfDisabled(res, { hard: true })) return;
   try {
     const knex = getKnex();
     const body = req.body || {};

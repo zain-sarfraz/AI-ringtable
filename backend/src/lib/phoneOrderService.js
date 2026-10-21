@@ -160,7 +160,7 @@ export function normalizeSpokenItemName(rawName) {
   let s = String(rawName || "").trim();
   s = s.replace(/\b(the\s+)?og\s*(20|twenty|बीस|bees)\b/gi, "The OG Beef");
   s = s.replace(/\boklahoma\s*(20|twenty|बीस|bees)\b/gi, "Oklahoma Beef");
-  s = s.replace(/\b(20|twenty|बीस|bees)\s+burger\b/gi, "The OG Beef");
+  s = s.replace(/\b(20|twenty|बीस|bees)\s+burger\b/gi, "Beef Burger");
   return s;
 }
 

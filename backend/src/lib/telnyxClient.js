@@ -1,3 +1,5 @@
+import { assertVoiceSyncAllowed } from "./voiceSyncGuard.js";
+
 const TELNYX_API = "https://api.telnyx.com/v2";
 
 function apiKey() {
@@ -11,6 +13,7 @@ function apiKey() {
  * @param {{ method?: string; body?: unknown; query?: Record<string, string | number | undefined> }} [opts]
  */
 export async function telnyxRequest(path, opts = {}) {
+  assertVoiceSyncAllowed();
   const url = new URL(path.startsWith("http") ? path : `${TELNYX_API}${path}`);
   if (opts.query) {
     for (const [k, v] of Object.entries(opts.query)) {

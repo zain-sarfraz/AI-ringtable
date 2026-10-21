@@ -3,10 +3,13 @@
  * old AI Restaurant backend to Ringtable's PUBLIC_API_URL, and refresh prompts
  * so the restaurant name in the agent matches the DB.
  *
- *   node scripts/sync-synthflow-to-ringtable.js
+ *   APP_ENV=production node scripts/sync-synthflow-to-ringtable.js
  *   node scripts/sync-synthflow-to-ringtable.js --also-stale-assistants
+ *
+ * Outside production: pass --confirm-production and type CONFIRM (still subject
+ * to assertVoiceSyncAllowed — never use ringtable.io PUBLIC_API_URL from a laptop).
  */
-import "dotenv/config";
+import "../src/loadEnv.js";
 import { getKnex } from "../src/db.js";
 import {
   updateAgent,
@@ -17,6 +20,7 @@ import {
 } from "../src/lib/synthflowClient.js";
 import { refreshSynthflowPlaceOrderTool } from "../src/fns/restaurantCreateSynthflowAgent.js";
 import { pushBranchListToAgent } from "../src/lib/syncAgentBranches.js";
+import { assertBulkVoiceScriptAllowed } from "../src/lib/voiceSyncGuard.js";
 
 const OLD_HOST_RE = /airestaurantbackend\.toolkitpro\.cloud|airestaurant\.toolkitpro\.cloud/i;
 const alsoStale = process.argv.includes("--also-stale-assistants");
@@ -74,14 +78,18 @@ async function patchActionUrlIfStale(actionId, desiredUrl) {
 }
 
 async function main() {
+  await assertBulkVoiceScriptAllowed(process.argv);
+
   const webhookUrl = postCallWebhookUrl();
   const apiBase = String(process.env.PUBLIC_API_URL || "").trim().replace(/\/$/, "");
   if (!webhookUrl || !apiBase) {
-    console.error("PUBLIC_API_URL is missing. Set it in backend/.env first (https://ringtable.io/backend).");
+    console.error("PUBLIC_API_URL is missing. Set it in backend/.env (production: https://ringtable.io/backend).");
     process.exit(1);
   }
   if (OLD_HOST_RE.test(apiBase)) {
-    console.error(`PUBLIC_API_URL still points at AI Restaurant (${apiBase}). Change it to https://ringtable.io/backend`);
+    console.error(
+      `PUBLIC_API_URL still points at AI Restaurant (${apiBase}). Change it to your Ringtable PUBLIC_API_URL.`,
+    );
     process.exit(1);
   }
 
@@ -185,6 +193,6 @@ async function main() {
 }
 
 main().catch(async (e) => {
-  console.error(e);
+  console.error(e.message || e);
   process.exit(1);
 });

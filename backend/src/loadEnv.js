@@ -38,4 +38,18 @@ if (!loadedFrom) {
   console.log(`[env] Loaded ${loadedFrom}`);
 }
 
+// Normalize APP_ENV early (safe default = development). Production hosts MUST set APP_ENV=production.
+const rawAppEnv = String(process.env.APP_ENV || "").trim().toLowerCase();
+if (!rawAppEnv) {
+  process.env.APP_ENV = "development";
+} else if (rawAppEnv === "prod") {
+  process.env.APP_ENV = "production";
+} else if (rawAppEnv === "dev") {
+  process.env.APP_ENV = "development";
+} else {
+  process.env.APP_ENV = rawAppEnv;
+}
+
+console.log(`[env] APP_ENV=${process.env.APP_ENV}`);
+
 export { backendRoot, loadedFrom as envFilePath };

@@ -78,7 +78,8 @@ export async function createNotification(knex, {
         type,
         title,
         message,
-        metadata: JSON.stringify(metadata || {}),
+        // jsonb column — pass object (stringify would double-encode)
+        metadata: metadata || {},
         is_read: false,
         created_at: new Date(),
         updated_at: new Date(),

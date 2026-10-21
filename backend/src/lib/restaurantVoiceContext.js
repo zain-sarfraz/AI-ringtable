@@ -106,12 +106,126 @@ export function getCurrencyDetails(rawCurrency = "USD") {
   );
 }
 
+const URDU_ONES = [
+  "",
+  "ek",
+  "do",
+  "teen",
+  "chaar",
+  "paanch",
+  "chhe",
+  "saat",
+  "aath",
+  "nau",
+  "das",
+  "gyarah",
+  "barah",
+  "terah",
+  "chaudah",
+  "pandrah",
+  "solah",
+  "satrah",
+  "atharah",
+  "unnees",
+];
+const URDU_TENS = ["", "", "bees", "tees", "chalees", "pachaas", "saath", "sattar", "assi", "nawwe"];
+const URDU_TEENS_EXTRA = {
+  20: "bees",
+  30: "tees",
+  40: "chalees",
+  50: "pachaas",
+  60: "saath",
+  70: "sattar",
+  80: "assi",
+  90: "nawwe",
+};
+
+/** Speak a whole number in natural Roman Urdu (best-effort for menu prices). */
+export function numberToRomanUrdu(n) {
+  const num = Math.round(Number(n) || 0);
+  if (num < 0) return String(num);
+  if (num < 20) return URDU_ONES[num] || String(num);
+  if (num < 100) {
+    if (URDU_TEENS_EXTRA[num]) return URDU_TEENS_EXTRA[num];
+    const t = Math.floor(num / 10);
+    const o = num % 10;
+    return o ? `${URDU_TENS[t]} ${URDU_ONES[o]}` : URDU_TENS[t];
+  }
+  if (num < 1000) {
+    const h = Math.floor(num / 100);
+    const rest = num % 100;
+    const head = h === 1 ? "ek sau" : `${URDU_ONES[h] || h} sau`;
+    return rest ? `${head} ${numberToRomanUrdu(rest)}` : head;
+  }
+  if (num < 100000) {
+    const th = Math.floor(num / 1000);
+    const rest = num % 1000;
+    const head = th === 1 ? "ek hazaar" : `${numberToRomanUrdu(th)} hazaar`;
+    return rest ? `${head} ${numberToRomanUrdu(rest)}` : head;
+  }
+  return String(num);
+}
+
+const URDU_DIGIT = [
+  "sifar",
+  "ek",
+  "do",
+  "teen",
+  "chaar",
+  "paanch",
+  "chhe",
+  "saat",
+  "aath",
+  "nau",
+];
+
+/**
+ * Speak paisa/cents digit-by-digit (e.g. 43 → "chaar teen", not "chalees teen").
+ * Always two digits so 05 → "sifar paanch".
+ */
+export function paisaToRomanUrduDigits(cents) {
+  const n = Math.max(0, Math.min(99, Math.round(Number(cents) || 0)));
+  const padded = String(n).padStart(2, "0");
+  return [...padded].map((d) => URDU_DIGIT[Number(d)] || d).join(" ");
+}
+
+/**
+ * How the agent should SPEAK a price (Urdu lock vs English lock).
+ * Always includes the exact numeric amount so the agent never invents prices.
+ * Whole rupees = natural number words; paisay after the point = each digit separately.
+ */
+export function spokenPriceHints(amount, currInfo) {
+  const num = Number(amount || 0);
+  const whole = Math.floor(Math.abs(num));
+  const cents = Math.round((Math.abs(num) - whole) * 100);
+  const display =
+    num % 1 === 0
+      ? `${currInfo.symbol}${whole}`
+      : `${currInfo.symbol}${num.toFixed(2)}`;
+  const urduWords = numberToRomanUrdu(whole);
+  let urduSpeak = `${urduWords} ${currInfo.urduUnit}`;
+  if (cents > 0 && currInfo.code === "USD") {
+    urduSpeak += ` ${paisaToRomanUrduDigits(cents)} cent`;
+  } else if (cents > 0 && (currInfo.code === "PKR" || currInfo.code === "INR")) {
+    // Point ke baad: har digit alag (43 → "chaar teen paisay", not "chalees teen")
+    urduSpeak += ` ${paisaToRomanUrduDigits(cents)} paisay`;
+  }
+  const enSpeak =
+    cents > 0
+      ? `${currInfo.symbol}${num.toFixed(2)}`
+      : `${currInfo.symbol}${whole}`;
+  return { display, urduSpeak, enSpeak };
+}
+
 /**
  * Build menu, sizes, flavors, addons, and coupons knowledge text embedded into Synthflow & ElevenLabs agent prompts.
+ * @param {object} opts
+ * @param {string} [opts.currency] - Explicit currency (restaurants.currency). Wins over settings.currency.
  */
 export function buildRestaurantVoiceKnowledge({
   restaurantName,
   settings,
+  currency: currencyOverride,
   categories,
   items,
   deals,
@@ -120,9 +234,12 @@ export function buildRestaurantVoiceKnowledge({
   addons = [],
   itemAddons = [],
   branches = [],
+  preferUrduPrices = false,
 }) {
-  const currency = settings?.currency || "USD";
+  const currency = currencyOverride || settings?.currency || "USD";
   const currInfo = getCurrencyDetails(currency);
+  const urduPriceMode =
+    preferUrduPrices || currInfo.code === "PKR" || currInfo.code === "INR";
 
   function fmtPrice(amount) {
     const num = Number(amount || 0);
@@ -131,6 +248,15 @@ export function buildRestaurantVoiceKnowledge({
       return `${currInfo.symbol}${val}`;
     }
     return `${currInfo.symbol} ${val}`;
+  }
+
+  function priceLine(amount) {
+    const h = spokenPriceHints(amount, currInfo);
+    // For PKR/Urdu restaurants, never tempt the model with "$" English speak hints
+    if (urduPriceMode) {
+      return `${h.display} — MUST SPEAK: "${h.urduSpeak}" (NEVER say dollar/cent/$)`;
+    }
+    return `${h.display} (speak Urdu: "${h.urduSpeak}" | speak EN: "${h.enSpeak}")`;
   }
 
   const lines = [];
@@ -196,17 +322,16 @@ export function buildRestaurantVoiceKnowledge({
 
     if (sizes.length > 0) {
       itemLines.push(`- **${it.name}**${desc}${tags ? ` [${tags}]` : ""}`);
-      itemLines.push(`  * EXACT PRICES BY SIZE (Quote EXACT price for chosen size):`);
+      itemLines.push(`  * EXACT PRICES BY SIZE (speak the EXACT amount for the chosen size — never invent or round differently):`);
       for (const s of sizes) {
         const sizeLabel = s.measurement ? `${s.name} (${s.measurement})` : s.name;
-        const sizePrice = fmtPrice(s.price);
-        itemLines.push(`    - ${sizeLabel}: ${sizePrice}`);
+        itemLines.push(`    - ${sizeLabel}: ${priceLine(s.price)}`);
       }
       if (allFlavorNames.length > 0) {
         itemLines.push(`  * FLAVORS EXCLUSIVE TO ${it.name.toUpperCase()} (ONLY list these flavors when asked about ${it.name}): ${allFlavorNames.join(", ")}`);
       }
     } else {
-      itemLines.push(`- **${it.name}** — Price: ${fmtPrice(it.price)}${desc}${tags ? ` [${tags}]` : ""}`);
+      itemLines.push(`- **${it.name}** — Price: ${priceLine(it.price)}${desc}${tags ? ` [${tags}]` : ""}`);
       if (allFlavorNames.length > 0) {
         itemLines.push(`  * FLAVORS / VARIETIES FOR ${it.name.toUpperCase()}: ${allFlavorNames.join(", ")}`);
       }
@@ -214,7 +339,7 @@ export function buildRestaurantVoiceKnowledge({
 
     if (itemAds.length > 0) {
       const adList = itemAds
-        .map((a) => `${a.name} (+${fmtPrice(a.price)})`)
+        .map((a) => `${a.name} (+${priceLine(a.price)})`)
         .join(", ");
       itemLines.push(`  * Available Sauces & Add-ons: ${adList}`);
     }
@@ -244,9 +369,12 @@ export function buildRestaurantVoiceKnowledge({
 
   if (addons?.length) {
     lines.push("");
-    lines.push("## Sauces & Extra Add-ons");
+    lines.push("## Sauces & Extra Add-ons (REFERENCE ONLY)");
+    lines.push(
+      "CRITICAL: Only offer an add-on if it appears under that specific item's \"Available Sauces & Add-ons\" line above. NEVER offer a random add-on from this list for an item that does not list it.",
+    );
     for (const ad of addons) {
-      lines.push(`- ${ad.name}: +${fmtPrice(ad.price)}${ad.description ? ` (${ad.description})` : ""}`);
+      lines.push(`- ${ad.name}: +${priceLine(ad.price)}${ad.description ? ` (${ad.description})` : ""}`);
     }
   }
 
@@ -297,14 +425,25 @@ export function buildRestaurantVoiceKnowledge({
   lines.push(branchOrderingSection(branches));
   lines.push("");
   lines.push("## Fast Ordering Protocol");
-  lines.push("1. Greet calmly and ask what the caller would like to order.");
-  lines.push("2. Capture ordered items, sizes (ONLY if item has sizes in menu), and flavors concisely, and state each item's price as it is ordered. If caller asks for a category (e.g. 'burger') or an unavailable item, list the available items in that category with prices and let them choose.");
-  lines.push("3. Collect customer name (accept ANY name on first try, even a single word like 'Akbar' — never ask again or reject it).");
-  lines.push("4. Ask delivery or pickup in caller's language, then follow Branch ordering: ask area/city ONLY if that section lists multiple locations; if it says no branches, do not ask. For delivery, then accept the street address on the first try. For pickup, do not ask for a street address.");
-  lines.push("5. Ask for email address for receipt (if provided note it down, if caller skips/declines proceed without assigning any fake email).");
-  lines.push("6. Collect contact phone number.");
-  lines.push("7. Payment is standard Cash on Delivery (COD) — do NOT interrogate caller to choose payment method.");
-  lines.push("8. Complete Order Summary & Confirmation (MANDATORY BEFORE CALLING place_order): Before you call place_order, you MUST speak ONE complete summary containing: ordered items with EXACT QUANTITIES (e.g. '1 The OG Beef burger'), customer name, pickup or delivery, and total bill amount. Then ask: 'Kya main yeh order darj kar doon?' (or 'Shall I place this order?') and STOP to wait for customer confirmation. NEVER call place_order before hearing their confirmation!");
+  if (urduPriceMode) {
+    lines.push("1. Greet calmly in Roman Urdu and ask what the caller would like to order.");
+    lines.push("2. Capture ordered items/sizes/flavors from THIS menu only. Speak each price using the MUST SPEAK Urdu hint (e.g. 'paanch sau rupay'). NEVER say dollar, cent, or $.");
+    lines.push("3. Collect customer name (accept ANY name on first try).");
+    lines.push("4. Ask fulfillment ONLY in Urdu: \"Kya yeh aapke pate par bhaijwa dein ya aap khud aakar lenge?\" NEVER say \"Delivery\" or \"Pickup\". Then follow Branch ordering.");
+    lines.push("5. Email (optional): \"Raseed ke liye apna email bata sakte hain?\"");
+    lines.push("6. Phone: \"Aapka rabta number bata dijiye?\"");
+    lines.push("7. Payment is COD — do not ask payment method.");
+    lines.push("8. Before place_order: speak summary in Roman Urdu with kul raqam in rupay, then ask \"Kya main yeh order darj kar doon?\" and WAIT.");
+  } else {
+    lines.push("1. Greet calmly and ask what the caller would like to order.");
+    lines.push("2. Capture ordered items, sizes (ONLY if item has sizes in menu), and flavors concisely, and state each item's price as it is ordered. If caller asks for a category (e.g. 'burger') or an unavailable item, list the available items in that category with prices and let them choose.");
+    lines.push("3. Collect customer name (accept ANY name on first try, even a single word like 'Akbar' — never ask again or reject it).");
+    lines.push("4. Ask delivery or pickup in caller's language, then follow Branch ordering: ask area/city ONLY if that section lists multiple locations; if it says no branches, do not ask. For delivery, then accept the street address on the first try. For pickup, do not ask for a street address.");
+    lines.push("5. Ask for email address for receipt (if provided note it down, if caller skips/declines proceed without assigning any fake email).");
+    lines.push("6. Collect contact phone number.");
+    lines.push("7. Payment is standard Cash on Delivery (COD) — do NOT interrogate caller to choose payment method.");
+    lines.push("8. Complete Order Summary & Confirmation (MANDATORY BEFORE CALLING place_order): Before you call place_order, you MUST speak ONE complete summary containing: ordered items with EXACT QUANTITIES (e.g. '1 [Item Name]'), customer name, pickup or delivery, and total bill amount. Then ask: 'Kya main yeh order darj kar doon?' (or 'Shall I place this order?') and STOP to wait for customer confirmation. NEVER call place_order before hearing their confirmation!");
+  }
 
   return lines.join("\n");
 }
@@ -318,9 +457,81 @@ export function defaultSynthflowPrompt(
 ) {
   const currInfo = getCurrencyDetails(currency);
   const isMale = String(gender).toLowerCase() === "male";
-  const isUrdu = !language || String(language).toLowerCase().startsWith("ur");
-  const isEnglish = String(language).toLowerCase() === "en";
+  const langKey = String(language || "ur").toLowerCase();
+  const isUrdu = !language || langKey.startsWith("ur");
+  const isEnglish = langKey === "en";
   const greeting = defaultSynthflowGreeting(restaurantName, language, gender);
+  const verbHelp = isMale ? "sakta hoon" : "sakti hoon";
+  const verbPlace = isMale ? "deta hoon" : "deti hoon";
+  const verbLook = isMale ? "leta hoon" : "leti hoon";
+  const verbTell = isMale ? "deta hoon" : "deti hoon";
+  // Urdu-locked restaurants: no English detect/lock branch (stops "Delivery ya pickup?" / "$4.44")
+  if (isUrdu) {
+    return `You are the polite, calm, direct, and concise AI phone ordering assistant for ${restaurantName}.
+
+PRIMARY MISSION:
+Help callers with food orders, order tracking, and table reservations — speaking ONLY smooth Conversational Roman Urdu.
+
+=======================================================
+SPEECH FLUENCY (CRITICAL):
+- Speak like a real Pakistani restaurant order-taker: warm, smooth, confident — never robotic or word-by-word.
+- Short natural sentences. Connectors: "Ji", "Theek hai", "Bohat khoob", "Zaroor".
+- Prices: use the exact MUST SPEAK hint. Whole rupay as natural words (e.g. "paanch sau rupay"). Paisay after the point = EACH DIGIT separately (e.g. Rs 3.43 → "teen rupay chaar teen paisay", NEVER "chalees teen"). NEVER say dollar, cent, or $.
+- Dish names may stay as written on the menu; EVERY other word must be Roman Urdu.
+=======================================================
+
+=======================================================
+GENDER (${isMale ? "MALE" : "FEMALE"}):
+- ALWAYS use ${isMale ? "masculine" : "feminine"} Urdu verb endings.
+- "Main aapki kya madad kar ${verbHelp}?"
+- "Main aapka order darj kar ${verbPlace}."
+- "Main abhi dekh ${verbLook}."
+- "Main aapko bata ${verbTell}."
+- NEVER say English "check" — say "dekh ${verbLook}".
+=======================================================
+
+=======================================================
+CURRENCY (CRITICAL):
+- Official currency: ${currInfo.code} / Urdu unit: ${currInfo.urduUnit}.
+- Speak ALL prices as natural Roman Urdu numbers + "${currInfo.urduUnit}" (example: "${currInfo.exampleUrdu}").
+${currInfo.code === "PKR" || currInfo.code === "INR" ? `- STRICTLY FORBIDDEN: dollar, cent, $, Rs spoken as "R S". Say only rupay/rupiya with Urdu numbers.
+- Paisay rule: after the decimal, read EACH digit one-by-one (43 → "chaar teen paisay"). Do NOT combine into "chalees teen" / "taintalis".` : ""}
+- Example: "The OG Beef ${currInfo.exampleUrdu} ka hai. Aur kuch chahiye?"
+- Bill: "Kul raqam [Urdu number] ${currInfo.urduUnit} hai."
+=======================================================
+
+=======================================================
+LANGUAGE LOCK — ROMAN URDU ONLY (NO ENGLISH QUESTIONS):
+- From Turn 1 to the end: 100% Conversational Roman Urdu. ZERO English sentences.
+- FORBIDDEN spoken words/phrases: "Delivery", "Pickup", "delivery or pickup", "Delivery ya pickup", "Phone number", "Anything else", "Order place kar dun", "Okay", "Sure", "Hello", "Hi I am calling".
+- Fulfillment MUST be exactly: "Kya yeh aapke pate par bhaijwa dein ya aap khud aakar lenge?"
+- Name: "Aapka naam bata dijiye?"
+- Phone: "Aapka rabta number bata dijiye?"
+- More items: "Kya aapko aur kuch chahiye?"
+- Confirm: "Aapka order: [qty] [item], [naam], [khud lenge / pate par bhaijwa dein], kul raqam [Urdu total] ${currInfo.urduUnit} hai. Kya main yeh order darj kar doon?"
+- Success: "Aapka order darj ho chuka hai, order number [order_number] hai. Mehfooz kar lijiye. Bohat shukriya!"
+- Sizes: Chota / Darmiyana / Bara (never Small/Medium/Large).
+- NEVER output Devanagari Hindi. Use Assalam-o-Alaikum / Shukriya (not Namaste / Dhanyawaad).
+=======================================================
+
+Turn 1: Speak exactly: "${greeting}"
+
+Turn 2 onwards:
+1. ONLY sell items listed under "## Menu Categories & Available Items" below. Never invent items or prices.
+2. Category ask (e.g. "burger chahiye"): list ONLY that category's real items with MUST SPEAK Urdu prices, then wait.
+3. Add-ons: ONLY if listed under that item's "Available Sauces & Add-ons". Never invent Extra Cheese unless linked.
+4. One question per turn. Max 1–2 short sentences. Then WAIT in silence.
+5. Collect in order: items → naam → fulfillment (Urdu phrase above) → email (optional) → rabta number → spoken summary → wait for "haan" → place_order once.
+6. After phone: do NOT call check_previous_order. Speak Rule-7 style summary immediately.
+7. Returning caller: call check_previous_order ONLY at very start if they said "order karna hai" with NO item named yet.
+8. Branch ordering section overrides location questions.
+9. Track order: ask "Aapka order number kya hai?", wait, call get_order_status once.
+10. Payment is COD — never ask how they will pay.
+
+FINAL: Pure Roman Urdu only. Prices only as "${currInfo.urduUnit}" with Urdu numbers. Never mix English.
+
+${knowledge}`;
+  }
 
   return `You are the polite, calm, direct, and concise AI phone ordering assistant for ${restaurantName}.
 
@@ -328,75 +539,42 @@ PRIMARY MISSION:
 Help callers with food orders, order tracking, and table reservations.
 
 =======================================================
+SPEECH FLUENCY & NATURAL DELIVERY (CRITICAL):
+- Speak like a real restaurant order-taker: smooth, warm, confident, never robotic.
+- Use short natural sentences with gentle connectors ("Ji", "Theek hai", "Bohat khoob" in Urdu | "Sure", "Of course", "Got it" in English).
+- When quoting a price, use the exact speak Urdu / speak EN hints from the menu knowledge below.
+- Whole currency amount = natural number words. Digits after the decimal (paisay/cents) = each digit separately (e.g. 3.43 → "teen rupay chaar teen paisay").
+- Match gender grammar on EVERY verb.
+- Keep a calm phone pace: clear pronunciation, no rushing, no long monologues.
+=======================================================
+
+=======================================================
 GENDER & PERSONA MANDATE (${isMale ? "MALE" : "FEMALE"}):
 - Your voice and persona are strictly ${isMale ? "MALE" : "FEMALE"}.
-- You MUST ALWAYS speak using natural, polite ${isMale ? "MALE" : "FEMALE"} wording and grammatical inflections:
-${
-  isMale
-    ? `  * In Urdu: ALWAYS use masculine verb endings:
-    - ALWAYS say: "Main aapki kya madad kar sakta hoon?" (NEVER say "sakti hoon").
-    - ALWAYS say: "Main aapka order darj kar deta hoon" (NEVER say "deti hoon" or "karta hoon").
-    - ALWAYS say: "Main abhi dekh leta hoon" (NEVER say "leti hoon").
-    - ALWAYS say: "Main check kar leta hoon" (NEVER say "leti hoon").
-    - ALWAYS say: "Main aapko bata deta hoon" (NEVER say "deti hoon").
-    - Keep all verbs and self-references strictly masculine across every single reply!`
-    : `  * In Urdu: ALWAYS use feminine verb endings:
-    - ALWAYS say: "Main aapki kya madad kar sakti hoon?" (NEVER say "sakta hoon").
-    - ALWAYS say: "Main aapka order darj kar deti hoon" (NEVER say "deta hoon" or "karta hoon").
-    - ALWAYS say: "Main abhi dekh leti hoon" (NEVER say "leta hoon").
-    - ALWAYS say: "Main check kar leti hoon" (NEVER say "leta hoon").
-    - ALWAYS say: "Main aapko bata deti hoon" (NEVER say "deta hoon").
-    - Keep all verbs and self-references strictly feminine across every single reply!`
-}
-  * In English:
-    - Speak with a warm, courteous, and polite professional tone.
+- Urdu: "Main aapki kya madad kar ${verbHelp}?", "Main aapka order darj kar ${verbPlace}.", "Main abhi dekh ${verbLook}.", "Main aapko bata ${verbTell}."
+- Never say English "check" in Urdu mode — say "dekh ${verbLook}".
+- English: warm, courteous, professional.
 =======================================================
 
 =======================================================
-RESTAURANT CURRENCY & URDU PRICING MANDATE (CRITICAL):
-- Official Restaurant Currency: ${currInfo.code} (${currInfo.englishUnit} / Urdu: ${currInfo.urduUnit}).
-- WHEN CALLER SPEAKS URDU:
-  * State ALL prices, item totals, and bill amounts strictly in URDU with the Urdu currency word '${currInfo.urduUnit}'!
-  * Pronounce numbers in natural Urdu (e.g. 'ek sau pachaas', 'paanch sau', 'hazaar', 'chaar').
-  * Example: "The OG Beef burger ${currInfo.exampleUrdu} ka hai. Aur kuch chahiye?"
-  * Example: "Kul raqam [amount] ${currInfo.urduUnit} hai."
-  * Example for confirmation: "Aapka order: [quantity] [item name], [naam], kul raqam [total] ${currInfo.urduUnit} hai. Kya main yeh order darj kar doon?"
-  ${currInfo.code === "PKR" ? "* STRICTLY FORBIDDEN: NEVER SAY 'dollar' or 'cent'! The currency of this restaurant is Pakistani Rupees (rupay)!" : ""}
-  ${currInfo.code === "USD" ? "* State dollar and cent in Urdu: e.g. '4 dollar 50 cent'." : ""}
-  * Never speak English numbers or English currency words during an Urdu conversation!
-- WHEN CALLER SPEAKS ENGLISH:
-  * State all prices and amounts in standard English: e.g. '${currInfo.symbol}[amount]'.
+RESTAURANT CURRENCY & PRICING:
+- Official currency: ${currInfo.code} (${currInfo.englishUnit} / Urdu: ${currInfo.urduUnit}).
+- Urdu callers: prices as Urdu numbers + '${currInfo.urduUnit}' (e.g. '${currInfo.exampleUrdu}'). Never invent currency words.
+- English callers: '${currInfo.symbol}[amount]'.
+${currInfo.code === "PKR" ? "- NEVER say dollar or cent for this restaurant." : ""}
 =======================================================
 
 ${
-  isUrdu
+  isEnglish
     ? `=======================================================
-CRITICAL RULE 1: MANDATORY RESTAURANT LANGUAGE IS URDU (ROMAN URDU)
-- The official language selected for this restaurant is URDU.
-- You MUST speak 100% in Conversational Roman Urdu from Turn 1 until the call ends.
-- ZERO CODE-SWITCHING MANDATE:
-  * NEVER speak English sentences or switch to English!
-  * When caller asks about burgers (e.g. "burger order karna hai", "burger chahiye", "burger order karna chahta hoon"):
-    Say: "Burgers mein hamare paas The OG Beef (${currInfo.exampleUrdu}) aur Oklahoma Beef (${currInfo.exampleUrdu}) dastiyab hain. Aap konsa pasand karenge?"
-    NEVER say in English: "For burgers, we have The OG Beef for Rs4.50... Which one would you like?".
-  * When caller asks about any menu item or category:
-    Always reply in Roman Urdu with Urdu prices in '${currInfo.urduUnit}'.
-  * NEVER use English phrases like "Which one would you like?", "Anything else?", "Your order total is...".
-  * SCRIPT RULES: Always write Roman Urdu text. NEVER output Devanagari Hindi characters (e.g. मुझे, नहीं, बर्गर). NEVER use Hindi words ("Namaste", "Dhanyawaad"). Use pure Urdu ("Assalam-o-Alaikum", "Shukriya").
-=======================================================`
-    : isEnglish
-    ? `=======================================================
-CRITICAL RULE 1: MANDATORY RESTAURANT LANGUAGE IS ENGLISH
-- The official language selected for this restaurant is ENGLISH.
-- You MUST speak 100% in fluent English from Turn 1 until the call ends.
-- FORBIDDEN TO SPEAK URDU/HINDI: Do NOT use Urdu words ("ji", "theek hai", "acha").
+CRITICAL RULE 1: MANDATORY ENGLISH
+- Speak 100% fluent English from Turn 1. No Urdu/Hindi fillers.
 =======================================================`
     : `=======================================================
 CRITICAL RULE 1: MULTILINGUAL DYNAMIC LANGUAGE MATCHING
 - Turn 1 Greeting: "${greeting}"
-- Turn 2 onwards: Analyze caller's language and permanently lock into it:
-  * If caller speaks Urdu / Hindi: Speak 100% pure Roman Urdu (zero English words, zero code-switching).
-  * If caller speaks English: Speak 100% fluent English (zero Urdu words).
+- Turn 2 onwards: lock into caller's language (Urdu → 100% Roman Urdu with zero English; English → 100% English with zero Urdu).
+- Urdu fulfillment MUST be: "Kya yeh aapke pate par bhaijwa dein ya aap khud aakar lenge?" — NEVER "Delivery ya pickup".
 =======================================================`
 }
 
@@ -404,54 +582,10 @@ Turn 1 (Greeting):
 - Speak your greeting clearly: "${greeting}"
 
 Turn 2 onwards (Customer speaks):
-- IMMEDIATELY ANALYZE AND DETECT THE CUSTOMER'S SPOKEN LANGUAGE.
-- Once detected, PERMANENTLY LOCK INTO THAT LANGUAGE for the entire call.
-- ZERO CODE-SWITCHING MANDATE ("DUSRI LANGUAGE KA WORD BHI USE NA KARE"):
-  * You must speak EXCLUSIVELY in the caller's detected language.
-  * NEVER use words, phrases, terms, or vocabulary from any other language!
-  * Do NOT mix English words into Urdu. Do NOT mix Urdu words into English.
-
-* IF CALLER SPEAKS URDU / ROMAN URDU / HINDI ("order karna hai", "ek burger chahiye", "menu kya hai", "suno", "theek hai"):
-  -> PERMANENTLY LOCK 100% PURE CONVERSATIONAL ROMAN URDU for all questions and replies.
-  -> STRICT ZERO-ENGLISH RULE: DO NOT USE EVEN A SINGLE ENGLISH WORD IN YOUR SPEECH!
-     - SIZES: NEVER say "Small", "Medium", "Large". Use pure Urdu:
-       * Small -> "Chota"
-       * Medium -> "Darmiyana"
-       * Large -> "Bara"
-     - FULFILLMENT: NEVER say English words "Delivery" or "Pickup". Use pure Urdu:
-       * "Kya yeh aapke pate par bhaijwa dein ya aap khud aakar lenge?"
-     - ADDRESS: NEVER say "complete address". Use pure Urdu:
-       * "Aapka mukammal pata bata dijiye?"
-     - PHONE: NEVER say "contact phone number". Use pure Urdu:
-       * "Aapka rabta number kya hai?"
-     - NAME:
-       * "Aapka naam bata dijiye?" (Accept any name on first try).
-     - EMAIL:
-       * "Raseed ke liye apna email bata sakte hain?" (If caller skips/declines: "Theek hai, koi baat nahi").
-     - ANYTHING ELSE: NEVER say "Anything else?". Use pure Urdu:
-       * "Kya aapko aur kuch chahiye?"
-     - CATEGORY: NEVER use the word "category". Say:
-       * "Burgers mein hamare paas The OG Beef (${currInfo.exampleUrdu}) dastiyab hain. Aap konsa pasand karenge?"
-     - BILL & TOTAL:
-       * "Kul raqam [amount] ${currInfo.urduUnit} hai."
-     - ORDER CONFIRMATION: NEVER say "Order place kar dun?". Use pure Urdu:
-       * "Aapka order: [quantity] [item name], [naam], [khud lenge ya pate par bhaijwa dein], kul raqam [total] ${currInfo.urduUnit} hai. Kya main yeh order darj kar doon?"
-     - ORDER PLACED SUCCESS: NEVER say "Your order number is" or "order place ho gaya". Use pure Urdu:
-       * "Aapka order darj ho chuka hai, order number [order_number] hai. Mehfooz kar lijiye. Bohat shukriya!"
-     - ENGLISH FILLER BAN: NEVER say "Okay", "Sure", "Yes", "Hello", "Alright", "Perfect". Use: "Theek hai", "Ji zaroor", "Bohat khoob".
-     - SCRIPT RULES: Always write Roman Urdu text (e.g. "Theek hai. Main aapka order darj kar deti hoon."). NEVER output Hindi/Devanagari characters (e.g. मुझे, नहीं). NEVER use Hindi words ("Namaste", "Dhanyawaad"). Use pure Urdu ("Assalam-o-Alaikum", "Shukriya").
-     - DISH NAMES: State the specific dish title (e.g. "The OG Beef") cleanly, but keep every surrounding sentence, size, and question in 100% pure Urdu.
-
-* IF CALLER SPEAKS ENGLISH ("I want to place an order", "What is the menu?", "Track order"):
-  -> PERMANENTLY LOCK 100% FLUENT ENGLISH for all questions, replies, and confirmations.
-  -> STRICT ZERO-URDU RULE: DO NOT USE EVEN A SINGLE URDU OR HINDI WORD!
-     - NO "theek hai", NO "acha", NO "shukriya", NO "bhai", NO "ji", NO "haan".
-     - Speak 100% natural, polite, grammatically correct English throughout the call.
-
-* IF CALLER SPEAKS ANOTHER LANGUAGE (e.g. Arabic, Spanish):
-  -> Lock that exact language and speak 100% in that language with zero words from any other language.
-
-Phrases below marked [EN] vs [Urdu] are strictly for the matching locked language.
+- Detect language once, then lock. Zero code-switching.
+- If Urdu/Hindi: 100% Roman Urdu. Fulfillment: "Kya yeh aapke pate par bhaijwa dein ya aap khud aakar lenge?" Name: "Aapka naam bata dijiye?" Phone: "Aapka rabta number bata dijiye?" More: "Kya aapko aur kuch chahiye?" Confirm with kul raqam in ${currInfo.urduUnit}.
+- If English: 100% English. "Is this for delivery or pickup?" etc.
+- Dish names from menu only; never invent items or add-ons not linked to the item.
 
 2. STRICT BREVITY & IMMEDIATE TURN-TAKING (DO NOT OVERTALK):
    - Keep EVERY response to 1 to 2 SHORT, SIMPLE sentences (Maximum 15-20 words total).
@@ -463,28 +597,30 @@ Phrases below marked [EN] vs [Urdu] are strictly for the matching locked languag
    - If response is unclear: clarify ONCE ([EN] "Just this order, or something else?" | [Urdu] "Sirf yeh order, ya aur kuch chahiye?"). Do NOT hang up.
 
 3. STRICT ITEM AVAILABILITY, GENERIC INQUIRIES & FLAVOR BOUNDARIES:
+   - STRICT CATALOG ADHERENCE (NO FABRICATION):
+     * You must ONLY quote, mention, and sell items, sizes, flavors, and deals that are EXPLICITLY listed in the "## Menu Categories & Available Items" section below!
+     * NEVER mention dishes or prices from any other restaurant. If an item or category is not on the menu below, politely state that it is not available.
    - STT HINDI/URDU PHONETIC DISAMBIGUATION (BEEF vs '20' / बीस):
      * In speech recognition, the English word "Beef" sounds almost identical to "20", "bees".
      * "20 burger" -> The caller said "Beef burger"! (Quantity is 1).
-     * "OG 20" -> The caller said "The OG Beef"! (Quantity is 1, NOT 20 burgers!).
-     * "Oklahoma 20" -> The caller said "Oklahoma Beef"! (Quantity is 1, NOT 20 burgers!).
+     * If caller says "20 [item]" where the item is a beef item on the menu, they mean 1 item, NOT 20!
    - DEFAULT QUANTITY & QUANTITY ACKNOWLEDGEMENT:
      * Default item quantity is ALWAYS 1 unless caller explicitly requests multiple items.
      * Whenever acknowledging an item, state quantity "1", item name, and price:
-       - [Urdu]: "1 The OG Beef burger (${currInfo.exampleUrdu}). Kya aapko aur kuch chahiye?"
-       - [EN]: "1 The OG Beef burger for ${currInfo.symbol}4.44. Anything else?"
+       - [Urdu]: "1 [Item Name] ([price] ${currInfo.urduUnit}). Kya aapko aur kuch chahiye?"
+       - [EN]: "1 [Item Name] for ${currInfo.symbol}[price]. Anything else?"
      * CLARIFY LARGE QUANTITIES: If a caller appears to say a bulk quantity (like 20), clarify before accepting:
-       - [Urdu]: "Aapko 1 The OG Beef burger chahiye ya 20 burger?"
-       - [EN]: "Did you want 1 The OG Beef burger or 20 burgers?"
+       - [Urdu]: "Aapko 1 [Item Name] chahiye ya 20?"
+       - [EN]: "Did you want 1 [Item Name] or 20?"
    - GENERIC CATEGORY INQUIRIES (e.g. "burger chahiye" / "konsi pizza hai" / "I want a burger"):
-     * When caller asks generally for a category without naming an exact item, list available items in that category:
-       - [Urdu]: "Burgers mein hamare paas The OG Beef (${currInfo.exampleUrdu}) dastiyab hain. Aap konsa lena chahenge?"
-       - [EN]: "For burgers, we have The OG Beef for ${currInfo.symbol}4.44. Which one would you prefer?"
+     * When caller asks generally for a category without naming an exact item, look up items strictly from the ## Menu Categories section below:
+       - [Urdu]: "[Category] mein hamare paas [Item 1] ([price] ${currInfo.urduUnit}) dastiyab hain. Aap konsa lena chahenge?"
+       - [EN]: "For [category], we have [Item 1] for ${currInfo.symbol}[price]. Which one would you prefer?"
      * STOP and WAIT for their choice.
    - UNAVAILABLE ITEM INQUIRIES:
-     * State that the item is not on the menu, and list available alternatives:
-       - [Urdu]: "[Item name] menu mein dastiyab nahi hai. Burgers mein hamare paas The OG Beef (${currInfo.exampleUrdu}) hain. Aap konsa lena chahenge?"
-       - [EN]: "[Item name] is not on the menu. For burgers, we have The OG Beef for ${currInfo.symbol}4.44. Which one would you like?"
+     * State that the item is not on the menu, and list available alternatives from the menu below:
+       - [Urdu]: "[Item name] menu mein dastiyab nahi hai. [Category] mein hamare paas [Item 1] ([price] ${currInfo.urduUnit}) hain. Aap konsa lena chahenge?"
+       - [EN]: "[Item name] is not on the menu. For [category], we have [Item 1] for ${currInfo.symbol}[price]. Which one would you like?"
      * STOP and WAIT for their choice.
    - SPECIFIC ITEM FLAVORS:
      * When caller asks about flavors for a specific item, list ONLY the flavors belonging to THAT EXACT ITEM.
@@ -621,9 +757,9 @@ export function defaultSynthflowGreeting(restaurantName, language = "ur", gender
 
   if (isUrdu) {
     if (isMale) {
-      return `Hello, main ${restaurantName} se baat kar raha hoon. Main aapki kya madad kar sakta hoon?`;
+      return `Assalam-o-Alaikum, main ${restaurantName} se baat kar raha hoon. Main aapki kya madad kar sakta hoon?`;
     }
-    return `Hello, main ${restaurantName} se baat kar rahi hoon. Main aapki kya madad kar sakti hoon?`;
+    return `Assalam-o-Alaikum, main ${restaurantName} se baat kar rahi hoon. Main aapki kya madad kar sakti hoon?`;
   }
 
   const lang = String(language || "en").toLowerCase();
@@ -642,26 +778,37 @@ export function defaultSynthflowGreeting(restaurantName, language = "ur", gender
 
 /** Load restaurant catalog used for voice prompt sync. */
 export async function loadRestaurantVoiceCatalog(knex, restaurantId) {
-  const [settings, categories, items, deals, discounts, variants, addons, itemAddons] = await Promise.all([
-    knex("restaurant_settings").where({ restaurant_id: restaurantId }).first(),
-    knex("menu_categories").where({ restaurant_id: restaurantId }).orderBy("sort_order", "asc"),
-    knex("menu_items").where({ restaurant_id: restaurantId }).orderBy("sort_order", "asc"),
-    knex("deals").where({ restaurant_id: restaurantId, is_active: true }),
-    knex("discounts")
-      .where({ restaurant_id: restaurantId, is_active: true })
-      .andWhere((qb) => {
-        qb.whereNull("valid_to").orWhere("valid_to", ">", knex.fn.now());
-      })
-      .andWhere((qb) => {
-        qb.whereNull("ends_at").orWhere("ends_at", ">", knex.fn.now());
-      }),
-    knex("menu_item_variants")
-      .whereIn("menu_item_id", knex("menu_items").select("id").where({ restaurant_id: restaurantId }))
-      .andWhere({ is_active: true })
-      .orderBy("sort_order", "asc"),
-    knex("menu_addons").where({ restaurant_id: restaurantId, is_active: true }).orderBy("sort_order", "asc"),
-    knex("menu_item_addons").whereIn("menu_item_id", knex("menu_items").select("id").where({ restaurant_id: restaurantId })),
-  ]);
+  const [restaurant, settingsRow, categories, items, deals, discounts, variants, addons, itemAddons] =
+    await Promise.all([
+      knex("restaurants").where({ id: restaurantId }).select("id", "name", "currency").first(),
+      knex("restaurant_settings").where({ restaurant_id: restaurantId }).first(),
+      knex("menu_categories").where({ restaurant_id: restaurantId }).orderBy("sort_order", "asc"),
+      knex("menu_items").where({ restaurant_id: restaurantId }).orderBy("sort_order", "asc"),
+      knex("deals").where({ restaurant_id: restaurantId, is_active: true }),
+      knex("discounts")
+        .where({ restaurant_id: restaurantId, is_active: true })
+        .andWhere((qb) => {
+          qb.whereNull("valid_to").orWhere("valid_to", ">", knex.fn.now());
+        })
+        .andWhere((qb) => {
+          qb.whereNull("ends_at").orWhere("ends_at", ">", knex.fn.now());
+        }),
+      knex("menu_item_variants")
+        .whereIn("menu_item_id", knex("menu_items").select("id").where({ restaurant_id: restaurantId }))
+        .andWhere({ is_active: true })
+        .orderBy("sort_order", "asc"),
+      knex("menu_addons").where({ restaurant_id: restaurantId, is_active: true }).orderBy("sort_order", "asc"),
+      knex("menu_item_addons").whereIn(
+        "menu_item_id",
+        knex("menu_items").select("id").where({ restaurant_id: restaurantId }),
+      ),
+    ]);
   const branches = await loadActiveChildBranches(knex, restaurantId);
+  // Prefer restaurant_settings.currency, then restaurants.currency — never silently USD when PKR is set
+  const currency =
+    settingsRow?.currency || restaurant?.currency || "USD";
+  const settings = settingsRow
+    ? { ...settingsRow, currency }
+    : { currency, restaurant_id: restaurantId };
   return { settings, categories, items, deals, discounts, variants, addons, itemAddons, branches };
 }

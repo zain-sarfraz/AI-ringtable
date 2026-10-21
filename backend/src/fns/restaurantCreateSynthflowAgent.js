@@ -7,8 +7,6 @@ import {
   attachActions,
   toSynthflowLanguage,
   postCallWebhookUrl,
-  listWorkspaceNumbers,
-  findAssistantByPhone,
 } from "../lib/synthflowClient.js";
 import {
   buildRestaurantVoiceKnowledge,
@@ -18,7 +16,7 @@ import {
   applyBranchOrdering,
   isMaleVoice,
 } from "../lib/restaurantVoiceContext.js";
-import { normalizeE164 } from "../lib/voiceWebhookUtils.js";
+import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 function isPhoneAlreadyAttachedError(err) {
   const msg = String(err?.message || err || "");
@@ -177,7 +175,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
           duringCallVar("delivery_address", "Delivery address, or Pickup", "House 12, G-9, Islamabad"),
           duringCallVar(
             "order_items",
-            "Items with quantity, size, and flavor. Default quantity is 1 (e.g. 1 The OG Beef). In Hindi/Urdu, '20' or 'bees' near burger/beef is STT error for 'Beef', NEVER pass quantity 20 for 'OG 20' or '20 burger'.",
+            "Items with quantity, size, and flavor. Default quantity is 1 (e.g. 1 Chicken Burger). In Hindi/Urdu, '20' or 'bees' near burger/beef is STT error for 'Beef', NEVER pass quantity 20 unless caller explicitly ordered twenty.",
             "1 Large Classic Pizza Chicken Fajita",
           ),
           duringCallVar("fulfillment_type", "delivery or pickup", "delivery"),
@@ -185,8 +183,8 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
           duringCallVar("coupon_code", "Coupon code or none", "none"),
           duringCallVar(
             "branch_name",
-            "REQUIRED. Pass the area or exact branch from Branch ordering, e.g. Johar Town or Royal Restaurant Johar Town Branch. Kashmir Road / Iqbal Town / Johar Town all work. Never leave empty for pickup.",
-            "Johar Town",
+            "Pass the area or exact branch from Branch ordering, or none when there are no branches. Never leave empty for pickup.",
+            "Main Branch",
           ),
         ],
         json_body_stringified: JSON.stringify({
@@ -194,6 +192,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
           customer_name: "<customer_name>",
           customer_phone: "<customer_phone>",
           caller_phone: "<user_phone_number>",
+          synthflow_call_id: "<call_id>",
           delivery_address: "<delivery_address>",
           items: "<order_items>",
           fulfillment_type: "<fulfillment_type>",
@@ -375,43 +374,6 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
   };
 }
 
-/**
- * Resolve which number Synthflow can actually attach to an inbound agent.
- * Telnyx custom SIP import is Enterprise-only — fall back to a workspace Synthflow number.
- */
-async function resolveAttachablePhone(preferredE164) {
-  const preferred = normalizeE164(preferredE164 || "");
-  if (!preferred) {
-    return { phone: null, source: "none", warning: null };
-  }
-
-  let numbers = [];
-  try {
-    numbers = await listWorkspaceNumbers();
-  } catch (e) {
-    console.warn("List Synthflow numbers failed:", e.message);
-  }
-
-  const normalized = numbers.map((n) => ({
-    raw: n,
-    number: normalizeE164(n.number || n.phone_number || n.phone || ""),
-    available: n.is_available !== false,
-  })).filter((n) => n.number);
-
-  if (normalized.some((n) => n.number === preferred)) {
-    return { phone: preferred, source: "preferred_in_workspace", warning: null };
-  }
-
-  // Never auto-attach an arbitrary number without explicit assignment
-  return {
-    phone: null,
-    source: "none",
-    warning: preferred
-      ? `Telnyx number ${preferred} is not attached in Synthflow workspace numbers.`
-      : null,
-  };
-}
-
 /** Keep the live place_order tool able to receive branch_name. */
 export async function refreshSynthflowPlaceOrderTool(restaurant) {
   if (!restaurant?.synthflow_agent_id) return null;
@@ -426,6 +388,8 @@ export async function refreshSynthflowPlaceOrderTool(restaurant) {
 
 export async function restaurantCreateSynthflowAgent(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  // Soft-skip in development: never create/update remote agents from a laptop by accident
+  if (rejectVoiceSyncIfDisabled(res)) return;
   try {
     const knex = getKnex();
     const body = req.body || {};
@@ -435,36 +399,36 @@ export async function restaurantCreateSynthflowAgent(req, res) {
     const r = await knex("restaurants").where({ id: restaurant_id }).first();
     if (!r) throw new Error("Restaurant not found");
 
-    const preferredPhone =
-      body.phone_number || r.telnyx_phone_number || r.twilio_phone_number || null;
-
     const webhookUrl = postCallWebhookUrl();
     const publicApi = String(process.env.PUBLIC_API_URL || "").trim();
     const webhookWarning = !webhookUrl
-      ? "PUBLIC_API_URL is not set. Agent will be created, but post-call orders will not work until you set a public HTTPS API URL (e.g. ngrok) and update the agent."
+      ? "PUBLIC_API_URL is not set. Agent will be updated, but post-call orders will not work until you set a public HTTPS API URL (e.g. ngrok) and update the agent."
       : /airestaurantbackend\.toolkitpro\.cloud|airestaurant\.toolkitpro\.cloud/i.test(publicApi)
         ? `PUBLIC_API_URL still points at the old AI Restaurant host (${publicApi}). Set it to https://ringtable.io/backend so orders land in Ringtable.`
         : null;
 
     const catalog = await loadRestaurantVoiceCatalog(knex, restaurant_id);
     const currency = catalog.settings?.currency || r.currency || body.currency || "USD";
+    const agentLanguage = body.language || r.agent_language || "ur";
+    const preferUrduPrices =
+      !agentLanguage || String(agentLanguage).toLowerCase().startsWith("ur") || currency === "PKR";
     const knowledge = buildRestaurantVoiceKnowledge({
       restaurantName: r.name,
       currency,
+      preferUrduPrices,
       ...catalog,
     });
 
-    const agentLanguage = body.language || r.agent_language || "ur";
     const voiceId = body.voice_id || r.agent_voice_id || undefined;
     const voiceGender = body.voice_gender || (voiceId && isMaleVoice(voiceId) ? "male" : "female");
     const lang = toSynthflowLanguage(agentLanguage);
     const savedGreeting = (body.first_message ?? r.agent_first_message)?.trim() || "";
     const greeting =
       !savedGreeting ||
-      /^Hi, thanks for calling/i.test(savedGreeting) ||
-      /^Hi, I am calling from /i.test(savedGreeting) ||
+      /^Hi[, ]/i.test(savedGreeting) ||
+      /^Hello[, ]/i.test(savedGreeting) ||
       /^Thanks for calling/i.test(savedGreeting) ||
-      /^Hello, main /i.test(savedGreeting) ||
+      /^Assalam-o-Alaikum, main /i.test(savedGreeting) ||
       /^ہیلو،/i.test(savedGreeting)
         ? defaultSynthflowGreeting(r.name, agentLanguage, voiceGender)
         : savedGreeting;
@@ -488,14 +452,11 @@ export async function restaurantCreateSynthflowAgent(req, res) {
 
     const agentName = body.name || `${r.name} Order Agent`;
 
-    const phoneInfo = await resolveAttachablePhone(
-      body.synthflow_phone_number || preferredPhone,
-    );
-
     const menuKeywords = [
       r.name,
       ...(catalog.items || []).slice(0, 30).map((i) => i.name),
-      "order", "burger", "pizza", "rupay", "chota", "darmiyana", "bara", "delivery", "pickup"
+      "order", "burger", "pizza", "rupay", "rupiya", "chota", "darmiyana", "bara",
+      "bhaijwa", "aakar", "lenge", "darj", "shukriya",
     ].filter(Boolean);
 
     const agentConfig = {
@@ -516,45 +477,43 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       voice_gender: voiceGender,
     };
 
-    // Optional: link an existing Fine-tuner agent by id from the UI/body
-    let modelId =
+    // NEVER auto-create a new Synthflow agent. Only update an already-linked agent ID.
+    const modelId =
       body.synthflow_agent_id ||
       body.model_id ||
       r.synthflow_agent_id ||
       null;
-    let action = "created";
 
-    // Create/update agent FIRST (extractors used to run first and often timed out)
-    const agentPayload = {
+    if (!modelId) {
+      return res.status(200).json({
+        success: false,
+        error:
+          "No Synthflow agent is linked to this restaurant. Automatic creation of new agents is disabled. Paste an existing Synthflow Agent ID on the restaurant, then update.",
+      });
+    }
+
+    // NEVER send phone_number on update — prevents stealing / re-attaching numbers across agents
+    const updatePayload = {
       name: agentName,
       is_recording: true,
-      ...(phoneInfo.phone ? { phone_number: phoneInfo.phone } : {}),
       ...(webhookUrl
         ? { external_webhook_url: webhookUrl, inbound_call_webhook_url: webhookUrl }
         : {}),
       agent: agentConfig,
     };
 
-    if (!modelId) {
-      return res.status(200).json({
-        success: false,
-        error: "No Synthflow agent is linked to this restaurant. Automatic creation of new agents is disabled. Please link an existing Synthflow Agent ID.",
-      });
-    }
-
-    // When updating an existing agent, omit phone_number so Synthflow doesn't reject with "Phone number already attached"
-    const { phone_number: _omitPhone, ...updatePayload } = agentPayload;
+    let action = "updated";
     try {
       await updateAgent(modelId, updatePayload);
-      action = "updated";
     } catch (upErr) {
       if (isPhoneAlreadyAttachedError(upErr)) {
+        // Retry without any phone-related fields (already omitted)
         await updateAgent(modelId, updatePayload);
-        action = "updated";
       } else if (isNotFoundError(upErr)) {
+        // Do NOT create a replacement agent — leave DB pointing at the missing ID for the operator to fix
         return res.status(200).json({
           success: false,
-          error: `Agent ${modelId} was not found in Synthflow. Please verify this agent exists in your Synthflow dashboard or reset the Agent ID.`,
+          error: `Agent ${modelId} was not found in Synthflow. Automatic re-creation is disabled. Link a valid Agent ID or recreate the agent manually in Synthflow, then paste the ID here.`,
         });
       } else {
         throw upErr;
@@ -578,11 +537,11 @@ export async function restaurantCreateSynthflowAgent(req, res) {
           actionIds.filter((id) => !String(id).startsWith("tool:")),
         );
       } catch (e) {
-        extractorWarning = `Agent created but attaching actions failed: ${e.message}`;
+        extractorWarning = `Agent updated but attaching actions failed: ${e.message}`;
         console.warn(extractorWarning);
       }
     } catch (e) {
-      extractorWarning = `Agent created but order actions failed: ${e.message}. You can retry create/update.`;
+      extractorWarning = `Agent updated but order actions failed: ${e.message}. You can retry update.`;
       console.warn(extractorWarning);
     }
 
@@ -600,19 +559,31 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       updated_at: knex.fn.now(),
     });
 
-    const warnings = [phoneInfo.warning, webhookWarning, extractorWarning].filter(Boolean);
+    const warnings = [webhookWarning, extractorWarning].filter(Boolean);
+
+    const ordersLandLocal =
+      String(process.env.APP_ENV || "").toLowerCase() === "development" &&
+      publicApi &&
+      !/ringtable\.io/i.test(publicApi);
 
     return res.json({
       success: true,
       action,
       synthflow_agent_id: modelId,
-      attached_phone_number: phoneInfo.phone,
-      phone_source: phoneInfo.source,
+      // Phone is never changed by this endpoint — use Telnyx provision/unassign instead
+      attached_phone_number: r.telnyx_phone_number || r.twilio_phone_number || null,
+      phone_source: "unchanged",
       telnyx_phone_number: r.telnyx_phone_number,
       external_webhook_url: webhookUrl,
+      place_order_url: liveToolUrl("ai-place-order"),
+      public_api_url: publicApi || null,
+      orders_land_on: ordersLandLocal ? "local" : "remote",
       action_ids: actionIds,
       warning: warnings.length ? warnings.join(" ") : null,
       warnings,
+      message: ordersLandLocal
+        ? "Agent updated. Test-call orders will appear on your LOCAL dashboard (localhost), not ringtable.io."
+        : undefined,
     });
   } catch (e) {
     console.error("Update Synthflow agent error:", e);

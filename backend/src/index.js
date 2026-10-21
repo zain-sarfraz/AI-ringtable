@@ -1,4 +1,5 @@
 import { envFilePath } from "./loadEnv.js";
+import { assertSafeEnvironmentOrThrow, buildCorsAllowedOrigins, getAppEnv } from "./lib/appEnv.js";
 import express from "express";
 import { runMigrations } from "./db/runMigrations.js";
 import { seedAdminUser } from "./db/seedAdmin.js";
@@ -25,17 +26,13 @@ import * as deliverooAdapter from "./integrations/deliveroo/adapter.js";
 import * as justeatAdapter from "./integrations/justeat/adapter.js";
 import * as doordashAdapter from "./integrations/doordash/adapter.js";
 
+// Refuse to boot when development points at production DB/URLs
+assertSafeEnvironmentOrThrow();
+
 const app = express();
 const PORT = Number(process.env.PORT || 3033);
 
-const allowedOrigins = [
-  process.env.PUBLIC_APP_URL,
-  "http://localhost:8080",
-  "http://127.0.0.1:8080",
-  "http://ringtable.io",
-  "https://ringtable.io",
-  "https://airestaurant.toolkitpro.cloud"
-].filter(Boolean);
+const allowedOrigins = buildCorsAllowedOrigins();
 
 const corsMiddleware = cors({
   origin(origin, cb) {
@@ -61,6 +58,7 @@ app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     service: "ringtable-api",
+    app_env: getAppEnv(),
     env_file: envFilePath || null,
     cwd: process.cwd(),
     config: {
@@ -71,6 +69,8 @@ app.get("/api/health", (_req, res) => {
       SYNTHFLOW_API_KEY: present("SYNTHFLOW_API_KEY"),
       SYNTHFLOW_WORKSPACE_ID: present("SYNTHFLOW_WORKSPACE_ID"),
       SYNTHFLOW_WEBHOOK_SECRET: present("SYNTHFLOW_WEBHOOK_SECRET"),
+      SYNTHFLOW_ENV_LABEL: process.env.SYNTHFLOW_ENV_LABEL || null,
+      ALLOW_VOICE_SYNC: process.env.ALLOW_VOICE_SYNC || "false",
       PUBLIC_API_URL: present("PUBLIC_API_URL"),
       UBER_CLIENT_ID: present("UBER_CLIENT_ID"),
       UBER_ENV: process.env.UBER_ENV || null,

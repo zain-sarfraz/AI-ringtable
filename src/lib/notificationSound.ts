@@ -148,10 +148,21 @@ function getAudioContext(): AudioContext | null {
   if (!sharedAudioContext || sharedAudioContext.state === "closed") {
     sharedAudioContext = new AudioCtx();
   }
-  if (sharedAudioContext.state === "suspended") {
-    sharedAudioContext.resume().catch(() => {});
-  }
   return sharedAudioContext;
+}
+
+/** Resume AudioContext; browsers mute until a user gesture + successful resume. */
+export async function unlockNotificationAudio(): Promise<boolean> {
+  const ctx = getAudioContext();
+  if (!ctx) return false;
+  if (ctx.state === "suspended") {
+    try {
+      await ctx.resume();
+    } catch {
+      return false;
+    }
+  }
+  return ctx.state === "running";
 }
 
 export function synthesizeRingtone(id: RingtoneId, volume = 0.9): () => void {
@@ -301,21 +312,13 @@ export function synthesizeRingtone(id: RingtoneId, volume = 0.9): () => void {
 let activeLoopInterval: number | null = null;
 let stopCurrentTone: (() => void) | null = null;
 
-export function playNotificationSound(id: RingtoneId = "classic-bell", volume = 0.9) {
-  unlockNotificationAudio();
+export async function playNotificationSound(id: RingtoneId = "classic-bell", volume = 0.9) {
+  await unlockNotificationAudio();
   if (stopCurrentTone) {
     stopCurrentTone();
     stopCurrentTone = null;
   }
   stopCurrentTone = synthesizeRingtone(id, volume);
-}
-
-export function unlockNotificationAudio() {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  if (ctx.state === "suspended") {
-    ctx.resume().catch(() => {});
-  }
 }
 
 export function startNotificationLoop(
@@ -324,9 +327,9 @@ export function startNotificationLoop(
   intervalMs = 2800
 ) {
   stopNotificationLoop();
-  playNotificationSound(id, volume);
+  void playNotificationSound(id, volume);
   activeLoopInterval = window.setInterval(() => {
-    playNotificationSound(id, volume);
+    void playNotificationSound(id, volume);
   }, intervalMs);
 }
 

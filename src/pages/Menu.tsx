@@ -71,6 +71,20 @@ interface ItemAddonLink {
 
 type AddonFieldKey = "name" | "description" | "price" | "sort_order";
 
+/** Allow typing prices like "12." / "0.5" without the field snapping back. */
+function sanitizePriceDraft(raw: string): number | string | null {
+  const v = raw.trim();
+  if (v === "" || v === ".") return v;
+  if (!/^\d*\.?\d*$/.test(v)) return null;
+  return v;
+}
+
+function priceDraftToNumber(value: number | string | null | undefined): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const n = parseFloat(String(value ?? "").trim());
+  return Number.isFinite(n) ? n : 0;
+}
+
 /** Matches DB: name text, price numeric(10,2), sort_order int */
 function validateAddonForm(form: Partial<MenuAddon>): Partial<Record<AddonFieldKey, string>> {
   const errors: Partial<Record<AddonFieldKey, string>> = {};
@@ -607,6 +621,18 @@ export default function Menu() {
     if (!restaurantId) return;
     try {
       const result = await syncRestaurantMenuToVoiceAgent(restaurantId);
+      if (result.skipped) {
+        console.info("AI voice agent sync skipped (dev):", result.error);
+        if (interactive) {
+          toast({
+            title: "Menu saved — live voice sync skipped",
+            description:
+              result.error ||
+              "Development mode does not push to Synthflow. Sync from the production server to update the live phone agent.",
+          });
+        }
+        return;
+      }
       if (!result.success) {
         console.warn("AI voice agent sync notice:", result.error);
         if (interactive) {
@@ -618,16 +644,14 @@ export default function Menu() {
               "Menu updated locally. To sync with Voice Agent, configure ElevenLabs or Synthflow credentials in Settings.",
           });
         }
-      } else {
-        if (interactive) {
-          toast({
-            title: "AI Agent Updated",
-            description:
-              result.provider === "synthflow"
-                ? "Menu & inventory are now live on your Synthflow voice agent."
-                : "Your menu changes are now live on the voice agent.",
-          });
-        }
+      } else if (interactive && result.provider !== "none") {
+        toast({
+          title: "AI Agent Updated",
+          description:
+            result.provider === "synthflow"
+              ? "Menu & inventory are now live on your Synthflow voice agent."
+              : "Your menu changes are now live on the voice agent.",
+        });
       }
     } catch (e: any) {
       console.warn("AI sync notice:", e?.message || e);
@@ -2135,23 +2159,20 @@ function AddonForm({
             <Input
               id="addon-price"
               name="addon-price"
-              type="number"
-              min={0}
-              max={99999999.99}
-              step="0.01"
+              type="text"
               inputMode="decimal"
-              value={form.price ?? 0}
+              value={form.price === undefined || form.price === null ? "" : String(form.price)}
               aria-invalid={!!fieldErrors.price}
               className={cn(fieldErrors.price && "border-destructive focus-visible:ring-destructive")}
               onChange={(e) => {
-                const v = e.target.value;
-                const n = v === "" ? 0 : parseFloat(v);
-                setForm({ ...form, price: Number.isFinite(n) ? n : 0 });
+                const next = sanitizePriceDraft(e.target.value);
+                if (next === null) return;
+                setForm({ ...form, price: next as unknown as number });
                 setFieldErrors((fe) => {
                   if (!fe.price) return fe;
-                  const next = { ...fe };
-                  delete next.price;
-                  return next;
+                  const cleared = { ...fe };
+                  delete cleared.price;
+                  return cleared;
                 });
               }}
             />
@@ -2424,7 +2445,8 @@ interface SizeEntry {
   id: string;
   name: string;
   measurement: string;
-  price: number;
+  /** number when saved; string while typing so decimals like "12." are not wiped */
+  price: number | string;
   is_active: boolean;
   flavors: FlavorEntry[];
 }
@@ -2806,7 +2828,7 @@ function ItemForm({
           id: s.id,
           name: s.name.trim(),
           measurement: s.measurement?.trim() || null,
-          price: Number(s.price) || 0,
+          price: priceDraftToNumber(s.price),
           sort_order: sIdx,
           is_active: s.is_active ?? true,
           variant_type: "size" as const,
@@ -2846,7 +2868,10 @@ function ItemForm({
 
       // If sizes exist, set base price to the first active size's price for consistent display
       const firstActiveSize = sizes.find((s) => s.is_active) || sizes[0];
-      const basePrice = sizes.length > 0 && firstActiveSize ? Number(firstActiveSize.price) : Number(form.price) || 0;
+      const basePrice =
+        sizes.length > 0 && firstActiveSize
+          ? priceDraftToNumber(firstActiveSize.price)
+          : priceDraftToNumber(form.price);
 
       const payload: any = {
         ...form,
@@ -2933,16 +2958,31 @@ function ItemForm({
               {sizes.length > 0 ? "Base Reference Price" : t("menu:price", "Price")} ({formatCurrency(0).charAt(0)})
             </Label>
             <Input
-              type="number"
-              min={0}
-              step="0.01"
-              value={sizes.length > 0 ? (sizes.find((s) => s.is_active)?.price ?? form.price ?? 0) : form.price || 0}
+              type="text"
+              inputMode="decimal"
+              value={
+                sizes.length > 0
+                  ? String(sizes.find((s) => s.is_active)?.price ?? form.price ?? "")
+                  : form.price === undefined || form.price === null
+                    ? ""
+                    : String(form.price)
+              }
               disabled={sizes.length > 0}
-              onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })}
+              onChange={(e) => {
+                if (sizes.length > 0) return;
+                const next = sanitizePriceDraft(e.target.value);
+                if (next === null) return;
+                // Store draft string while typing; convert to number on save
+                setForm((prev) => ({ ...prev, price: next as unknown as number }));
+              }}
             />
-            {sizes.length > 0 && (
+            {sizes.length > 0 ? (
               <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-1">
-                ⚡ Price is dynamically controlled by the selected size below.
+                Edit each size price in the Sizes section below — those are the prices the phone agent quotes.
+              </p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground mt-1">
+                This price is what the phone agent will speak for this item.
               </p>
             )}
           </div>
@@ -3108,15 +3148,16 @@ function ItemForm({
                       <Label className="text-xs font-semibold">{t("menu:price", "Price")} *</Label>
                       <div className="relative mt-1">
                         <Input
-                          type="number"
-                          min={0}
-                          step="0.01"
+                          type="text"
+                          inputMode="decimal"
                           placeholder="8.00"
-                          value={s.price ?? ""}
+                          value={s.price === undefined || s.price === null ? "" : String(s.price)}
                           className="h-8.5 text-sm pl-6"
-                          onChange={(e) =>
-                            updateSize(sIdx, "price", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
-                          }
+                          onChange={(e) => {
+                            const next = sanitizePriceDraft(e.target.value);
+                            if (next === null) return;
+                            updateSize(sIdx, "price", next);
+                          }}
                         />
                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-semibold">
                           {formatCurrency(0).charAt(0)}

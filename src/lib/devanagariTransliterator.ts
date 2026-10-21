@@ -703,13 +703,30 @@ export function transliterateDevanagariToUrduWord(word: string): string {
 const SORTED_ROMAN_KEYS = Object.keys(DICTIONARY_ROMAN).sort((a, b) => b.length - a.length);
 const SORTED_URDU_KEYS = Object.keys(DICTIONARY_URDU).sort((a, b) => b.length - a.length);
 
+function polishRomanTranscript(text: string): string {
+  return String(text || "")
+    .replace(/।/g, ".")
+    .replace(/\$\s*(\d+)\s*\.\s*(\d+)/g, "Rs$1.$2")
+    .replace(/\$\s*(\d+)/g, "Rs$1")
+    .replace(/\bDelivery\s+ya\s+pickup\b/gi, "Kya yeh aapke pate par bhaijwa dein ya aap khud aakar lenge")
+    .replace(/\bPhone number\??\b/gi, "Aapka rabta number")
+    .replace(/\bOrder place kar dun\??\b/gi, "Kya main yeh order darj kar doon")
+    .replace(/\bHi,\s*I am calling from\b/gi, "Assalam-o-Alaikum, main")
+    .replace(/ORD-\s+/gi, "ORD-")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .replace(/([,.;!?])([^\s\n])/g, "$1 $2")
+    .trim();
+}
+
 /**
- * Transliterates Devanagari text into natural Pakistani Roman Urdu / English.
+ * Transliterates Devanagari text into natural Pakistani Roman Urdu / English,
+ * and polishes mixed Latin transcripts for the dashboard.
  */
 export function cleanUrduText(text?: string | null): string {
   if (!text || typeof text !== "string") return text || "";
   if (!hasDevanagari(text)) {
-    return text.replace(/।/g, ".");
+    return polishRomanTranscript(text);
   }
 
   let s = text;
@@ -725,7 +742,7 @@ export function cleanUrduText(text?: string | null): string {
     return transliterateDevanagariWord(match);
   });
 
-  return s.replace(/।/g, ".");
+  return polishRomanTranscript(s);
 }
 
 /**

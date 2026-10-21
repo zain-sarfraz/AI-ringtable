@@ -19,9 +19,13 @@ export async function pushBranchListToAgent(knex, parentRestaurantId) {
 
   const catalog = await loadRestaurantVoiceCatalog(knex, parentRestaurantId);
   const currency = catalog.settings?.currency || restaurant.currency || "USD";
+  const agentLanguage = restaurant.agent_language || "ur";
+  const preferUrduPrices =
+    !agentLanguage || String(agentLanguage).toLowerCase().startsWith("ur") || currency === "PKR";
   const knowledge = buildRestaurantVoiceKnowledge({
     restaurantName: restaurant.name,
     currency,
+    preferUrduPrices,
     ...catalog,
   });
   const saved = String(restaurant.agent_system_prompt || "").trim();
@@ -36,7 +40,7 @@ export async function pushBranchListToAgent(knex, parentRestaurantId) {
           restaurant.name,
           knowledge,
           currency,
-          restaurant.agent_language || "ur",
+          agentLanguage,
           voiceGender
         );
   const prompt = applyBranchOrdering(

@@ -130,14 +130,18 @@ function canSeeNotification(
   role: string | null,
   isReceptionist: boolean,
 ) {
+  // Role not loaded yet — don't decide visibility (caller must not poison knownIds).
+  if (!role) return false;
   const isReservation = n.type === "new_reservation" || n.source === "reservation";
   const isKitchen = role === "kitchen" || role === "chef";
   const isAdmin = role === "admin" || role === "manager" || role === "super_admin";
   const isStaff = role === "staff";
   if (isReservation) return isReceptionist || isAdmin;
   if (isReceptionist) return false;
-  // Call-agent orders ring in the kitchen (and show for admin). Floor staff never sees them.
-  if (isCallAgentSource(n.source)) return isKitchen || isAdmin;
+  // Phone/AI orders: kitchen + management (+ cashier). Floor staff never sees them.
+  if (isCallAgentSource(n.source)) {
+    return isKitchen || isAdmin || role === "cashier";
+  }
   // Floor staff only hears about guests dining at a table.
   if (isStaff) return isTableDiningAlert(n);
   return true;
@@ -198,14 +202,18 @@ export function OrderNotificationBell() {
     setRinging(false);
   }, [restaurantId]);
 
-  // Unlock Web Audio after the first click so the bell can actually ring
+  // Keep unlocking Web Audio on any gesture — browsers mute until resume succeeds.
   useEffect(() => {
-    const unlock = () => unlockNotificationAudio();
-    window.addEventListener("pointerdown", unlock, { once: true });
-    window.addEventListener("keydown", unlock, { once: true });
+    const unlock = () => {
+      void unlockNotificationAudio();
+    };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    window.addEventListener("touchstart", unlock, { passive: true });
     return () => {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
+      window.removeEventListener("touchstart", unlock);
     };
   }, []);
 
@@ -239,12 +247,13 @@ export function OrderNotificationBell() {
     if (!currentPrefs.enabled) return;
 
     setRinging(true);
-    unlockNotificationAudio();
-    if (currentPrefs.repeatUntilAcknowledged ?? true) {
-      startNotificationLoop("classic-bell", currentPrefs.volume, 2800);
-    } else {
-      playNotificationSound("classic-bell", currentPrefs.volume);
-    }
+    void unlockNotificationAudio().then(() => {
+      if (currentPrefs.repeatUntilAcknowledged ?? true) {
+        startNotificationLoop("classic-bell", currentPrefs.volume, 2800);
+      } else {
+        void playNotificationSound("classic-bell", currentPrefs.volume);
+      }
+    });
   }, [canAlert]);
 
   const stopRinging = useCallback(() => {
@@ -255,6 +264,8 @@ export function OrderNotificationBell() {
   const addNotification = useCallback(
     (order: Omit<OrderNotification, "seen"> & { seen?: boolean }, triggerAlert = true) => {
       if (!canAlert) return;
+      // Wait for auth role — marking knownIds while role is null permanently silences the bell.
+      if (!role) return;
 
       // Accept alerts for the active restaurant or any sibling branch under the same parent HQ.
       if (
@@ -268,9 +279,8 @@ export function OrderNotificationBell() {
 
       const isReservation = order.type === "new_reservation";
 
-      // Reservation alerts are only for the receptionist and the restaurant admin.
-      // The bell sound is only for the receptionist.
       if (!canSeeNotification(order, role, isReceptionist)) {
+        // Role is known and this alert is not for this user — remember so we don't re-toast.
         knownIdsRef.current.add(order.id);
         if (order.order_id) knownIdsRef.current.add(order.order_id);
         saveKnownIds(knownIdsRef.current, restaurantId);
@@ -280,7 +290,12 @@ export function OrderNotificationBell() {
         return;
       }
 
+      const alreadyListed =
+        knownIdsRef.current.has(order.id) ||
+        Boolean(order.order_id && knownIdsRef.current.has(order.order_id));
+
       const newNotif: OrderNotification = { ...order, seen: order.seen ?? false };
+      let isBrandNew = !alreadyListed;
 
       setNotifications((prev) => {
         const existingIndex = prev.findIndex(
@@ -291,6 +306,7 @@ export function OrderNotificationBell() {
               (n.id === order.order_id || n.order_id === order.order_id)),
         );
         if (existingIndex >= 0) {
+          isBrandNew = false;
           const existing = prev[existingIndex];
           if (!order.source || existing.source === order.source) return prev;
           const copy = prev.slice();
@@ -304,7 +320,7 @@ export function OrderNotificationBell() {
       if (order.order_id) knownIdsRef.current.add(order.order_id);
       saveKnownIds(knownIdsRef.current, restaurantId);
 
-      if (triggerAlert) {
+      if (triggerAlert && isBrandNew) {
         let toastTitle = t("orders:newOrderAlert", "🛒 New Order Received");
         let toastDesc = `${order.order_number} · ${order.customer_name} · ${formatCurrency(order.total_amount)}`;
 
@@ -365,18 +381,20 @@ export function OrderNotificationBell() {
 
   // 2. Periodic background poll
   useEffect(() => {
-    if (!canAlert || !restaurantId) return;
+    // Wait for role so phone-order alerts are not marked "known" while role is still null.
+    if (!canAlert || !restaurantId || !role) return;
 
     let cancelled = false;
     let isInitial = true;
     const scopeIds = alertRestaurantIds.length ? alertRestaurantIds : [restaurantId];
-    const orderScopeFilter =
-      scopeIds.length === 1
-        ? `restaurant_id.eq.${scopeIds[0]},pending_transfer_to_restaurant_id.eq.${restaurantId}`
-        : `restaurant_id.in.(${scopeIds.join(",")}),pending_transfer_to_restaurant_id.eq.${restaurantId}`;
+    // Only use eq filters — queryExecutor applyOrString does not support `in.(...)`.
+    const orderScopeFilter = scopeIds
+      .map((id) => `restaurant_id.eq.${id}`)
+      .concat(`pending_transfer_to_restaurant_id.eq.${restaurantId}`)
+      .join(",");
 
     async function checkNewOrders() {
-      if (cancelled || !restaurantId || !canAlert) return;
+      if (cancelled || !restaurantId || !canAlert || !role) return;
       try {
         const token = getToken() || (await supabase.auth.getSession()).data.session?.access_token;
         const headers: Record<string, string> = {};
@@ -531,7 +549,7 @@ export function OrderNotificationBell() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [restaurantId, alertRestaurantIds, canAlert, isReceptionist, role]);
+  }, [restaurantId, alertRestaurantIds, canAlert, isReceptionist, role, alertRestaurantIdSet]);
 
   const handlePopoverChange = (open: boolean) => {
     setPopoverOpen(open);

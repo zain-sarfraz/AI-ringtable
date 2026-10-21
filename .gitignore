@@ -8,13 +8,19 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-.env
-backend/.env
-backend/env*
 backend/uploads
 dist
 dist-ssr
 *.local
+
+# Environment files — never commit secrets (keep *.example tracked)
+.env
+.env.*
+!.env.example
+!env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 
 # Editor directories and files
 .vscode/*

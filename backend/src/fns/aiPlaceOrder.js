@@ -1,58 +1,26 @@
 import { getKnex } from "../db.js";
-import { normalizeElevenLabsToolBody, resolveRestaurantIdForVoiceTools } from "../lib/voiceWebhookUtils.js";
+import {
+  normalizeElevenLabsToolBody,
+  resolveRestaurantIdForVoiceTools,
+  resolveSpokenCustomerPhone,
+  looksLikePhoneNumber,
+  isSamePhonePhrase,
+  normalizeE164,
+} from "../lib/voiceWebhookUtils.js";
 import { createPhoneOrder } from "../lib/phoneOrderService.js";
 import { cleanUrduText } from "../lib/devanagariTransliterator.js";
 import { getCurrencyDetails } from "../lib/restaurantVoiceContext.js";
-
-function phoneDigitCount(value) {
-  return String(value || "").replace(/\D/g, "").length;
-}
-
-function looksLikePhone(value) {
-  const n = phoneDigitCount(value);
-  return n >= 8 && n <= 15;
-}
-
-/** Caller said "same number" / "yahi number" / dialed line — use caller ID instead. */
-function isSamePhonePhrase(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return true;
-  const s = raw.toLowerCase();
-  if (/^<[^>]+>$/.test(s)) return true;
-  if (/^(none|null|n\/a|na|unknown)$/i.test(s)) return true;
-  if (looksLikePhone(raw) && !/(same|this|calling|dial|yehi|yahi|isi|wahi)/i.test(s)) return false;
-  if (
-    /\b(same|this|calling|caller|dial(l)?ed?|my)\b/.test(s) ||
-    /\b(yehi|yahi|isi|wahi|ye wala|usi|call wala|dial wala)\b/.test(s) ||
-    /(यही|इसी|वही|नंबर|नम्बर|फोन|मोबाइल|اسی|یہی|وہی|نمبر|فون)/.test(raw)
-  ) {
-    return phoneDigitCount(raw) < 8;
-  }
-  return false;
-}
-
-function resolveCustomerPhone(body) {
-  const caller =
-    body.caller_phone ||
-    body.twilio_from ||
-    body.from ||
-    body.user_phone_number ||
-    body.user_number ||
-    null;
-  let phone = body.customer_phone;
-  if (isSamePhonePhrase(phone) || !looksLikePhone(phone)) {
-    phone = looksLikePhone(caller) ? caller : null;
-  }
-  if (phone && /^<[^>]+>$/.test(String(phone).trim())) phone = null;
-  return phone ? String(phone).trim() : null;
-}
 
 export async function aiPlaceOrder(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
 
   try {
     console.log("\n" + "=".repeat(50));
-    console.log("🔔 NEW ORDER REQUEST RECEIVED FROM ELEVENLABS!");
+    console.log(
+      String(process.env.APP_ENV || "").toLowerCase() === "development"
+        ? "🔔 NEW PHONE ORDER → LOCAL database (APP_ENV=development)"
+        : "🔔 NEW PHONE ORDER REQUEST",
+    );
     console.log("=".repeat(50));
 
     const rawBody = req.body || {};
@@ -106,15 +74,80 @@ export async function aiPlaceOrder(req, res) {
       callId = c?.id ?? null;
     }
 
-    const phoneToUse = resolveCustomerPhone(body);
+    const synthflowCallId = String(
+      body.synthflow_call_id || body.call_id || body.sf_call_id || "",
+    ).trim();
+    // Synthflow often sends placeholder like "<call_id>" — ignore those
+    const validSynthflowCallId =
+      synthflowCallId && !/^<[^>]+>$/.test(synthflowCallId) ? synthflowCallId : null;
+
+    // Prefer caller ID already stored on the Synthflow call row (most reliable for "yehi number")
+    let callerFromCall = null;
+    if (validSynthflowCallId) {
+      const existingCall = await knex("calls")
+        .where({ synthflow_call_id: validSynthflowCallId })
+        .select("id", "phone_number")
+        .first();
+      if (existingCall?.id) callId = existingCall.id;
+      if (looksLikePhoneNumber(existingCall?.phone_number)) {
+        callerFromCall = existingCall.phone_number;
+      }
+    }
+
+    let phoneToUse = resolveSpokenCustomerPhone(body, { callerFallback: callerFromCall });
+    // Last resort: if they said yehi/same number but caller ID missing in body, keep trying call row
+    if (!phoneToUse && isSamePhonePhrase(body.customer_phone) && looksLikePhoneNumber(callerFromCall)) {
+      phoneToUse = normalizeE164(callerFromCall);
+    }
+
+    console.log(
+      "📞 Phone resolve:",
+      "spoken=",
+      body.customer_phone,
+      "caller_body=",
+      body.caller_phone || body.user_phone_number || null,
+      "caller_call=",
+      callerFromCall,
+      "→",
+      phoneToUse,
+    );
+
     if (!phoneToUse) {
       return res.status(200).json({
         success: false,
         phone_required: true,
         message:
-          "Respond ONLY in the caller's LOCKED language (do not switch). Ask once for their contact phone number, then call place_order again. If they said same/this/calling/dial number, pass customer_phone as \"same\" so we use the dialed caller ID.",
+          "Respond ONLY in the caller's LOCKED language (do not switch). Ask once for their contact phone number with digits, then call place_order again. If they said yehi/same/this number, pass customer_phone as \"same\" — we will use the dialed caller ID automatically.",
       });
     }
+
+    // Ensure a calls row exists for this Synthflow call so the order keeps the correct transcript later
+    if (!callId && validSynthflowCallId) {
+      let callRow = await knex("calls").where({ synthflow_call_id: validSynthflowCallId }).first();
+      if (!callRow) {
+        const [created] = await knex("calls")
+          .insert({
+            phone_number: phoneToUse,
+            status: "in_progress",
+            direction: "inbound",
+            restaurant_id: restaurantId,
+            synthflow_call_id: validSynthflowCallId,
+            provider: "synthflow",
+            started_at: knex.fn.now(),
+          })
+          .returning("*");
+        callRow = created;
+      } else if (!looksLikePhoneNumber(callRow.phone_number) && phoneToUse) {
+        await knex("calls").where({ id: callRow.id }).update({ phone_number: phoneToUse });
+      }
+      callId = callRow?.id || null;
+    }
+
+    const voiceProvider = validSynthflowCallId
+      ? "synthflow"
+      : body.elevenlabs_agent_id
+        ? "elevenlabs"
+        : "phone";
 
     const { order, reservation, reservationError, unmatched, coupon, totals, assignedBranchName, assignmentStatus } = await createPhoneOrder(knex, {
       restaurantId,
@@ -134,7 +167,11 @@ export async function aiPlaceOrder(req, res) {
       delivery_longitude: body.delivery_longitude ?? body.longitude ?? null,
       call_id: callId,
       source: "phone",
-      ai_extracted_data: { raw: body, provider: "elevenlabs" },
+      ai_extracted_data: {
+        raw: body,
+        provider: voiceProvider,
+        ...(validSynthflowCallId ? { synthflow_call_id: validSynthflowCallId } : {}),
+      },
     });
 
     if (!order) {

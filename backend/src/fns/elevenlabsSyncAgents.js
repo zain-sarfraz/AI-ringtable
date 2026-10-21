@@ -1,6 +1,8 @@
 import { getKnex } from "../db.js";
+import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 export async function elevenlabsSyncAgents(req, res) {
+  if (rejectVoiceSyncIfDisabled(res)) return;
   try {
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
     if (!ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY not configured");

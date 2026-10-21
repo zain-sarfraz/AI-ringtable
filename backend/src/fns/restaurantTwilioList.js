@@ -1,7 +1,9 @@
 import { getKnex } from "../db.js";
+import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 export async function restaurantTwilioList(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  if (rejectVoiceSyncIfDisabled(res)) return;
   try {
     const knex = getKnex();
     const { restaurant_id } = req.body || {};

@@ -1,21 +1,24 @@
 /**
- * Send email to the Ringtable team inbox (Webuzo / join@ringtable.io).
- * Prefers Resend when RESEND_API_KEY is set; otherwise SMTP (Webuzo mail).
+ * Send email to the Ringtable team inbox.
+ * Prefers Resend when RESEND_API_KEY is set; otherwise SMTP.
+ * Production defaults (join@ringtable.io) apply only when APP_ENV=production.
  */
+import { isProductionAppEnv, publicAppUrlFallback } from "./appEnv.js";
 
 function notifyTo() {
-  return (
-    String(process.env.LEADS_NOTIFY_EMAIL || process.env.PRODUCT_EMAIL || "join@ringtable.io")
-      .trim()
-      .toLowerCase() || "join@ringtable.io"
-  );
+  const fromEnv = String(process.env.LEADS_NOTIFY_EMAIL || process.env.PRODUCT_EMAIL || "")
+    .trim()
+    .toLowerCase();
+  if (fromEnv) return fromEnv;
+  if (isProductionAppEnv()) return "join@ringtable.io";
+  return "dev-leads@localhost";
 }
 
 function fromAddress() {
-  return (
-    String(process.env.SMTP_FROM || process.env.RESEND_FROM || "Ringtable <join@ringtable.io>").trim() ||
-    "Ringtable <join@ringtable.io>"
-  );
+  const fromEnv = String(process.env.SMTP_FROM || process.env.RESEND_FROM || "").trim();
+  if (fromEnv) return fromEnv;
+  if (isProductionAppEnv()) return "Ringtable <join@ringtable.io>";
+  return "Ringtable Dev <noreply@localhost>";
 }
 
 async function sendViaResend({ to, subject, text, html }) {
@@ -98,7 +101,7 @@ export async function sendTeamMail(opts) {
   }
 
   throw new Error(
-    "No mail provider configured. Set RESEND_API_KEY or SMTP_HOST + SMTP_USER + SMTP_PASS so leads reach join@ringtable.io webmail.",
+    "No mail provider configured. Set RESEND_API_KEY or SMTP_HOST + SMTP_USER + SMTP_PASS (and LEADS_NOTIFY_EMAIL).",
   );
 }
 
@@ -120,7 +123,7 @@ export function buildLeadNotifyHtml({
   appBase,
 }) {
   const kind = type === "demo" ? "Demo booking" : "Missed-Call Audit";
-  const base = String(appBase || process.env.PUBLIC_APP_URL || "https://ringtable.io").replace(/\/$/, "");
+  const base = String(appBase || publicAppUrlFallback()).replace(/\/$/, "");
   const rows = [
     ["Type", kind],
     ["Restaurant", restaurant],

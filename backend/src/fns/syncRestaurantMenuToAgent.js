@@ -3,11 +3,13 @@ import {
   buildRestaurantVoiceKnowledge,
   loadRestaurantVoiceCatalog,
 } from "../lib/restaurantVoiceContext.js";
+import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 const EL_API = "https://api.elevenlabs.io";
 
 export async function syncRestaurantMenuToAgent(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  if (rejectVoiceSyncIfDisabled(res)) return;
   try {
     const knex = getKnex();
     // Support both direct body or nested body
@@ -28,8 +30,15 @@ export async function syncRestaurantMenuToAgent(req, res) {
     if (!ELEVENLABS_API_KEY) throw new Error("ElevenLabs API key is missing. Please connect ElevenLabs first.");
 
     const catalog = await loadRestaurantVoiceCatalog(knex, restaurant_id);
+    const currency = catalog.settings?.currency || r.currency || "USD";
+    const preferUrduPrices =
+      !r.agent_language ||
+      String(r.agent_language).toLowerCase().startsWith("ur") ||
+      currency === "PKR";
     const doc = buildRestaurantVoiceKnowledge({
       restaurantName: r.name,
+      currency,
+      preferUrduPrices,
       ...catalog,
     });
 

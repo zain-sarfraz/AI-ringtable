@@ -105,6 +105,7 @@ function orderAlertMessage(order) {
 
 export async function notifyStaffNewOrder(knex, order) {
   if (!order?.id || !order.restaurant_id) return null;
+  const source = order.source || (order.call_id ? "phone" : null);
   return createNotification(knex, {
     restaurant_id: order.restaurant_id,
     order_id: order.id,
@@ -117,7 +118,7 @@ export async function notifyStaffNewOrder(knex, order) {
       total_amount: Number(order.total_amount || 0),
       fulfillment_type: order.fulfillment_type || "delivery",
       table_number: order.table_number || null,
-      source: order.source || null,
+      source,
     },
   });
 }

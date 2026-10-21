@@ -3,6 +3,76 @@
  * ElevenLabs may send a flat JSON body, nested `body`, or `parameters`.
  */
 
+/** True when value has enough digits to be a real phone number. */
+export function looksLikePhoneNumber(value) {
+  const n = String(value || "").replace(/\D/g, "").length;
+  return n >= 8 && n <= 15;
+}
+
+/**
+ * Caller said "same / this / yehi number" — use dialed caller ID, do not store the phrase.
+ * Covers STT variants: YehEe Number, yehee number, yahi nmbr, etc.
+ */
+export function isSamePhonePhrase(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return true;
+  if (/^<[^>]+>$/.test(raw)) return true;
+  const s = raw
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/^(none|null|n\/a|na|unknown|skip)$/i.test(s)) return true;
+
+  // Real digits spoken → not a "same number" phrase (unless mixed with same/yehi)
+  const digits = s.replace(/\D/g, "");
+  const hasSameCue =
+    /\b(same|this|that|calling|caller|dial(l)?ed?|my)\b/.test(s) ||
+    /\b(yeh?ee?|yeh?i|yah?i|yehe|isi|wahi|usi|ye|woh|yeh)\b/.test(s) ||
+    /(यही|इसी|वही|اسی|یہی|وہی|یہیے|یہیء)/.test(raw);
+
+  if (digits.length >= 8 && !hasSameCue) return false;
+
+  // "yehee number", "yehi number", "isi number", "yahi wala number", "call wala"
+  if (
+    hasSameCue ||
+    /\b(number|nmbr|nambra|nambar|num|phone|mobile|rabta)\b/.test(s) &&
+      /\b(yeh?ee?|yeh?i|yah?i|yehe|isi|wahi|usi|same|this|ye|woh|yeh|call|dial)\b/.test(s) ||
+    /^(yeh?ee?|yeh?i|yah?i|isi|wahi)\s*(number|nmbr|nambar)?$/i.test(s) ||
+    /\byehee\b|\byehe\b|\byehi\s*number\b|\byahi\s*number\b|\bisi\s*number\b/i.test(s)
+  ) {
+    return digits.length < 8;
+  }
+  return false;
+}
+
+/**
+ * Resolve spoken customer_phone to a real E.164 (or null).
+ * Prefer caller ID from the live call when the speaker said "same/yehi number".
+ *
+ * @param {Record<string, unknown>} body
+ * @param {{ callerFallback?: string|null }} [opts]
+ */
+export function resolveSpokenCustomerPhone(body, opts = {}) {
+  const callerRaw =
+    body?.caller_phone ||
+    body?.twilio_from ||
+    body?.from ||
+    body?.user_phone_number ||
+    body?.user_number ||
+    body?.lead_phone ||
+    opts.callerFallback ||
+    null;
+
+  let phone = body?.customer_phone;
+  if (isSamePhonePhrase(phone) || !looksLikePhoneNumber(phone)) {
+    phone = looksLikePhoneNumber(callerRaw) ? callerRaw : null;
+  }
+  if (phone && /^<[^>]+>$/.test(String(phone).trim())) phone = null;
+  if (!phone || isSamePhonePhrase(phone) || !looksLikePhoneNumber(phone)) return null;
+  return normalizeE164(String(phone).trim()) || String(phone).trim();
+}
+
 /** Best-effort E.164-ish normalization for Twilio-style numbers. */
 export function normalizeE164(phone) {
   if (phone == null || phone === "") return "";

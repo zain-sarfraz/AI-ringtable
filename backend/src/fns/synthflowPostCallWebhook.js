@@ -2,7 +2,12 @@ import crypto from "crypto";
 import { getKnex } from "../db.js";
 import { resolveSpokenBranchId } from "../lib/branchLocation.js";
 import { createPhoneOrder, parseOrderItemsText } from "../lib/phoneOrderService.js";
-import { normalizeE164 } from "../lib/voiceWebhookUtils.js";
+import {
+  normalizeE164,
+  isSamePhonePhrase,
+  looksLikePhoneNumber,
+  resolveSpokenCustomerPhone,
+} from "../lib/voiceWebhookUtils.js";
 import { parseTranscriptIntoTurns } from "./synthflowSyncCalls.js";
 import {
   findAvailableTable,
@@ -521,36 +526,61 @@ export async function synthflowPostCallWebhook(req, res) {
       }
     }
 
-    // Also link any existing order by same caller phone for this restaurant
+    // Link orphan food order created mid-call (ai-place-order) to THIS call only.
+    // Never attach a reservation-only call to a food order, and never steal another call's link.
     if (callRow?.id && callerPhone !== "Unknown" && restaurant?.id) {
       try {
-        const phoneDigits = String(callerPhone).replace(/\D/g, "").slice(-10);
-        let query = knex("orders")
-          .where({ restaurant_id: restaurant.id })
-          .whereNull("call_id")
-          .orderBy("created_at", "desc");
-        
-        if (phoneDigits.length >= 8) {
-          query = query.andWhere(function() {
-            this.where("customer_phone", callerPhone)
+        const combinedText = `${transcript || ""} ${callNotes || ""}`;
+        const looksLikeReservationOnly =
+          /reserv(e|ation)|table\s+for|book(ing)?\s+(a\s+)?table|kitne logon|afraad/i.test(combinedText) &&
+          !/\b(order|burger|pizza|biryani|rupay|darj|kul raqam|chicken|fries)\b/i.test(combinedText);
+
+        if (!looksLikeReservationOnly) {
+          const phoneDigits = String(callerPhone).replace(/\D/g, "").slice(-10);
+          const callAnchor = callRow.started_at || callRow.created_at || new Date();
+          const windowStart = new Date(new Date(callAnchor).getTime() - 30 * 60 * 1000);
+          const windowEnd = new Date(new Date(callAnchor).getTime() + 30 * 60 * 1000);
+
+          let query = knex("orders")
+            .where({ restaurant_id: restaurant.id })
+            .whereNull("call_id")
+            .whereBetween("created_at", [windowStart.toISOString(), windowEnd.toISOString()])
+            .andWhere((qb) => {
+              qb.whereNull("ai_extracted_data")
+                .orWhereRaw("ai_extracted_data->>'synthflow_call_id' IS NULL")
+                .orWhereRaw("ai_extracted_data->>'synthflow_call_id' = ?", [String(synthflowCallId || "")]);
+            })
+            .orderBy("created_at", "desc");
+
+          if (phoneDigits.length >= 8) {
+            query = query.andWhere(function () {
+              this.where("customer_phone", callerPhone)
                 .orWhereRaw("ai_extracted_data->'raw'->>'caller_phone' = ?", [callerPhone])
-                .orWhereRaw("right(regexp_replace(coalesce(customer_phone, ''), '\\D', '', 'g'), 10) = ?", [phoneDigits]);
-          });
-        }
-        const recentOrderByPhone = await query.first();
-        if (recentOrderByPhone) {
-          const currentAiData = recentOrderByPhone.ai_extracted_data || {};
-          await knex("orders").where({ id: recentOrderByPhone.id }).update({
-            call_id: callRow.id,
-            ai_extracted_data: {
-              ...currentAiData,
-              synthflow_call_id: synthflowCallId,
-              recording_url: recordingUrl || currentAiData.recording_url,
-              transcript: transcript || currentAiData.transcript,
-              call_summary: callNotes || currentAiData.call_summary,
-              provider: "synthflow",
-            },
-          });
+                .orWhereRaw(
+                  "right(regexp_replace(coalesce(customer_phone, ''), '\\D', '', 'g'), 10) = ?",
+                  [phoneDigits],
+                );
+            });
+          }
+
+          const recentOrderByPhone = await query.first();
+          if (recentOrderByPhone) {
+            const currentAiData = recentOrderByPhone.ai_extracted_data || {};
+            const existingSf = currentAiData.synthflow_call_id;
+            if (!existingSf || existingSf === synthflowCallId) {
+              await knex("orders").where({ id: recentOrderByPhone.id }).update({
+                call_id: callRow.id,
+                ai_extracted_data: {
+                  ...currentAiData,
+                  synthflow_call_id: synthflowCallId,
+                  recording_url: recordingUrl || currentAiData.recording_url,
+                  transcript: transcript || currentAiData.transcript,
+                  call_summary: callNotes || currentAiData.call_summary,
+                  provider: "synthflow",
+                },
+              });
+            }
+          }
         }
       } catch (linkErr) {
         console.warn("Could not auto-link recent order by phone:", linkErr.message);
@@ -595,7 +625,13 @@ export async function synthflowPostCallWebhook(req, res) {
         parseReservationTime(fields.reservation_time);
       const duration = Number(fields.slot_duration_hours) || 1;
       const custName = (!emptyish(fields.customer_name) && fields.customer_name) || "Phone Customer";
-      const custPhone = (!emptyish(fields.customer_phone) && fields.customer_phone) || callerPhone;
+      const custPhone =
+        resolveSpokenCustomerPhone(
+          { customer_phone: fields.customer_phone, caller_phone: callerPhone },
+          { callerFallback: callerPhone },
+        ) ||
+        (looksLikePhoneNumber(callerPhone) ? normalizeE164(callerPhone) : null) ||
+        callerPhone;
 
       let existingReservation = null;
       if (callRow?.id) {
@@ -806,8 +842,13 @@ export async function synthflowPostCallWebhook(req, res) {
 
     const couponRaw = emptyish(fields.coupon_code) ? null : fields.coupon_code;
     const notesRaw = emptyish(fields.special_notes) ? null : fields.special_notes;
+    // Never store "yehi number" / "YehEe Number" — use dialed caller ID from the call
     const phone =
-      (!emptyish(fields.customer_phone) && fields.customer_phone) || callerPhone;
+      resolveSpokenCustomerPhone(
+        { customer_phone: fields.customer_phone, caller_phone: callerPhone },
+        { callerFallback: callerPhone },
+      ) ||
+      (looksLikePhoneNumber(callerPhone) ? normalizeE164(callerPhone) : null);
 
     const phoneDigits = String(phone || "").replace(/\D/g, "").slice(-10);
     if (phoneDigits.length >= 8) {

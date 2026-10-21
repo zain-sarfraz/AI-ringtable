@@ -595,7 +595,7 @@ export default function RestaurantSettings() {
       .update({
         twilio_phone_number: r.twilio_phone_number?.trim() || null,
         elevenlabs_agent_id: r.elevenlabs_agent_id?.trim() || null,
-        agent_language: r.agent_language || "multi",
+        agent_language: r.agent_language || "ur",
         agent_voice_id: r.agent_voice_id?.trim() || null,
         agent_first_message: r.agent_first_message?.trim() || null,
         agent_system_prompt: r.agent_system_prompt?.trim() || null,
@@ -755,7 +755,7 @@ export default function RestaurantSettings() {
       await supabase
         .from("restaurants")
         .update({
-          agent_language: r.agent_language || "multi",
+          agent_language: r.agent_language || "ur",
           agent_voice_id: r.agent_voice_id?.trim() || null,
           agent_first_message: r.agent_first_message?.trim() || null,
           agent_system_prompt: r.agent_system_prompt?.trim() || null,
@@ -766,7 +766,7 @@ export default function RestaurantSettings() {
         body: {
           restaurant_id: r.id,
           synthflow_agent_id: r.synthflow_agent_id || undefined,
-          language: r.agent_language || "multi",
+          language: r.agent_language || "ur",
           voice_id: r.agent_voice_id?.trim() || undefined,
           first_message: r.agent_first_message?.trim() || undefined,
           system_prompt: r.agent_system_prompt?.trim() || undefined,
@@ -780,13 +780,37 @@ export default function RestaurantSettings() {
         } catch {}
         throw new Error(errMsg);
       }
-      const d = data as { success?: boolean; error?: string; synthflow_agent_id?: string; action?: string };
+      const d = data as {
+        success?: boolean;
+        skipped?: boolean;
+        code?: string;
+        error?: string;
+        warning?: string;
+        message?: string;
+        synthflow_agent_id?: string;
+        action?: string;
+        orders_land_on?: string;
+      };
+      if (d?.skipped || d?.code === "VOICE_SYNC_DISABLED") {
+        toast({
+          title: "Voice sync skipped (local development)",
+          description:
+            d.warning ||
+            d.message ||
+            "Outbound Synthflow updates are disabled on this laptop so live agents are not overwritten. Sync from the production server instead.",
+        });
+        return;
+      }
       if (!d?.success) throw new Error(d?.error || "Failed");
       toast({
         title: "Synthflow agent updated",
-        description: d.synthflow_agent_id
-          ? `Agent ID: ${d.synthflow_agent_id}. Post-call orders will be created automatically.`
-          : "Agent configured.",
+        description:
+          d.message ||
+          (d.orders_land_on === "local"
+            ? "Test-call orders will show on this LOCAL dashboard (localhost), not ringtable.io."
+            : d.synthflow_agent_id
+              ? `Agent ID: ${d.synthflow_agent_id}. Phone was not changed.`
+              : "Agent configured."),
       });
       await loadRestaurantData();
     } catch (e: unknown) {
@@ -808,9 +832,34 @@ export default function RestaurantSettings() {
         body: { restaurant_id: r.id },
       });
       if (error) throw new Error(error.message);
-      const d = data as { success?: boolean; error?: string };
+      const d = data as {
+        success?: boolean;
+        skipped?: boolean;
+        code?: string;
+        error?: string;
+        warning?: string;
+        message?: string;
+        orders_land_on?: string;
+      };
+      if (d?.skipped || d?.code === "VOICE_SYNC_DISABLED") {
+        toast({
+          title: "Menu saved locally — live voice sync skipped",
+          description:
+            d.warning ||
+            d.message ||
+            "Development mode does not push menu changes to Synthflow. To update the live phone agent, sync from the production server (APP_ENV=production).",
+        });
+        return;
+      }
       if (!d?.success) throw new Error(d?.error || "Sync failed");
-      toast({ title: "Menu & coupons synced to Synthflow" });
+      toast({
+        title: "Menu & coupons synced to Synthflow",
+        description:
+          d.message ||
+          (d.orders_land_on === "local"
+            ? "Test-call orders will appear on localhost Orders — not ringtable.io."
+            : undefined),
+      });
       await loadRestaurantData();
     } catch (e: unknown) {
       toast({
@@ -864,7 +913,7 @@ export default function RestaurantSettings() {
       await supabase
         .from("restaurants")
         .update({
-          agent_language: r.agent_language || "multi",
+          agent_language: r.agent_language || "ur",
           agent_voice_id: r.agent_voice_id?.trim() || null,
           agent_first_message: r.agent_first_message?.trim() || null,
           agent_system_prompt: r.agent_system_prompt?.trim() || null,
@@ -1763,7 +1812,7 @@ export default function RestaurantSettings() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>{t("restaurantSettings:language", "Agent Language")}</Label>
-              <Select value={r.agent_language || "multi"} onValueChange={(v) => setR({ ...r, agent_language: v })}>
+              <Select value={r.agent_language || "ur"} onValueChange={(v) => setR({ ...r, agent_language: v })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

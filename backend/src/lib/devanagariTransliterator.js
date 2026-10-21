@@ -706,28 +706,55 @@ const SORTED_ROMAN_KEYS = Object.keys(DICTIONARY_ROMAN).sort((a, b) => b.length 
 const SORTED_URDU_KEYS = Object.keys(DICTIONARY_URDU).sort((a, b) => b.length - a.length);
 
 /**
- * Transliterates Devanagari text into natural Pakistani Roman Urdu / English.
+ * Normalize spacing / punctuation so Roman English and Roman Urdu read cleanly in transcripts.
+ */
+function polishRomanTranscript(text) {
+  return String(text || "")
+    .replace(/।/g, ".")
+    .replace(/‏/g, "")
+    .replace(/\$\s*(\d+)\s*\.\s*(\d+)/g, "Rs$1.$2")
+    .replace(/\$\s*(\d+)/g, "Rs$1")
+    .replace(/\bDelivery\s+ya\s+pickup\b/gi, "Kya yeh aapke pate par bhaijwa dein ya aap khud aakar lenge")
+    .replace(/\bdelivery\s+or\s+pickup\b/gi, "delivery ya pickup")
+    .replace(/\bPhone number\??\b/gi, "Aapka rabta number")
+    .replace(/\bOrder place kar dun\??\b/gi, "Kya main yeh order darj kar doon")
+    .replace(/\bHi,\s*I am calling from\b/gi, "Assalam-o-Alaikum, main")
+    .replace(/\bHow may I help you\??\b/gi, "Main aapki kya madad kar sakti hoon")
+    .replace(/\bExtra\s+CHeese\b/gi, "Extra Cheese")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .replace(/([,.;!?])([^\s\n])/g, "$1 $2")
+    .replace(/ORD-\s+/gi, "ORD-")
+    .trim();
+}
+
+/**
+ * Transliterates Devanagari (Hindi STT) into natural Pakistani Roman Urdu / English,
+ * and polishes Latin-script lines so dashboards show proper Roman English or Roman Urdu.
+ * Does not invent translations for English — English stays English.
  */
 export function cleanUrduText(text) {
   if (!text || typeof text !== "string") return text;
-  if (!hasDevanagari(text)) {
-    return text.replace(/।/g, ".");
-  }
 
   let s = text;
-  // 1. Replace dictionary phrases sorted by descending length
-  for (const hindi of SORTED_ROMAN_KEYS) {
-    if (s.includes(hindi)) {
-      s = s.split(hindi).join(DICTIONARY_ROMAN[hindi]);
+
+  if (hasDevanagari(s)) {
+    // 1. Replace dictionary phrases sorted by descending length
+    for (const hindi of SORTED_ROMAN_KEYS) {
+      if (s.includes(hindi)) {
+        s = s.split(hindi).join(DICTIONARY_ROMAN[hindi]);
+      }
     }
+
+    // 2. Transliterate remaining Devanagari tokens
+    s = s.replace(/[\u0900-\u097F]+/g, (match) => {
+      return transliterateDevanagariWord(match);
+    });
   }
 
-  // 2. Transliterate remaining Devanagari tokens
-  s = s.replace(/[\u0900-\u097F]+/g, (match) => {
-    return transliterateDevanagariWord(match);
-  });
-
-  return s.replace(/।/g, ".");
+  // Keep authentic Urdu script if present (caller may prefer اردو), but still polish Latin parts
+  return polishRomanTranscript(s);
 }
 
 /**

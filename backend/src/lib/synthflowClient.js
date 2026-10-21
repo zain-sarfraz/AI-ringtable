@@ -1,3 +1,5 @@
+import { assertVoiceSyncAllowed } from "./voiceSyncGuard.js";
+
 const SYNTHFLOW_API = (
   process.env.SYNTHFLOW_API_BASE ||
   process.env.SYNTHFLOW_API_BASE_URL ||
@@ -35,6 +37,7 @@ function formatFetchError(err, url) {
  * @param {{ method?: string; body?: unknown; retries?: number }} [opts]
  */
 export async function synthflowRequest(path, opts = {}) {
+  assertVoiceSyncAllowed();
   const url = path.startsWith("http") ? path : `${SYNTHFLOW_API}${path}`;
   const retries = opts.retries ?? FETCH_RETRIES;
   let lastErr = null;
@@ -107,9 +110,11 @@ export function toSynthflowLanguage(code) {
     it: "it-IT",
     pt: "pt-BR",
     ar: "ar-SA",
-    hi: "hi-IN",
-    ur: "multi",
-    pa: "multi",
+    // Synthflow accepts "hi" (not "hi-IN"). Urdu phone orders use hi for South-Asian ASR;
+    // Roman Urdu script is enforced in the agent prompt. "multi" drifts into English questions.
+    hi: "hi",
+    ur: "hi",
+    pa: "hi",
     ja: "ja-JP",
     ko: "ko-KR",
     zh: "zh-CN",

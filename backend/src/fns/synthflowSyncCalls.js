@@ -140,7 +140,12 @@ export async function synthflowSyncCalls(req, res) {
           }
         }
 
-        // Link with matching orders
+        // Link with matching orders — never overwrite a different call already attached
+        const callAnchor = callPatch.started_at || callRow?.started_at || callRow?.created_at || new Date();
+        const windowStart = new Date(new Date(callAnchor).getTime() - 30 * 60 * 1000);
+        const windowEnd = new Date(new Date(callAnchor).getTime() + 30 * 60 * 1000);
+        const phoneDigits = String(callerPhone).replace(/\D/g, "").slice(-10);
+
         // 1. Order explicitly linked via synthflow_call_id
         let matchedOrder = await knex("orders")
           .whereRaw("ai_extracted_data->>'synthflow_call_id' = ?", [synthflowCallId])
@@ -151,36 +156,65 @@ export async function synthflowSyncCalls(req, res) {
           matchedOrder = await knex("orders").where({ call_id: callRow.id }).first();
         }
 
-        // 3. Requested order ID
+        // 3. Requested order — only if orphan and within ±30 min of this call (never steal another call)
         if (!matchedOrder && requestedOrderId) {
-          matchedOrder = await knex("orders").where({ id: requestedOrderId }).first();
+          const cand = await knex("orders").where({ id: requestedOrderId }).first();
+          if (cand) {
+            const existingSf = cand.ai_extracted_data?.synthflow_call_id;
+            const createdAt = cand.created_at ? new Date(cand.created_at) : null;
+            const inWindow =
+              createdAt && createdAt >= windowStart && createdAt <= windowEnd;
+            const orphan = !cand.call_id && (!existingSf || existingSf === synthflowCallId);
+            if (orphan && inWindow && cand.restaurant_id === rest.id) {
+              matchedOrder = cand;
+            }
+          }
         }
 
-        // 4. Match by customer phone and restaurant within recent timeframe
-        if (!matchedOrder && callerPhone !== "Unknown") {
+        // 4. Same restaurant + phone + orphan + time window
+        if (!matchedOrder && callerPhone !== "Unknown" && phoneDigits.length >= 8) {
           matchedOrder = await knex("orders")
-            .where({ restaurant_id: rest.id, customer_phone: callerPhone })
+            .where({ restaurant_id: rest.id })
             .whereNull("call_id")
+            .whereBetween("created_at", [windowStart.toISOString(), windowEnd.toISOString()])
+            .andWhere((qb) => {
+              qb.where("customer_phone", callerPhone).orWhereRaw(
+                "right(regexp_replace(coalesce(customer_phone, ''), '\\D', '', 'g'), 10) = ?",
+                [phoneDigits],
+              );
+            })
+            .andWhere((qb) => {
+              qb.whereNull("ai_extracted_data")
+                .orWhereRaw("ai_extracted_data->>'synthflow_call_id' IS NULL")
+                .orWhereRaw("ai_extracted_data->>'synthflow_call_id' = ?", [String(synthflowCallId || "")]);
+            })
             .orderBy("created_at", "desc")
             .first();
         }
 
         if (matchedOrder) {
           const currentAiData = matchedOrder.ai_extracted_data || {};
-          const updatedAiData = {
-            ...currentAiData,
-            synthflow_call_id: synthflowCallId,
-            recording_url: recordingUrl || currentAiData.recording_url,
-            transcript: transcript || currentAiData.transcript,
-            call_summary: callNotes || currentAiData.call_summary,
-            provider: "synthflow",
-          };
+          const existingSf = currentAiData.synthflow_call_id;
+          if (existingSf && existingSf !== synthflowCallId) {
+            // Already attached to a different Synthflow call — do not overwrite
+          } else if (matchedOrder.call_id && callRow?.id && matchedOrder.call_id !== callRow.id) {
+            // Already linked to a different calls row
+          } else {
+            const updatedAiData = {
+              ...currentAiData,
+              synthflow_call_id: synthflowCallId,
+              recording_url: recordingUrl || currentAiData.recording_url,
+              transcript: transcript || currentAiData.transcript,
+              call_summary: callNotes || currentAiData.call_summary,
+              provider: "synthflow",
+            };
 
-          await knex("orders").where({ id: matchedOrder.id }).update({
-            call_id: callRow?.id || matchedOrder.call_id,
-            ai_extracted_data: updatedAiData,
-          });
-          totalLinkedOrders++;
+            await knex("orders").where({ id: matchedOrder.id }).update({
+              call_id: callRow?.id || matchedOrder.call_id,
+              ai_extracted_data: updatedAiData,
+            });
+            totalLinkedOrders++;
+          }
         }
       }
     }

@@ -1,9 +1,11 @@
 import { getKnex } from "../db.js";
+import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 const EL = "https://api.elevenlabs.io";
 
 export async function restaurantAttachTwilio(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  if (rejectVoiceSyncIfDisabled(res)) return;
   try {
     const knex = getKnex();
     const { restaurant_id, twilio_phone_number, agent_id } = req.body || {};

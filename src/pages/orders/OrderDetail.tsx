@@ -643,11 +643,18 @@ export default function OrderDetail() {
           if (cData) callData = cData as CallData;
         }
 
-        if (!callData && (o.source === "phone" || o.source === "call") && o.customer_phone) {
+        // Safe phone fallback: same restaurant + within ±30 min of order — never pick a random later call
+        if (!callData && (o.source === "phone" || o.source === "call") && o.customer_phone && o.restaurant_id) {
+          const orderAt = o.created_at ? new Date(o.created_at).getTime() : Date.now();
+          const fromIso = new Date(orderAt - 30 * 60 * 1000).toISOString();
+          const toIso = new Date(orderAt + 30 * 60 * 1000).toISOString();
           const { data: cData } = await supabase
             .from("calls")
             .select("*")
+            .eq("restaurant_id", o.restaurant_id)
             .eq("phone_number", o.customer_phone)
+            .gte("created_at", fromIso)
+            .lte("created_at", toIso)
             .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle();

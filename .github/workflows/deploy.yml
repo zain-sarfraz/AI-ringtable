@@ -39,9 +39,10 @@ jobs:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: |
           if [ -z "$VITE_API_URL" ]; then
-            export VITE_API_URL="https://ringtable.io/backend"
+            echo "::error::VITE_API_URL secret is required for production builds (e.g. https://ringtable.io/backend)"
+            exit 1
           fi
-          echo "Building with VITE_API_URL=$VITE_API_URL"
+          echo "Building with VITE_API_URL set (value not printed)"
           npm run build
 
       - name: Check deploy secrets
@@ -149,12 +150,19 @@ jobs:
             exit 1
           fi
 
-          # Keep PORT in .env in sync with Apache proxy
+          # Keep PORT / APP_ENV in .env in sync with Apache proxy
+          # CRITICAL: APP_ENV=production is required — API defaults to development and
+          # will refuse to start if PUBLIC_* URLs point at ringtable.io without it.
           if [ -f .env ]; then
             if grep -q '^PORT=' .env; then
               sed -i "s/^PORT=.*/PORT=${BACKEND_PORT}/" .env
             else
               echo "PORT=${BACKEND_PORT}" >> .env
+            fi
+            if grep -q '^APP_ENV=' .env; then
+              sed -i "s/^APP_ENV=.*/APP_ENV=production/" .env
+            else
+              echo "APP_ENV=production" >> .env
             fi
             if ! grep -q '^PUBLIC_APP_URL=' .env; then
               echo "PUBLIC_APP_URL=https://ringtable.io" >> .env

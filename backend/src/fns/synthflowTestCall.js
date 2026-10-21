@@ -1,6 +1,7 @@
 import { getKnex } from "../db.js";
 import { startOutboundCall } from "../lib/synthflowClient.js";
 import { normalizeE164 } from "../lib/voiceWebhookUtils.js";
+import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 function canPlaceTestCall(user, restaurantId) {
   if (!user?.id) return false;
@@ -16,6 +17,7 @@ function canPlaceTestCall(user, restaurantId) {
 
 export async function synthflowTestCall(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
+  if (rejectVoiceSyncIfDisabled(res)) return;
   try {
     const knex = getKnex();
     const restaurantId = req.body?.restaurant_id;
