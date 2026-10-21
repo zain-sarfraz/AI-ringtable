@@ -55,22 +55,32 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
       catalog.branches
     );
     const webhookUrl = postCallWebhookUrl();
+    const menuKeywords = [
+      r.name,
+      ...(catalog.items || []).slice(0, 30).map((i) => i.name),
+      "order", "burger", "pizza", "rupay", "chota", "darmiyana", "bara", "delivery", "pickup"
+    ].filter(Boolean);
 
     await updateAgent(r.synthflow_agent_id, {
-      // Do not re-send phone_number — number is already attached; re-sending can fail.
+      name: `${r.name} Order Agent`,
       is_recording: true,
       ...(webhookUrl
         ? { external_webhook_url: webhookUrl, inbound_call_webhook_url: webhookUrl }
         : {}),
       agent: {
+        name: `${r.name} Order Agent`,
         prompt,
         greeting_message: greeting,
         language: lang,
         voice_id: r.agent_voice_id || "cgSgspJ2msm6clMCkdW9",
         voice_gender: voiceGender,
         voice_speed: 0.85,
-        min_words_to_interrupt: 1,
+        min_words_to_interrupt: 2,
         interruption_fade_out: 1,
+        noise_cancellation: "standard",
+        suppression_level: 0.3,
+        patience_level: "medium",
+        transcriber_keywords: menuKeywords,
         send_user_idle_reminders: false,
       },
     });

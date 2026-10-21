@@ -492,16 +492,26 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       body.synthflow_phone_number || preferredPhone,
     );
 
+    const menuKeywords = [
+      r.name,
+      ...(catalog.items || []).slice(0, 30).map((i) => i.name),
+      "order", "burger", "pizza", "rupay", "chota", "darmiyana", "bara", "delivery", "pickup"
+    ].filter(Boolean);
+
     const agentConfig = {
+      name: agentName,
       prompt: fullPrompt,
       greeting_message: greeting,
       llm: body.llm || "gpt-4.1-Mini",
       language: lang,
       voice_speed: 0.85,
-      min_words_to_interrupt: 1,
+      min_words_to_interrupt: 2,
       interruption_fade_out: 1,
+      noise_cancellation: "standard",
+      suppression_level: 0.3,
+      patience_level: "medium",
+      transcriber_keywords: menuKeywords,
       send_user_idle_reminders: false,
-      transcriber_speech_recognition: "high_accuracy",
       voice_id: voiceId || "cgSgspJ2msm6clMCkdW9",
       voice_gender: voiceGender,
     };
