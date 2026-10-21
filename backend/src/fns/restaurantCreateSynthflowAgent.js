@@ -164,9 +164,10 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "place_order",
         description:
-          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN to call until caller explicitly confirms the final spoken summary with quantity and total! Default item quantity is 1 (never treat 'OG 20' or '20 burger' as 20). Call once after caller confirms. ALWAYS pass branch_name from Branch ordering (none if no branches). After success, speak the order number ONLY in the caller's LOCKED language — never switch languages.",
-        speech_while_using_the_tool: "",
-        failure_timeout: 20,
+          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN to call until caller explicitly confirms the final spoken summary with quantity and total! Default item quantity is 1 (never treat 'OG 20' or '20 burger' as 20). Call once after caller confirms. ALWAYS pass branch_name from Branch ordering (none if no branches). After the tool returns, speak ONLY the tool message (order number on success). NEVER invent extra wait lines like 'Ek chhoti si der' or 'bas thodi dair aur' — one short pause is enough.",
+        // Fixed short filler — empty string lets the LLM invent long "please wait" loops
+        speech_while_using_the_tool: "Ek second.",
+        failure_timeout: 25,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
           duringCallVar("customer_name", "Customer full name", "Ali Ahmed"),
@@ -216,7 +217,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         name: "get_order_status",
         description:
           "TRACK ORDER ONLY after the caller spoke an order number in ANY language. REQUIRED: ask order number first in the LOCKED language, wait, then call with ORD-YYMMDD-NN. NEVER call with empty order_number. NEVER invent status from phone alone. Speak the result ONLY in the caller's LOCKED language — zero words in any other language.",
-        speech_while_using_the_tool: "",
+        speech_while_using_the_tool: "Ek second.",
         failure_timeout: 15,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
@@ -243,7 +244,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         name: "reserve_table",
         description:
           "TABLE RESERVATIONS ONLY. Call this tool ONLY AFTER you have collected all reservation details (name, party size, date, time, phone) AND the caller has confirmed the summary! FORBIDDEN to call at the beginning when caller first asks for a table. Collect each detail in caller's LOCKED language, confirm, and ONLY THEN call this tool once.",
-        speech_while_using_the_tool: "",
+        speech_while_using_the_tool: "Ek second.",
         failure_timeout: 20,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
@@ -286,7 +287,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         name: "check_previous_order",
         description:
           "REPEAT PREVIOUS ORDER ONLY. Call ONLY at the very start of the call if the caller has NOT mentioned any food items yet. STRICTLY FORBIDDEN to call after the caller has already chosen items or during name, address, or phone collection!",
-        speech_while_using_the_tool: "",
+        speech_while_using_the_tool: "Ek second.",
         failure_timeout: 10,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [],

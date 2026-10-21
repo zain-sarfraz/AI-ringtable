@@ -235,9 +235,10 @@ export async function aiPlaceOrder(req, res) {
       discount_amount: coupon.amount,
       speak: order.order_number,
       message:
-        `CRITICAL: Reply in the caller's LOCKED language ONLY — do not switch to English or any other language. ` +
-        `Say the order number ${order.order_number} and ask them to save it.${branchNote} ` +
-        `Bill (must mention AFTER-TAX kul raqam): ${billBreakdown}.${couponNote}`,
+        `CRITICAL: Reply in the caller's LOCKED language ONLY (Roman Urdu if Urdu). ` +
+        `Do NOT say any wait filler. Immediately say: Aapka order darj ho chuka hai, order number ${order.order_number} hai. Mehfooz kar lijiye. ` +
+        `Tax shamil karke kul raqam ${urduPrice} hai.${branchNote}${couponNote} ` +
+        `(EN check: ${billBreakdown})`,
     });
   } catch (e) {
     console.error("❌ Order Error:", e);
