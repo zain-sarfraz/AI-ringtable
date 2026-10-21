@@ -187,5 +187,12 @@ jobs:
             exit 1
           fi
           echo "API health OK"
+
+          # Warn (do not fail deploy) if Synthflow API key is rejected — agent link needs a valid key
+          PROBE="$(curl -sf --max-time 25 "http://127.0.0.1:${BACKEND_PORT}/api/health?probe_synthflow=1" || true)"
+          echo "Synthflow probe: ${PROBE}" | head -c 800
+          if echo "$PROBE" | grep -qi 'Unauthorized\|invalid or expired\|SYNTHFLOW_API_KEY.:false'; then
+            echo "::warning::SYNTHFLOW_API_KEY on the server looks invalid/expired. Update backend/.env SYNTHFLOW_API_KEY from Synthflow dashboard, then: pm2 restart ringtable-api"
+          fi
           echo "Backend deploy finished at $(date -u)"
           EOF

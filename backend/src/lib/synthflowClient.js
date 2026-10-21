@@ -18,8 +18,15 @@ const FETCH_TIMEOUT_MS = Number(process.env.SYNTHFLOW_FETCH_TIMEOUT_MS || 45000)
 const FETCH_RETRIES = Number(process.env.SYNTHFLOW_FETCH_RETRIES || 2);
 
 function apiKey() {
-  const key = String(process.env.SYNTHFLOW_API_KEY || "").trim();
-  if (!key) throw new Error("SYNTHFLOW_API_KEY is not configured");
+  let key = String(process.env.SYNTHFLOW_API_KEY || "").trim();
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1).trim();
+  }
+  if (/^bearer\s+/i.test(key)) key = key.replace(/^bearer\s+/i, "").trim();
+  if (!key) throw new Error("SYNTHFLOW_API_KEY is not configured on this server");
   return key;
 }
 

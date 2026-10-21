@@ -53,9 +53,10 @@ app.options("*", corsMiddleware);
 
 const jsonParser = express.json({ limit: "2mb" });
 
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", async (req, res) => {
   const present = (key) => Boolean(String(process.env[key] || "").trim());
-  res.json({
+  const keyLen = String(process.env.SYNTHFLOW_API_KEY || "").trim().length;
+  const body = {
     ok: true,
     service: "ringtable-api",
     app_env: getAppEnv(),
@@ -67,6 +68,7 @@ app.get("/api/health", (_req, res) => {
       TELNYX_API_KEY: present("TELNYX_API_KEY"),
       TELNYX_CONNECTION_ID: present("TELNYX_CONNECTION_ID"),
       SYNTHFLOW_API_KEY: present("SYNTHFLOW_API_KEY"),
+      SYNTHFLOW_API_KEY_LEN: keyLen,
       SYNTHFLOW_WORKSPACE_ID: present("SYNTHFLOW_WORKSPACE_ID"),
       SYNTHFLOW_WEBHOOK_SECRET: present("SYNTHFLOW_WEBHOOK_SECRET"),
       SYNTHFLOW_ENV_LABEL: process.env.SYNTHFLOW_ENV_LABEL || null,
@@ -82,7 +84,24 @@ app.get("/api/health", (_req, res) => {
       DOORDASH_ENV: process.env.DOORDASH_ENV || null,
       STRIPE_MODE: billingMode(),
     },
-  });
+  };
+
+  // Optional live probe: /api/health?probe_synthflow=1
+  if (String(req.query.probe_synthflow || "") === "1") {
+    try {
+      const { listAssistantsBrief } = await import("./lib/synthflowClient.js");
+      const agents = await listAssistantsBrief({ limit: 3 });
+      body.synthflow_probe = { ok: true, sample_agents: agents.length };
+    } catch (err) {
+      body.synthflow_probe = {
+        ok: false,
+        status: Number(err?.status) || null,
+        error: String(err?.message || err || "probe failed"),
+      };
+    }
+  }
+
+  res.json(body);
 });
 
 // Marketplace webhooks need the raw body for HMAC signature verification.

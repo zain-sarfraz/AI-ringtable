@@ -425,6 +425,18 @@ export async function restaurantCreateSynthflowAgent(req, res) {
           message: `Linked Synthflow agent ${resolvedId}. Click Update to sync menu and webhook.`,
         });
       } catch (err) {
+        const status = Number(err?.status);
+        const msg = String(err?.message || err || "");
+        if (status === 401 || status === 403 || /unauthorized|invalid or expired token|forbidden/i.test(msg)) {
+          return res.status(200).json({
+            success: false,
+            code: "SYNTHFLOW_AUTH_FAILED",
+            error:
+              "Synthflow rejected the live server API key (Unauthorized: invalid or expired token). " +
+              "Update SYNTHFLOW_API_KEY in backend/.env on ringtable.io with a fresh key from Synthflow → Settings → API Keys, then restart PM2 (ringtable-api). " +
+              "The Agent ID itself is fine — authentication to Synthflow is failing.",
+          });
+        }
         if (isNotFoundError(err)) {
           let available = [];
           try {
