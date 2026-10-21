@@ -572,7 +572,32 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       if (isPhoneAlreadyAttachedError(upErr)) {
         // Retry without any phone-related fields (already omitted)
         await updateAgent(modelId, updatePayload);
+      } else if (Number(upErr?.status) === 401 || Number(upErr?.status) === 403) {
+        return res.status(200).json({
+          success: false,
+          code: "SYNTHFLOW_AUTH_FAILED",
+          error:
+            "Synthflow rejected the API key while updating the agent. " +
+            "Set SYNTHFLOW_API_BASE=https://api.us.synthflow.ai/v2 on the live server .env (US workspace keys fail on the global host), " +
+            "confirm SYNTHFLOW_API_KEY, then restart PM2.",
+        });
       } else if (isNotFoundError(upErr)) {
+        // Confirm missing across regions before clearing — wrong-region 401s used to look like 404.
+        let reallyMissing = true;
+        try {
+          await getAssistant(modelId);
+          reallyMissing = false;
+        } catch (verifyErr) {
+          reallyMissing = isNotFoundError(verifyErr);
+        }
+        if (!reallyMissing) {
+          return res.status(200).json({
+            success: false,
+            error:
+              `Agent ${modelId} exists in Synthflow but update failed on the wrong API region. ` +
+              `Set SYNTHFLOW_API_BASE=https://api.us.synthflow.ai/v2 in live backend/.env and restart PM2, then retry Update.`,
+          });
+        }
         // Do NOT auto-recreate. Clear the stale ID so the UI can link a valid one.
         await knex("restaurants").where({ id: restaurant_id }).update({
           synthflow_agent_id: null,

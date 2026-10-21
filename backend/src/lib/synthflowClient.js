@@ -241,6 +241,9 @@ export async function startOutboundCall({ modelId, phone, name }) {
 }
 
 export async function updateAgent(modelId, payload) {
+  const id = String(modelId || "").trim();
+  if (!id) throw new Error("model_id is required");
+
   const flattened = {
     ...payload,
     ...(payload?.agent || {}),
@@ -258,10 +261,54 @@ export async function updateAgent(modelId, payload) {
       min_words_to_interrupt: flattened.min_words_to_interrupt || 2,
     },
   };
-  return synthflowRequest(`/assistants/${encodeURIComponent(modelId)}`, {
-    method: "PUT",
-    body,
-  });
+
+  // Resolve the region that owns this agent (US keys 401 on global/EU).
+  let preferredBases = [...SYNTHFLOW_REGION_BASES];
+  try {
+    const found = await getAssistant(id);
+    if (found?.api_base) {
+      preferredBases = [
+        found.api_base,
+        ...SYNTHFLOW_REGION_BASES.filter((b) => b !== found.api_base),
+      ];
+    }
+  } catch (err) {
+    // If agent truly missing, surface that; otherwise still try PUT across regions.
+    if (Number(err?.status) === 404) throw err;
+  }
+
+  let lastErr = null;
+  let sawAuthFailure = false;
+  for (const base of preferredBases) {
+    try {
+      return await synthflowRequest(`${base}/assistants/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body,
+      });
+    } catch (err) {
+      lastErr = err;
+      const status = Number(err?.status);
+      const msg = String(err?.message || "");
+      if (status === 404 || /not found|does not exist/i.test(msg)) continue;
+      if (status === 401 || status === 403) {
+        sawAuthFailure = true;
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (sawAuthFailure && lastErr && Number(lastErr?.status) !== 404) {
+    throw Object.assign(
+      new Error(lastErr?.message || "Unauthorized: Invalid or expired token."),
+      { status: 401, payload: lastErr?.payload },
+    );
+  }
+
+  throw Object.assign(
+    new Error(lastErr?.message || `Agent ${id} was not found in Synthflow (tried US/global/EU).`),
+    { status: 404, payload: lastErr?.payload },
+  );
 }
 
 function extractAssistantsList(json) {
