@@ -1,6 +1,7 @@
 import { getKnex } from "../db.js";
 import {
   updateAgent,
+  getAssistant,
   createInformationExtractor,
   createCustomAction,
   updateCustomAction,
@@ -24,6 +25,7 @@ function isPhoneAlreadyAttachedError(err) {
 }
 
 function isNotFoundError(err) {
+  if (Number(err?.status) === 404) return true;
   const msg = String(err?.message || err || "");
   return /not found|404|does not exist/i.test(msg);
 }
@@ -396,6 +398,39 @@ export async function restaurantCreateSynthflowAgent(req, res) {
     const restaurant_id = body.restaurant_id;
     if (!restaurant_id) throw new Error("restaurant_id is required");
 
+    // Link-only: verify Agent ID exists in Synthflow, then save. Never auto-creates.
+    if (body.link_only === true || body.action === "link") {
+      const linkId = String(body.synthflow_agent_id || body.model_id || "").trim();
+      if (!linkId) {
+        return res.status(200).json({
+          success: false,
+          error: "Paste a Synthflow Agent ID (model_id) to link.",
+        });
+      }
+      try {
+        await getAssistant(linkId);
+      } catch (err) {
+        if (isNotFoundError(err)) {
+          return res.status(200).json({
+            success: false,
+            error: `Agent ${linkId} was not found in Synthflow. Copy a real model_id from your Synthflow dashboard and try again. Automatic creation is disabled.`,
+          });
+        }
+        throw err;
+      }
+      await knex("restaurants").where({ id: restaurant_id }).update({
+        synthflow_agent_id: linkId,
+        voice_provider: "synthflow_telnyx",
+        updated_at: knex.fn.now(),
+      });
+      return res.json({
+        success: true,
+        action: "linked",
+        synthflow_agent_id: linkId,
+        message: `Linked Synthflow agent ${linkId}. Click Update to sync menu and webhook.`,
+      });
+    }
+
     const r = await knex("restaurants").where({ id: restaurant_id }).first();
     if (!r) throw new Error("Restaurant not found");
 
@@ -510,10 +545,15 @@ export async function restaurantCreateSynthflowAgent(req, res) {
         // Retry without any phone-related fields (already omitted)
         await updateAgent(modelId, updatePayload);
       } else if (isNotFoundError(upErr)) {
-        // Do NOT create a replacement agent — leave DB pointing at the missing ID for the operator to fix
+        // Do NOT auto-recreate. Clear the stale ID so the UI can link a valid one.
+        await knex("restaurants").where({ id: restaurant_id }).update({
+          synthflow_agent_id: null,
+          updated_at: knex.fn.now(),
+        });
         return res.status(200).json({
           success: false,
-          error: `Agent ${modelId} was not found in Synthflow. Automatic re-creation is disabled. Link a valid Agent ID or recreate the agent manually in Synthflow, then paste the ID here.`,
+          stale_cleared: true,
+          error: `Agent ${modelId} was not found in Synthflow (cleared from this restaurant). Automatic re-creation is disabled — create/copy an agent in Synthflow, paste its model_id under Link Agent, then Update.`,
         });
       } else {
         throw upErr;

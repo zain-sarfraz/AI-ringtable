@@ -243,6 +243,15 @@ export async function updateAgent(modelId, payload) {
   });
 }
 
+/** Fetch one assistant by model_id. Throws on 404 / not found. */
+export async function getAssistant(modelId) {
+  const id = String(modelId || "").trim();
+  if (!id) throw new Error("model_id is required");
+  return synthflowRequest(`/assistants/${encodeURIComponent(id)}`, {
+    method: "GET",
+  });
+}
+
 /** List assistants (paginated). */
 export async function listAssistants({ limit = 100, offset = 0 } = {}) {
   const q = new URLSearchParams({

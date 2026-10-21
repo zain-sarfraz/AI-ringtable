@@ -801,7 +801,10 @@ export default function RestaurantSettings() {
         });
         return;
       }
-      if (!d?.success) throw new Error(d?.error || "Failed");
+      if (!d?.success) {
+        await loadRestaurantData();
+        throw new Error(d?.error || "Failed");
+      }
       toast({
         title: "Synthflow agent updated",
         description:
@@ -819,6 +822,7 @@ export default function RestaurantSettings() {
         title: "Synthflow agent error",
         description: e instanceof Error ? e.message : String(e),
       });
+      await loadRestaurantData().catch(() => {});
     } finally {
       setSynthflowBusy(false);
     }
@@ -1687,6 +1691,9 @@ export default function RestaurantSettings() {
 
             <div className="space-y-1.5 pt-1">
               <Label className="text-xs">Link an existing Synthflow Agent ID</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Agents are never auto-created. Copy a real model_id from Synthflow → paste here → Link → then Update.
+              </p>
               <div className="flex flex-wrap gap-2">
                 <Input
                   value={linkAgentId}
@@ -1698,18 +1705,35 @@ export default function RestaurantSettings() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!linkAgentId.trim() || linkingAgentBusy}
+                  disabled={!linkAgentId.trim() || linkingAgentBusy || !r?.id}
                   onClick={async () => {
                     const id = linkAgentId.trim();
-                    if (!id) return;
+                    if (!id || !r?.id) return;
                     setLinkingAgentBusy(true);
                     try {
-                      await supabase.from("restaurants").update({ synthflow_agent_id: id }).eq("id", r.id);
-                      toast({ title: "Agent linked", description: `Synthflow Agent ${id} linked successfully.` });
+                      const { data, error } = await supabase.functions.invoke("restaurant-create-synthflow-agent", {
+                        body: {
+                          restaurant_id: r.id,
+                          synthflow_agent_id: id,
+                          link_only: true,
+                          action: "link",
+                        },
+                      });
+                      if (error) throw new Error(error.message);
+                      const d = data as { success?: boolean; error?: string; message?: string; synthflow_agent_id?: string };
+                      if (!d?.success) throw new Error(d?.error || "Link failed — agent not found in Synthflow");
+                      toast({
+                        title: "Agent linked",
+                        description: d.message || `Verified and linked ${d.synthflow_agent_id || id}. Now click Update.`,
+                      });
                       setLinkAgentId("");
                       await loadRestaurantData();
-                    } catch (e: any) {
-                      toast({ variant: "destructive", title: "Link failed", description: e.message || String(e) });
+                    } catch (e: unknown) {
+                      toast({
+                        variant: "destructive",
+                        title: "Link failed",
+                        description: e instanceof Error ? e.message : String(e),
+                      });
                     } finally {
                       setLinkingAgentBusy(false);
                     }
