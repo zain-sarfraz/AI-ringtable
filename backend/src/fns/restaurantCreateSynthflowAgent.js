@@ -164,7 +164,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "place_order",
         description:
-          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN to call until caller explicitly confirms the final spoken summary with quantity and total! Default item quantity is 1 (never treat 'OG 20' or '20 burger' as 20). Call once after caller confirms. ALWAYS pass branch_name from Branch ordering (none if no branches). After the tool returns, speak ONLY the tool message (order number on success). NEVER invent extra wait lines like 'Ek chhoti si der' or 'bas thodi dair aur' — one short pause is enough.",
+          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN to call until caller explicitly confirms the final spoken summary with quantity and total! Default item quantity is 1. Call once after caller confirms. ALWAYS pass branch_name from Branch ordering (none if no branches). After success: speak EXACTLY the returned order_number from the tool JSON — never invent or reuse an older number. FORBIDDEN wait lines: 'Ek lamha', 'main order darj kar leti hoon', 'Ek chhoti si der', 'bas thodi dair aur'.",
         // Fixed short filler — empty string lets the LLM invent long "please wait" loops
         speech_while_using_the_tool: "Ek second.",
         failure_timeout: 25,
@@ -286,7 +286,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "check_previous_order",
         description:
-          "REPEAT PREVIOUS ORDER ONLY. Call ONLY at the very start of the call if the caller has NOT mentioned any food items yet. STRICTLY FORBIDDEN to call after the caller has already chosen items or during name, address, or phone collection!",
+          "ALMOST NEVER USE. Call ONLY if the caller EXPLICITLY asks to repeat their last/previous order (e.g. pehle wala order, wahi order, repeat last order) and has NOT named any new dish. If they said any menu item (burger, pizza, Chicken Burger, etc.) — FORBIDDEN. Default: do not call this tool.",
         speech_while_using_the_tool: "Ek second.",
         failure_timeout: 10,
         headers: [{ key: "Content-Type", value: "application/json" }],
@@ -529,8 +529,8 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       greeting_message: greeting,
       llm: body.llm || "gpt-4.1-Mini",
       language: lang,
-      // Slightly under 1.0 keeps clarity without the sluggish / laggy feel of 0.85.
-      voice_speed: 0.95,
+      // 1.0 reduces turn-1 greeting drag; still clear on phone.
+      voice_speed: 1.0,
       min_words_to_interrupt: 2,
       interruption_fade_out: 1,
       noise_cancellation: "standard",

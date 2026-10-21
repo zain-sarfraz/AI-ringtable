@@ -9,7 +9,7 @@ import {
 } from "../lib/voiceWebhookUtils.js";
 import { createPhoneOrder } from "../lib/phoneOrderService.js";
 import { cleanUrduText } from "../lib/devanagariTransliterator.js";
-import { getCurrencyDetails } from "../lib/restaurantVoiceContext.js";
+import { getCurrencyDetails, spokenPriceHints } from "../lib/restaurantVoiceContext.js";
 
 export async function aiPlaceOrder(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
@@ -213,14 +213,15 @@ export async function aiPlaceOrder(req, res) {
     const restSettings = await knex("restaurant_settings").where({ restaurant_id: order.restaurant_id }).select("currency").first();
     const currCode = restSettings?.currency || targetRest?.currency || "USD";
     const currInfo = getCurrencyDetails(currCode);
-    const urduPrice = `${totals.total.toFixed(0)} ${currInfo.urduUnit}`;
-    const enPrice = `${currInfo.symbol}${totals.total.toFixed(2)}`;
+    const totalHints = spokenPriceHints(totals.total, currInfo);
+    const urduPrice = totalHints.urduSpeak;
+    const enPrice = totalHints.enSpeak;
     const taxPart = Number(totals.tax || 0);
     const billBreakdown =
       `Subtotal ${currInfo.symbol}${Number(totals.subtotal || 0).toFixed(2)}, ` +
       `tax ${currInfo.symbol}${taxPart.toFixed(2)}, ` +
       `delivery ${currInfo.symbol}${Number(totals.deliveryFee || 0).toFixed(2)}, ` +
-      `AFTER-TAX total ${enPrice} (Urdu: ${urduPrice})`;
+      `AFTER-TAX total ${enPrice} (Urdu MUST SPEAK: ${urduPrice})`;
 
     return res.json({
       success: true,
@@ -235,8 +236,9 @@ export async function aiPlaceOrder(req, res) {
       discount_amount: coupon.amount,
       speak: order.order_number,
       message:
-        `CRITICAL: Reply in the caller's LOCKED language ONLY (Roman Urdu if Urdu). ` +
-        `Do NOT say any wait filler. Immediately say: Aapka order darj ho chuka hai, order number ${order.order_number} hai. Mehfooz kar lijiye. ` +
+        `CRITICAL: Roman Urdu only. Do NOT say Ek lamha / main order darj kar leti hoon / any wait filler. ` +
+        `Speak EXACTLY this (use THIS order_number only, never an older one): ` +
+        `Aapka order daraj ho chuka hai, order number ${order.order_number} hai. Mehfooz kar lijiye. ` +
         `Tax shamil karke kul raqam ${urduPrice} hai.${branchNote}${couponNote} ` +
         `(EN check: ${billBreakdown})`,
     });
