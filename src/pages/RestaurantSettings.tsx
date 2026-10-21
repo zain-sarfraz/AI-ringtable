@@ -1720,8 +1720,24 @@ export default function RestaurantSettings() {
                         },
                       });
                       if (error) throw new Error(error.message);
-                      const d = data as { success?: boolean; error?: string; message?: string; synthflow_agent_id?: string };
-                      if (!d?.success) throw new Error(d?.error || "Link failed — agent not found in Synthflow");
+                      const d = data as {
+                        success?: boolean;
+                        error?: string;
+                        message?: string;
+                        synthflow_agent_id?: string;
+                        available_agents?: { model_id: string; name: string }[];
+                      };
+                      if (!d?.success) {
+                        const suggestions = (d.available_agents || [])
+                          .slice(0, 5)
+                          .map((a) => `${a.name}: ${a.model_id}`)
+                          .join(" · ");
+                        throw new Error(
+                          [d?.error || "Link failed — agent not found in Synthflow", suggestions ? `Try: ${suggestions}` : ""]
+                            .filter(Boolean)
+                            .join(" "),
+                        );
+                      }
                       toast({
                         title: "Agent linked",
                         description: d.message || `Verified and linked ${d.synthflow_agent_id || id}. Now click Update.`,

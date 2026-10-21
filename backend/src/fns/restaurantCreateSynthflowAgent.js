@@ -2,6 +2,7 @@ import { getKnex } from "../db.js";
 import {
   updateAgent,
   getAssistant,
+  listAssistantsBrief,
   createInformationExtractor,
   createCustomAction,
   updateCustomAction,
@@ -408,27 +409,42 @@ export async function restaurantCreateSynthflowAgent(req, res) {
         });
       }
       try {
-        await getAssistant(linkId);
+        const found = await getAssistant(linkId);
+        const resolvedId =
+          String(found?.assistant?.model_id || found?.assistant?.id || linkId).trim() || linkId;
+        await knex("restaurants").where({ id: restaurant_id }).update({
+          synthflow_agent_id: resolvedId,
+          voice_provider: "synthflow_telnyx",
+          updated_at: knex.fn.now(),
+        });
+        return res.json({
+          success: true,
+          action: "linked",
+          synthflow_agent_id: resolvedId,
+          api_base: found?.api_base || null,
+          message: `Linked Synthflow agent ${resolvedId}. Click Update to sync menu and webhook.`,
+        });
       } catch (err) {
         if (isNotFoundError(err)) {
+          let available = [];
+          try {
+            available = await listAssistantsBrief({ limit: 12 });
+          } catch {
+            available = [];
+          }
+          const hint = available.length
+            ? ` Agents visible to this server API key: ${available
+                .map((a) => `${a.name} (${a.model_id})`)
+                .join("; ")}.`
+            : " No agents were returned for the server SYNTHFLOW_API_KEY — confirm the live .env key matches the Synthflow workspace that owns this agent.";
           return res.status(200).json({
             success: false,
-            error: `Agent ${linkId} was not found in Synthflow. Copy a real model_id from your Synthflow dashboard and try again. Automatic creation is disabled.`,
+            error: `Agent ${linkId} was not found in Synthflow (global/US/EU). Automatic creation is disabled.${hint}`,
+            available_agents: available,
           });
         }
         throw err;
       }
-      await knex("restaurants").where({ id: restaurant_id }).update({
-        synthflow_agent_id: linkId,
-        voice_provider: "synthflow_telnyx",
-        updated_at: knex.fn.now(),
-      });
-      return res.json({
-        success: true,
-        action: "linked",
-        synthflow_agent_id: linkId,
-        message: `Linked Synthflow agent ${linkId}. Click Update to sync menu and webhook.`,
-      });
     }
 
     const r = await knex("restaurants").where({ id: restaurant_id }).first();

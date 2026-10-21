@@ -6,6 +6,14 @@ const SYNTHFLOW_API = (
   "https://api.synthflow.ai/v2"
 ).replace(/\/$/, "");
 
+/** Global / US / EU — agents live in one region; wrong base returns 404. */
+const SYNTHFLOW_REGION_BASES = [
+  SYNTHFLOW_API,
+  "https://api.synthflow.ai/v2",
+  "https://api.us.synthflow.ai/v2",
+  "https://api.eu.synthflow.ai/v2",
+].filter((v, i, arr) => v && arr.indexOf(v) === i);
+
 const FETCH_TIMEOUT_MS = Number(process.env.SYNTHFLOW_FETCH_TIMEOUT_MS || 45000);
 const FETCH_RETRIES = Number(process.env.SYNTHFLOW_FETCH_RETRIES || 2);
 
@@ -44,12 +52,14 @@ export async function synthflowRequest(path, opts = {}) {
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      const method = opts.method || "GET";
       const resp = await fetch(url, {
-        method: opts.method || "GET",
+        method,
         headers: {
           Authorization: `Bearer ${apiKey()}`,
-          "Content-Type": "application/json",
           Accept: "application/json",
+          // Avoid Content-Type on GET — some Synthflow edges mishandle it
+          ...(opts.body != null ? { "Content-Type": "application/json" } : {}),
         },
         body: opts.body != null ? JSON.stringify(opts.body) : undefined,
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -243,13 +253,113 @@ export async function updateAgent(modelId, payload) {
   });
 }
 
-/** Fetch one assistant by model_id. Throws on 404 / not found. */
+function extractAssistantsList(json) {
+  if (!json) return [];
+  if (Array.isArray(json)) return json;
+  const r = json.response;
+  if (Array.isArray(r?.assistants)) return r.assistants;
+  if (Array.isArray(r)) return r;
+  if (Array.isArray(json.assistants)) return json.assistants;
+  if (r && typeof r === "object" && (r.model_id || r.id)) return [r];
+  if (json.model_id || json.id) return [json];
+  return [];
+}
+
+function assistantMatchesId(a, id) {
+  const want = String(id || "").trim().toLowerCase();
+  if (!want) return false;
+  const candidates = [a?.model_id, a?.id, a?.assistant_id]
+    .map((x) => String(x || "").trim().toLowerCase())
+    .filter(Boolean);
+  return candidates.includes(want);
+}
+
+/**
+ * Fetch one assistant by model_id across configured + US/EU regions, then list fallback.
+ * Throws Error with status 404 when not found in the API key's workspaces.
+ */
 export async function getAssistant(modelId) {
   const id = String(modelId || "").trim();
   if (!id) throw new Error("model_id is required");
-  return synthflowRequest(`/assistants/${encodeURIComponent(id)}`, {
-    method: "GET",
-  });
+
+  let lastErr = null;
+  for (const base of SYNTHFLOW_REGION_BASES) {
+    try {
+      const json = await synthflowRequest(`${base}/assistants/${encodeURIComponent(id)}`, {
+        method: "GET",
+      });
+      const list = extractAssistantsList(json);
+      const hit = list.find((a) => assistantMatchesId(a, id)) || list[0];
+      if (hit && (assistantMatchesId(hit, id) || list.length === 1)) {
+        return { raw: json, assistant: hit, api_base: base };
+      }
+      if (!list.length) {
+        lastErr = Object.assign(new Error(`Agent ${id} not found`), { status: 404 });
+        continue;
+      }
+    } catch (err) {
+      lastErr = err;
+      const status = Number(err?.status);
+      const msg = String(err?.message || "");
+      if (status === 404 || /not found|does not exist/i.test(msg)) continue;
+      // Auth / other hard errors — don't keep trying forever on 401
+      if (status === 401 || status === 403) throw err;
+    }
+  }
+
+  // List assistants in each region and match model_id (handles odd GET payloads)
+  for (const base of SYNTHFLOW_REGION_BASES) {
+    try {
+      for (let page = 0; page < 8; page++) {
+        const q = new URLSearchParams({ limit: "50", offset: String(page * 50) });
+        const json = await synthflowRequest(`${base}/assistants?${q}`, { method: "GET" });
+        const assistants = extractAssistantsList(json);
+        if (!assistants.length) break;
+        const hit = assistants.find((a) => assistantMatchesId(a, id));
+        if (hit) return { raw: json, assistant: hit, api_base: base };
+        if (assistants.length < 50) break;
+      }
+    } catch (err) {
+      lastErr = err;
+      if (Number(err?.status) === 401 || Number(err?.status) === 403) throw err;
+    }
+  }
+
+  const err = Object.assign(
+    new Error(
+      lastErr?.message ||
+        `Agent ${id} was not found in Synthflow for this API key (tried global/US/EU).`,
+    ),
+    { status: 404, payload: lastErr?.payload },
+  );
+  throw err;
+}
+
+/** Short list of agents visible to the current API key (for link UI hints). */
+export async function listAssistantsBrief({ limit = 20 } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const base of SYNTHFLOW_REGION_BASES) {
+    try {
+      const q = new URLSearchParams({ limit: String(Math.min(limit, 50)), offset: "0" });
+      const json = await synthflowRequest(`${base}/assistants?${q}`, { method: "GET" });
+      for (const a of extractAssistantsList(json)) {
+        const mid = String(a?.model_id || a?.id || "").trim();
+        if (!mid || seen.has(mid)) continue;
+        seen.add(mid);
+        out.push({
+          model_id: mid,
+          name: a?.name || mid,
+          phone_number: a?.phone_number || null,
+          api_base: base,
+        });
+        if (out.length >= limit) return out;
+      }
+    } catch {
+      // try next region
+    }
+  }
+  return out;
 }
 
 /** List assistants (paginated). */
