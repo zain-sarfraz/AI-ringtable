@@ -6,11 +6,15 @@ const SYNTHFLOW_API = (
   "https://api.synthflow.ai/v2"
 ).replace(/\/$/, "");
 
-/** Global / US / EU — agents live in one region; wrong base returns 404. */
+/**
+ * Prefer US before global/EU: a US workspace API key gets 200 on api.us but
+ * "Unauthorized: Invalid or expired token" on api.synthflow.ai / api.eu — that is a
+ * wrong-region response, not a dead key. getAssistant must keep trying other bases.
+ */
 const SYNTHFLOW_REGION_BASES = [
   SYNTHFLOW_API,
-  "https://api.synthflow.ai/v2",
   "https://api.us.synthflow.ai/v2",
+  "https://api.synthflow.ai/v2",
   "https://api.eu.synthflow.ai/v2",
 ].filter((v, i, arr) => v && arr.indexOf(v) === i);
 
@@ -290,11 +294,15 @@ export async function getAssistant(modelId) {
   if (!id) throw new Error("model_id is required");
 
   let lastErr = null;
+  let sawAuthFailure = false;
+  let sawSuccess = false;
+
   for (const base of SYNTHFLOW_REGION_BASES) {
     try {
       const json = await synthflowRequest(`${base}/assistants/${encodeURIComponent(id)}`, {
         method: "GET",
       });
+      sawSuccess = true;
       const list = extractAssistantsList(json);
       const hit = list.find((a) => assistantMatchesId(a, id)) || list[0];
       if (hit && (assistantMatchesId(hit, id) || list.length === 1)) {
@@ -309,8 +317,13 @@ export async function getAssistant(modelId) {
       const status = Number(err?.status);
       const msg = String(err?.message || "");
       if (status === 404 || /not found|does not exist/i.test(msg)) continue;
-      // Auth / other hard errors — don't keep trying forever on 401
-      if (status === 401 || status === 403) throw err;
+      // Wrong-region bases often return 401 for a valid US (or EU) key — keep trying.
+      if (status === 401 || status === 403) {
+        sawAuthFailure = true;
+        continue;
+      }
+      // Network / 5xx on one region — try the next base
+      continue;
     }
   }
 
@@ -320,6 +333,7 @@ export async function getAssistant(modelId) {
       for (let page = 0; page < 8; page++) {
         const q = new URLSearchParams({ limit: "50", offset: String(page * 50) });
         const json = await synthflowRequest(`${base}/assistants?${q}`, { method: "GET" });
+        sawSuccess = true;
         const assistants = extractAssistantsList(json);
         if (!assistants.length) break;
         const hit = assistants.find((a) => assistantMatchesId(a, id));
@@ -328,8 +342,21 @@ export async function getAssistant(modelId) {
       }
     } catch (err) {
       lastErr = err;
-      if (Number(err?.status) === 401 || Number(err?.status) === 403) throw err;
+      const status = Number(err?.status);
+      if (status === 401 || status === 403) {
+        sawAuthFailure = true;
+        continue;
+      }
     }
+  }
+
+  // Only report auth failure if every region rejected the key (no successful call).
+  if (sawAuthFailure && !sawSuccess) {
+    const err = Object.assign(
+      new Error(lastErr?.message || "Unauthorized: Invalid or expired token."),
+      { status: 401, payload: lastErr?.payload },
+    );
+    throw err;
   }
 
   const err = Object.assign(
