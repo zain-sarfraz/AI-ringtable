@@ -170,7 +170,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "place_order",
         description:
-          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name EXACTLY from ## Branch ordering — if that section says NO branches, pass branch_name as none (NEVER invent 'branch 2', Johar Town, Iqbal Town, or any city). If tool says branch_required but prompt says NO branches: retry with branch_name none — do NOT ask area. After success: READ ALOUD the response field \"speak\" EXACTLY in Roman Urdu — never paraphrase to English. Order already saved. If phone_required: READ \"speak\" (ask digits) — NEVER say order failed / save nahi hua; then retry with digit phone. NEVER invent or change any digit. NEVER reuse an older ORD number. FORBIDDEN wait lines: Ek lamha, main order darj kar leti hoon, Ek chhoti si der, bas thodi dair aur.",
+          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name EXACTLY from ## Branch ordering — if that section says NO branches, pass branch_name as none (NEVER invent 'branch 2', Johar Town, Iqbal Town, or any city). If tool says branch_required but prompt says NO branches: retry with branch_name none — do NOT ask area. After success: READ ALOUD the response field \"speak\" EXACTLY in Roman Urdu — never paraphrase to English. Order already saved. If phone_required: READ \"speak\" (ask digits) — NEVER say order failed / save nahi hua; then retry with digit phone. NEVER invent or change any digit. NEVER reuse an older ORD number. FORBIDDEN wait lines: Ek lamha, main order confirm kar leti hoon, Ek chhoti si der, bas thodi dair aur. NEVER say daraj/darj.",
         // Fixed short filler — empty string lets the LLM invent long "please wait" loops
         speech_while_using_the_tool: "Ji.",
         failure_timeout: 25,
@@ -535,8 +535,8 @@ export async function restaurantCreateSynthflowAgent(req, res) {
     const menuKeywords = [
       r.name,
       ...(catalog.items || []).slice(0, 30).map((i) => i.name),
-      "order", "burger", "pizza", "rupay", "rupiya", "chota", "darmiyana", "bara",
-      "bhejwa", "bhaijwa", "aakar", "lenge", "daraj", "darj", "raabta", "rabta", "shukriya", "paanch",
+      "order", "burger", "pizza", "rupay", "rupiya", "small", "medium", "large",
+      "delivery", "pickup", "confirm", "raabta", "rabta", "shukriya",
     ].filter(Boolean);
 
     // Synthflow → ElevenLabs path: only fields Synthflow documents are sent.

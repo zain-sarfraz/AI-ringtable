@@ -279,7 +279,7 @@ export async function aiPlaceOrder(req, res) {
     // Locked script only — no English debug in `message` (LLM paraphrases and invents wrong ORD suffixes).
     // Soft, natural Lahori close — still digit-safe for the order number.
     const spokenScript =
-      `Ji, aapka order daraj ho gaya. Order number ${orderSpeak} hai — mehfooz kar lijiye. ` +
+      `Ji, aapka order confirm ho gaya. Order number ${orderSpeak} hai — mehfooz kar lijiye. ` +
       `Teks shamil karke kul raqam ${spokenTotal} hai. Bohot shukriya, Allah hafiz!` +
       (branchNote ? ` ${branchNote.trim()}` : "") +
       (couponNote ? ` ${couponNote.trim()}` : "");
@@ -317,7 +317,7 @@ export async function aiPlaceOrder(req, res) {
       // No areas configured → do not ask Johar Town / invent cities; tell agent to retry with branch_name none.
       if (!areas.length) {
         const speakNone =
-          "Theek hai ji, main order daraj karti hoon.";
+          "Theek hai ji, main order confirm karti hoon.";
         return res.status(200).json({
           success: false,
           branch_required: false,
