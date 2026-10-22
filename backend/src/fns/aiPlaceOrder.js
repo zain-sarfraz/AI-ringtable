@@ -311,24 +311,32 @@ export async function aiPlaceOrder(req, res) {
     }
     if (e.isBranchError) {
       const areas = (e.availableAreas || []).filter(Boolean);
-      const areaList = areas.length ? areas.join(" or ") : "";
+      const areaList = areas.length ? areas.join(" ya ") : "";
       console.warn("⚠️ Branch not matched. Requested:", e.requestedBranch, "| areas:", areaList || "(none)");
       // No areas configured → do not ask Johar Town / invent cities; tell agent to retry with branch_name none.
       if (!areas.length) {
+        const speakNone =
+          "Theek hai ji, main order daraj karti hoon.";
         return res.status(200).json({
           success: false,
           branch_required: false,
+          speak: speakNone,
           message:
-            "Respond ONLY in Roman Urdu: is restaurant ki koi branch/area list nahi. " +
-            "Dobara place_order call karo with branch_name exactly \"none\". Area/city mat poocho. Order number invent mat karo.",
+            "NO BRANCHES — do NOT ask Johar Town, Iqbal Town, city, or area. " +
+            "Silently call place_order again with branch_name exactly \"none\". " +
+            "Do NOT invent an order number. Do not speak a waiting line.",
         });
       }
+      const speakAreas = `Aap kaunsa area chahenge: ${areaList}?`;
       return res.status(200).json({
         success: false,
         branch_required: true,
         requested_branch: e.requestedBranch || null,
         available_areas: areas,
-        message: `Respond ONLY in the caller's LOCKED language: I need to confirm which area for your order. Which area would you like: ${areaList}? After they answer, call place_order again with branch_name set to that area name. Do NOT invent an order number.`,
+        speak: speakAreas,
+        message:
+          `READ "speak" EXACTLY once (Roman Urdu). After they answer, call place_order again with branch_name set to that exact area name. ` +
+          `ONLY use these areas — never invent Johar Town / Iqbal Town if they are not in the list. Do NOT invent an order number.`,
       });
     }
     if (/no order items/i.test(String(e.message || ""))) {

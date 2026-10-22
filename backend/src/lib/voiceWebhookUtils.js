@@ -283,23 +283,55 @@ export function hasUsableOrderItems(items) {
  * @param {Record<string, unknown>} b normalized tool body
  * @returns {Promise<{ id: string | null; error?: string }>}
  */
+async function findRestaurantByDialedNumber(knex, dialed) {
+  if (!dialed) return null;
+  const raw = String(dialed).trim();
+  if (!raw || /^<[^>]+>$/.test(raw)) return null;
+  const norm = normalizeE164(raw);
+  let row = await knex("restaurants").where({ telnyx_phone_number: raw }).select("id").first();
+  if (!row && norm && norm !== raw) {
+    row = await knex("restaurants").where({ telnyx_phone_number: norm }).select("id").first();
+  }
+  if (!row) {
+    row = await knex("restaurants").where({ twilio_phone_number: raw }).select("id").first();
+  }
+  if (!row && norm && norm !== raw) {
+    row = await knex("restaurants").where({ twilio_phone_number: norm }).select("id").first();
+  }
+  return row || null;
+}
+
 export async function resolveRestaurantIdForVoiceTools(knex, b) {
-  // Prefer agent / dialed number over baked restaurant_id — local sync often bakes a
-  // wrong laptop UUID into a shared live agent; agent_id + Telnyx number are stable.
+  // Dialed Telnyx/Twilio number first — shared Synthflow agents (local Royal + live Pizza Go)
+  // must not resolve by agent_id alone or pickup inherits the wrong brand's Johar/Iqbal branches.
+  const dialed =
+    b.twilio_to ||
+    b.to_phone_number ||
+    b.to_number ||
+    b.called_number ||
+    b.dialed_number ||
+    b.destination_phone ||
+    null;
+  const byDialed = await findRestaurantByDialedNumber(knex, dialed);
+  if (byDialed) return { id: byDialed.id };
+
   if (b.synthflow_agent_id) {
-    const row = await knex("restaurants")
+    const rows = await knex("restaurants")
       .where({ synthflow_agent_id: String(b.synthflow_agent_id) })
-      .select("id")
-      .first();
-    if (row) return { id: row.id };
+      .select("id", "telnyx_phone_number", "twilio_phone_number", "name");
+    if (rows.length === 1) return { id: rows[0].id };
+    if (rows.length > 1) {
+      console.warn(
+        `⚠️ synthflow_agent_id shared by ${rows.length} restaurants: ${rows.map((r) => r.name).join(", ")} — need dialed number`,
+      );
+    }
   }
 
   if (b.elevenlabs_agent_id) {
-    const row = await knex("restaurants")
+    const rows = await knex("restaurants")
       .where({ elevenlabs_agent_id: String(b.elevenlabs_agent_id) })
-      .select("id")
-      .first();
-    if (row) return { id: row.id };
+      .select("id");
+    if (rows.length === 1) return { id: rows[0].id };
   }
 
   if (b.restaurant_id) {
@@ -308,18 +340,7 @@ export async function resolveRestaurantIdForVoiceTools(knex, b) {
   }
 
   if (b.twilio_to) {
-    const raw = String(b.twilio_to).trim();
-    const norm = normalizeE164(raw);
-    let row = await knex("restaurants").where({ twilio_phone_number: raw }).select("id").first();
-    if (!row && norm && norm !== raw) {
-      row = await knex("restaurants").where({ twilio_phone_number: norm }).select("id").first();
-    }
-    if (!row) {
-      row = await knex("restaurants").where({ telnyx_phone_number: raw }).select("id").first();
-    }
-    if (!row && norm) {
-      row = await knex("restaurants").where({ telnyx_phone_number: norm }).select("id").first();
-    }
+    const row = await findRestaurantByDialedNumber(knex, b.twilio_to);
     if (row) return { id: row.id };
   }
 

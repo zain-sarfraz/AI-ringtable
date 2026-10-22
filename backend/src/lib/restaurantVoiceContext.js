@@ -83,10 +83,11 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur") {
 - Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email.
 - Delivery: full street address; email optional only.
 - If caller says yahi/yehi/same/this number → customer_phone exactly "same". NEVER ask raabta number again after they answered once (yahi OR digits).
-- branch_name: follow ## Branch ordering. If NO branches → exactly "none". NEVER invent "branch 2" or a city.
+- branch_name: follow ## Branch ordering. If NO branches → exactly "none". NEVER invent "branch 2" or a city. NEVER ask Johar Town / Iqbal Town / any area unless ## Branch ordering lists that exact area.
 - items: real food lines with quantity (default 1). Never empty. Never "<order_items>".
-- After tool returns: if success or "speak" is present, READ "speak" EXACTLY. Order IS saved. NEVER say fail. NEVER invent ORD digits. NEVER mention SMS.
+- After tool returns: if success or "speak" is present, READ "speak" EXACTLY (Roman Urdu). Order IS saved. NEVER paraphrase into English. NEVER say fail. NEVER invent ORD digits. NEVER mention SMS.
 - If phone_required: READ response "speak" ONCE (digits only). NEVER say "Order save nahi ho saka". NEVER ask phone again after digits — retry place_order with those digits.
+- If branch_required but ## Branch ordering says NO branches: do NOT ask area — immediately retry place_order with branch_name "none".
 - If success:false for other reasons: fix that field and call place_order again once. Do not invent an order number.
 - Collect order: items → naam → fulfillment → (pickup: no email) → raabta → summary → haan → place_order. NEVER ask phone before fulfillment.
 =======================================================
@@ -99,10 +100,11 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur") {
 - Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email.
 - Delivery: full street address; email optional only.
 - Same/this/calling number → customer_phone exactly "same".
-- branch_name: follow ## Branch ordering. If NO branches → "none". Never invent branch names.
+- branch_name: follow ## Branch ordering. If NO branches → "none". Never invent branch/area names (no Johar Town / Iqbal Town unless listed).
 - items: real menu lines with quantity (default 1). Never empty placeholders.
 - On success/speak: read "speak" EXACTLY. Order is saved. Never invent ORD numbers. Never mention SMS.
 - On phone_required: read "speak", ask digits only — never say the order failed. Retry place_order with digits.
+- On branch_required but ## Branch ordering says NO branches: retry place_order with branch_name "none" — do not ask area.
 - On other success:false: fix the missing field and retry place_order once. Never invent an order number.
 - Collect: items → name → fulfillment → (pickup: skip email) → phone → summary → confirm → place_order.
 =======================================================

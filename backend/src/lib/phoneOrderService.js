@@ -594,23 +594,18 @@ export async function createPhoneOrder(knex, input) {
     }
   }
 
-  // Branch tree:
-  // - Standalone HQ (Pizza Go): ONLY this restaurant's own child branches — never another brand's tree
-  //   even if parent_restaurant_id was wrongly set in the DB.
-  // - Branch location line: siblings under the same parent.
+  // Branch tree: ONLY this restaurant's own children.
+  // Never walk up parent_restaurant_id — a wrongly tagged standalone (e.g. Pizza Go with
+  // is_branch + another brand's parent) used to inherit Johar Town / Iqbal Town and force
+  // area questions on pickup. Real multi-branch HQs list children under their own id.
   const restaurantRow = await knex("restaurants")
     .where({ id: restaurantId })
     .select("id", "name", "parent_restaurant_id", "is_branch")
     .first();
-  const orderingOnBranchLocation = Boolean(
-    restaurantRow?.is_branch && restaurantRow?.parent_restaurant_id,
-  );
-  const parentRestaurantId = orderingOnBranchLocation
-    ? restaurantRow.parent_restaurant_id
-    : restaurantId;
+  const parentRestaurantId = restaurantId;
   const branches = await knex("restaurants")
     .where({
-      parent_restaurant_id: parentRestaurantId,
+      parent_restaurant_id: restaurantId,
       is_branch: true,
       is_active: true,
     })
@@ -674,9 +669,12 @@ export async function createPhoneOrder(knex, input) {
   }
 
   console.log(
-    `🏪 Branch resolve: root=${parentRestaurantId} onBranchLine=${orderingOnBranchLocation} ` +
+    `🏪 Branch resolve: restaurant=${restaurantId} ` +
       `spoken=${JSON.stringify(spokenCandidates)} matched=${chosenBranch?.name || "NONE"} ` +
-      `branches=${branches.map((b) => b.name).join(" | ") || "(none)"}`,
+      `ownChildren=${branches.map((b) => b.name).join(" | ") || "(none)"}` +
+      (restaurantRow?.is_branch && restaurantRow?.parent_restaurant_id
+        ? ` (row is_branch under ${restaurantRow.parent_restaurant_id} — ignored for tree)`
+        : ""),
   );
 
   if (chosenBranch) {
