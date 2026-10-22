@@ -164,9 +164,9 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "place_order",
         description:
-          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name from Branch ordering (none if none). After success: READ ALOUD the response field \"speak\" (or message) EXACTLY — it already expands the order number digit-by-digit. NEVER invent or change any digit. NEVER reuse an older ORD number. FORBIDDEN wait lines: Ek lamha, main order darj kar leti hoon, Ek chhoti si der, bas thodi dair aur.",
+          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name EXACTLY from ## Branch ordering — if that section says NO branches, pass branch_name as none (NEVER invent 'branch 2' or a city). After success: READ ALOUD the response field \"speak\" EXACTLY — order already saved. NEVER say order failed if speak/success is present. NEVER invent or change any digit. NEVER reuse an older ORD number. FORBIDDEN wait lines: Ek lamha, main order darj kar leti hoon, Ek chhoti si der, bas thodi dair aur.",
         // Fixed short filler — empty string lets the LLM invent long "please wait" loops
-        speech_while_using_the_tool: "Ek second.",
+        speech_while_using_the_tool: "Ji.",
         failure_timeout: 25,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
@@ -187,8 +187,8 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
           duringCallVar("coupon_code", "Coupon code or none", "none"),
           duringCallVar(
             "branch_name",
-            "Pass the area or exact branch from Branch ordering, or none when there are no branches. Never leave empty for pickup.",
-            "Main Branch",
+            'Pass the area or exact branch from ## Branch ordering. If that section says NO branches, pass exactly "none". NEVER invent "branch 2", a city, or "Main Branch".',
+            "none",
           ),
         ],
         json_body_stringified: JSON.stringify({
@@ -217,7 +217,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         name: "get_order_status",
         description:
           "TRACK ORDER ONLY after the caller spoke an order number in ANY language. REQUIRED: ask order number first in the LOCKED language, wait, then call with ORD-YYMMDD-NN. NEVER call with empty order_number. NEVER invent status from phone alone. Speak the result ONLY in the caller's LOCKED language — zero words in any other language.",
-        speech_while_using_the_tool: "Ek second.",
+        speech_while_using_the_tool: "Ji.",
         failure_timeout: 15,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
@@ -244,7 +244,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         name: "reserve_table",
         description:
           "TABLE RESERVATIONS ONLY. Call this tool ONLY AFTER you have collected all reservation details (name, party size, date, time, phone) AND the caller has confirmed the summary! FORBIDDEN to call at the beginning when caller first asks for a table. Collect each detail in caller's LOCKED language, confirm, and ONLY THEN call this tool once.",
-        speech_while_using_the_tool: "Ek second.",
+        speech_while_using_the_tool: "Ji.",
         failure_timeout: 20,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
@@ -287,7 +287,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         name: "check_previous_order",
         description:
           "ALMOST NEVER USE. Call ONLY if the caller EXPLICITLY asks to repeat their last/previous order (e.g. pehle wala order, wahi order, repeat last order) and has NOT named any new dish. If they said any menu item (burger, pizza, Chicken Burger, etc.) — FORBIDDEN. Default: do not call this tool.",
-        speech_while_using_the_tool: "Ek second.",
+        speech_while_using_the_tool: "Ji.",
         failure_timeout: 10,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [],
@@ -524,14 +524,17 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       "bhejwa", "bhaijwa", "aakar", "lenge", "daraj", "darj", "raabta", "rabta", "shukriya", "paanch",
     ].filter(Boolean);
 
+    // Synthflow → ElevenLabs path: only fields Synthflow documents are sent.
+    // Default Jessica (cgSgsp…) is multilingual; for more Pakistani tone, set restaurants.agent_voice_id
+    // to a Voice Library Urdu / South-Asian conversational voice after A/B listening tests — do not swap blind.
+    // 1.08 keeps Urdu moving in one breath. 0.98 left audible gaps mid-sentence.
     const agentConfig = {
       name: agentName,
       prompt: fullPrompt,
       greeting_message: greeting,
       llm: body.llm || "gpt-4.1-Mini",
       language: lang,
-      // 1.0 reduces turn-1 greeting drag; still clear on phone.
-      voice_speed: 1.0,
+      voice_speed: 1.08,
       min_words_to_interrupt: 2,
       interruption_fade_out: 1,
       noise_cancellation: "standard",

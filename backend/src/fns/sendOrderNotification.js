@@ -46,8 +46,14 @@ export async function sendOrderNotification(req, res) {
       orderId = req.body?.order_id ?? null;
     }
 
+    // notification_queue has no order_id column — the id lives inside payload.
     let q = knex("notification_queue").where({ status: "pending" }).limit(25);
-    if (orderId) q = knex("notification_queue").where({ status: "pending", order_id: orderId });
+    if (orderId) {
+      q = knex("notification_queue")
+        .where({ status: "pending" })
+        .whereRaw("payload->>'order_id' = ?", [String(orderId)])
+        .limit(25);
+    }
     const queue = await q;
 
     const baseUrl = (process.env.PUBLIC_APP_URL || "http://localhost:8080").replace(/\/$/, "");

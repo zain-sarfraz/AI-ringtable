@@ -33,6 +33,16 @@ export function parseTranscriptIntoTurns(text) {
   return turns;
 }
 
+function pickCallPayload(json) {
+  if (!json || typeof json !== "object") return null;
+  const response = json.response;
+  if (Array.isArray(response?.calls) && response.calls[0]) return response.calls[0];
+  if (response?.call_id || response?.transcript) return response;
+  if (json.call_id || json.transcript) return json;
+  if (json.call?.call_id || json.call?.transcript) return json.call;
+  return null;
+}
+
 export async function synthflowSyncCalls(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
   try {
@@ -66,15 +76,36 @@ export async function synthflowSyncCalls(req, res) {
       const agentId = rest.synthflow_agent_id;
       if (!agentId) continue;
 
-      let synthflowData = null;
-      try {
-        synthflowData = await synthflowRequest(`/calls?model_id=${encodeURIComponent(agentId)}&limit=25`);
-      } catch (sfErr) {
-        console.warn(`Could not fetch Synthflow calls for restaurant ${rest.id} (${agentId}):`, sfErr.message);
-        continue;
+      let callsList = [];
+      // Order page sync: fetch that one call. Scanning the last 25 calls is slow, so the
+      // first click often reloads the page before the transcript is written.
+      if (requestedOrderId) {
+        const orderRow = await knex("orders").where({ id: requestedOrderId }).first();
+        let singleId = String(orderRow?.ai_extracted_data?.synthflow_call_id || "").trim();
+        if (!singleId && orderRow?.call_id) {
+          const linked = await knex("calls").where({ id: orderRow.call_id }).select("synthflow_call_id").first();
+          singleId = String(linked?.synthflow_call_id || "").trim();
+        }
+        if (singleId) {
+          try {
+            const detail = await synthflowRequest(`/calls/${encodeURIComponent(singleId)}`);
+            const one = pickCallPayload(detail);
+            if (one) callsList = [{ ...one, call_id: one.call_id || singleId }];
+          } catch (detailErr) {
+            console.warn(`[SynthflowSync] Call detail ${singleId} failed:`, detailErr.message);
+          }
+        }
       }
 
-      const callsList = synthflowData?.response?.calls || synthflowData?.calls || [];
+      if (!callsList.length) {
+        try {
+          const synthflowData = await synthflowRequest(`/calls?model_id=${encodeURIComponent(agentId)}&limit=25`);
+          callsList = synthflowData?.response?.calls || synthflowData?.calls || [];
+        } catch (sfErr) {
+          console.warn(`Could not fetch Synthflow calls for restaurant ${rest.id} (${agentId}):`, sfErr.message);
+          continue;
+        }
+      }
       console.log(`[SynthflowSync] Found ${callsList.length} calls for restaurant ${rest.name} (${rest.id})`);
 
       for (const sfCall of callsList) {
@@ -102,15 +133,18 @@ export async function synthflowSyncCalls(req, res) {
           status: mapCallStatus(sfCall.call_status || sfCall.status),
           direction: sfCall.type_of_call === "outbound" ? "outbound" : "inbound",
           duration_seconds: durationSeconds,
-          recording_url: recordingUrl,
-          transcript: transcript ? cleanUrduText(transcript) : null,
-          notes: callNotes ? cleanUrduText(callNotes) : null,
           synthflow_call_id: synthflowCallId,
           restaurant_id: rest.id,
           provider: "synthflow",
           ended_at: new Date().toISOString(),
-          started_at: sfCall.start_time ? new Date(Number(sfCall.start_time)).toISOString() : null,
         };
+        if (recordingUrl) callPatch.recording_url = recordingUrl;
+        if (transcript) callPatch.transcript = cleanUrduText(transcript);
+        if (callNotes) callPatch.notes = cleanUrduText(callNotes);
+        if (sfCall.start_time) {
+          const started = new Date(Number(sfCall.start_time) || sfCall.start_time);
+          if (!Number.isNaN(started.getTime())) callPatch.started_at = started.toISOString();
+        }
 
         if (callRow) {
           await knex("calls").where({ id: callRow.id }).update(callPatch);

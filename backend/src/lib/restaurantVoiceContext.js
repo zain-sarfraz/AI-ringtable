@@ -262,6 +262,7 @@ export function buildRestaurantVoiceKnowledge({
   addons = [],
   itemAddons = [],
   branches = [],
+  subCategories = [],
   preferUrduPrices = false,
 }) {
   const currency = currencyOverride || settings?.currency || "USD";
@@ -345,7 +346,7 @@ export function buildRestaurantVoiceKnowledge({
       `6. Prefer the menu line "AFTER-TAX ×1" hint for a single item; for qty>1 multiply that AFTER-TAX unit, then add delivery if any.`,
     );
     lines.push(
-      `   Example wording: "Items [X], tax shamil karke kul raqam [AFTER-TAX total] ${currInfo.urduUnit} hai."`,
+      `   Example wording: "Items [X], teks shamil karke kul raqam [AFTER-TAX total] ${currInfo.urduUnit} hai."`,
     );
     lines.push("");
   }
@@ -366,6 +367,7 @@ export function buildRestaurantVoiceKnowledge({
   }
 
   lines.push("## Menu Categories & Available Items");
+  lines.push("When the caller names a type (burger, pizza, drink) and NOT one exact dish, match that word to a subcategory name first, then a category name. If the name matches, read THAT script in full — every item and every price. Do not read the parent category when a subcategory name matches. If no category or subcategory is named that word, read the ITEM PHONE SCRIPT for that word (only items whose name contains it). Never dump a different category.");
 
   const byCategory = new Map();
   for (const it of (items || []).filter((i) => i.is_available !== false && !/table\s*reserv|book\w*\s+(a\s+)?table/i.test(String(i.name || "")))) {
@@ -424,14 +426,119 @@ export function buildRestaurantVoiceKnowledge({
     return itemLines.join("\n");
   }
 
+  function nameStems(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(" ")
+      .filter((w) => w.length >= 3)
+      .map((w) => (w.endsWith("s") && w.length > 4 ? w.slice(0, -1) : w));
+  }
+
+  function namesMatch(spoken, label) {
+    const a = nameStems(spoken);
+    const b = new Set(nameStems(label));
+    return a.some((w) => b.has(w));
+  }
+
+  function spokenBitsFor(list) {
+    const spokenBits = [];
+    for (const it of list) {
+      const itemVars = variantMap.get(it.id) || [];
+      const rawSizes = itemVars.filter((v) => v.variant_type === "size");
+      const seenSizes = new Set();
+      const sizes = [];
+      for (const s of rawSizes) {
+        const key = `${(s.name || "").trim().toLowerCase()}_${Number(s.price).toFixed(2)}`;
+        if (!seenSizes.has(key)) {
+          seenSizes.add(key);
+          sizes.push(s);
+        }
+      }
+      if (sizes.length) {
+        for (const s of sizes) {
+          const sizeLabel = s.measurement ? `${s.name} ${s.measurement}` : s.name;
+          spokenBits.push(`${it.name} ${sizeLabel} ${spokenPriceHints(s.price, currInfo).urduSpeak}`);
+        }
+      } else {
+        spokenBits.push(`${it.name} ${spokenPriceHints(it.price, currInfo).urduSpeak}`);
+      }
+    }
+    return spokenBits;
+  }
+
+  function phoneScript(kind, label, bits) {
+    return `${kind} PHONE SCRIPT for "${label}" (${bits.length} items — say all ${bits.length}, skip none): Ji, ${label} mein hamare paas ${bits.join(", ")} hain. Aap konsa lena chahenge?`;
+  }
+
+  const activeSubs = (subCategories || []).filter((s) => s.is_active !== false);
+  const subById = new Map(activeSubs.map((s) => [s.id, s]));
+  const namedLabels = [
+    ...(categories || []).map((c) => c.name),
+    ...activeSubs.map((s) => s.name),
+  ];
+
   for (const cat of categories || []) {
     const list = byCategory.get(cat.id) || [];
     if (!list.length) continue;
     lines.push("");
     lines.push(`### Category: ${cat.name}`);
     if (cat.description) lines.push(cat.description);
+
+    const subsForCat = activeSubs.filter((s) => s.category_id === cat.id);
+    const direct = [];
+    const bySub = new Map();
     for (const it of list) {
-      lines.push(renderItem(it));
+      const sub = it.sub_category_id ? subById.get(it.sub_category_id) : null;
+      if (sub && sub.category_id === cat.id) {
+        if (!bySub.has(sub.id)) bySub.set(sub.id, []);
+        bySub.get(sub.id).push(it);
+      } else {
+        direct.push(it);
+      }
+    }
+
+    if (direct.length) {
+      if (subsForCat.length) lines.push(`#### Items in ${cat.name} with no subcategory`);
+      for (const it of direct) lines.push(renderItem(it));
+    }
+
+    for (const sub of subsForCat) {
+      const subItems = bySub.get(sub.id) || [];
+      if (!subItems.length) continue;
+      lines.push("");
+      lines.push(`#### Subcategory: ${sub.name} (inside ${cat.name})`);
+      if (sub.description) lines.push(sub.description);
+      for (const it of subItems) lines.push(renderItem(it));
+      lines.push(phoneScript("SUBCATEGORY", sub.name, spokenBitsFor(subItems)));
+      lines.push(
+        `Read the subcategory script above ONLY when the caller’s word matches the subcategory name "${sub.name}" (example: burger matches Burgers). Do not add other items from ${cat.name}.`,
+      );
+    }
+
+    lines.push(phoneScript("CATEGORY", cat.name, spokenBitsFor(list)));
+    lines.push(
+      `Read this CATEGORY script ONLY when the caller’s word matches the category name "${cat.name}". If a subcategory name matches, read the subcategory script instead and skip this one.`,
+    );
+  }
+
+  const itemWordMap = new Map();
+  for (const it of (items || []).filter((i) => i.is_available !== false && !/table\s*reserv|book\w*\s+(a\s+)?table/i.test(String(i.name || "")))) {
+    const seen = new Set();
+    for (const stem of nameStems(it.name)) {
+      if (stem.length < 4 || seen.has(stem)) continue;
+      seen.add(stem);
+      if (namedLabels.some((label) => namesMatch(stem, label))) continue;
+      if (!itemWordMap.has(stem)) itemWordMap.set(stem, []);
+      itemWordMap.get(stem).push(it);
+    }
+  }
+  if (itemWordMap.size) {
+    lines.push("");
+    lines.push("### Item-name scripts (no category or subcategory uses this name)");
+    lines.push("Use one of these ONLY when the caller’s word does not match any category or subcategory name. Say only the items in that script. Do not read the parent category.");
+    for (const [stem, list] of itemWordMap) {
+      lines.push(phoneScript("ITEM", stem, spokenBitsFor(list)));
     }
   }
 
@@ -503,19 +610,20 @@ export function buildRestaurantVoiceKnowledge({
   lines.push("");
   lines.push("## Fast Ordering Protocol");
   if (urduPriceMode) {
-    lines.push("1. Greet calmly in Roman Urdu and ask what the caller would like to order.");
+    lines.push("1. Greet warmly in Pakistani Roman Urdu (Lahore style) and ask what they would like — one short question, then wait.");
     lines.push("2. Capture ordered items/sizes/flavors from THIS menu only. Speak each price using the MUST SPEAK Urdu hint (e.g. 'paanch sau rupay'). NEVER say dollar, cent, or $.");
-    lines.push("3. Collect customer name (accept ANY name on first try).");
-    lines.push("4. Ask fulfillment ONLY in Urdu: \"Kya yeh aapke pate par bhejwa dein ya aap khud aakar lenge?\" NEVER say \"Delivery\" or \"Pickup\". Then follow Branch ordering.");
+    lines.push("2b. CATEGORY (mandatory): if they name a type but not one exact dish, match subcategory name first, then category name. Read that matching PHONE SCRIPT in full, every item and price. If no category or subcategory has that name, read the ITEM PHONE SCRIPT only. Never read a parent category just because one item sits inside it. If they already named the exact dish, do not read a script.");
+    lines.push("3. Collect customer name (accept ANY name on first try). Acknowledge with a natural \"Ji\" / \"Acha ji\" — do not repeat the same filler every turn.");
+    lines.push("4. Ask fulfillment ONLY in Urdu: \"Kya yeh aapke pate par bhejwa dein ya aap khud aakar lenge?\" NEVER say \"Delivery\" or \"Pickup\". Then follow Branch ordering (if NO branches → never ask area; pass branch_name none).");
     lines.push(
       "5. Email: ONLY if delivery (pate par bhejwa). Pickup (khud aakar lenge): NEVER ask email — skip to phone, pass customer_email as none. Delivery optional ask: \"Raseed ke liye apna email bata sakte hain?\"",
     );
     lines.push(
-      "6. Phone: \"Aapka raabta number bata dijiye?\" If they say yahi/yehi/yhi/isi/same/this number → say \"Theek hai\" ONCE, NEVER ask phone again, pass customer_phone as \"same\".",
+      "6. Phone: \"Aapka raabta number bata dijiye?\" If they say yahi/yehi/yhi/isi/same/this number → say \"Theek hai ji\" ONCE, NEVER ask phone again, pass customer_phone as \"same\".",
     );
     lines.push("7. Payment is COD — do not ask payment method.");
     lines.push(
-      "8. Before place_order: speak AFTER-TAX kul raqam using menu AFTER-TAX hints (not pre-tax), then ask \"Kya main yeh order darj kar doon?\" and WAIT.",
+      "8. Before place_order: speak AFTER-TAX kul raqam using menu AFTER-TAX hints (not pre-tax), then ask \"Kya main yeh order daraj kar doon?\" and WAIT.",
     );
   } else {
     lines.push("1. Greet calmly and ask what the caller would like to order.");
@@ -552,27 +660,35 @@ export function defaultSynthflowPrompt(
   const taxRatePct = taxMatch ? taxMatch[1] : "0";
   // Urdu-locked restaurants: no English detect/lock branch (stops "Delivery ya pickup?" / "$4.44")
   if (isUrdu) {
-    return `You are the polite, calm, direct, and concise AI phone ordering assistant for ${restaurantName}.
+    return `You are the friendly phone ordering assistant for ${restaurantName} — a calm, confident Pakistani voice from Lahore on a restaurant landline.
 
 PRIMARY MISSION:
-Help callers with food orders, order tracking, and table reservations — speaking ONLY smooth Conversational Roman Urdu.
+Help with food orders, order tracking, and table reservations. Speak ONLY everyday Conversational Roman Urdu (Lahore / Pakistani style) — like a real person on the phone, not a scripted chatbot.
 
 =======================================================
-SPEECH FLUENCY (CRITICAL — SMOOTH, NO LAG):
-- Speak like a real Pakistani restaurant phone girl: warm, continuous, confident — NEVER robotic, NEVER word-by-word, NEVER letter-by-letter.
-- Turn 1 greeting: speak it FAST and SMOOTH in one breath — do not drag Assalamualaikum or pause mid-greeting.
-- One short sentence in ONE breath. No long pauses between words. No stuttering / repeating the same phrase.
-- Max 1–2 short sentences per turn, then WAIT in silence (do not keep talking).
-- Natural connectors only: "Ji", "Theek hai", "Zaroor", "Bohot acha".
-- Prefer these TTS-friendly spellings (clearer speech): "paanch", "chhe", "raabta", "bhejwa", "daraj", "shukriya", "mehfooz", "rupay", "Assalamualaikum".
-- FORBIDDEN awkward fillers: "Thoda sa chhup sa gaya", "bas thodi dair", "Ek lamha", "main order darj kar leti hoon" (while waiting), long waiting monologues, English "okay/sure/check".
+IDENTITY (CRITICAL):
+- You are an AI voice assistant. If asked "kya aap insan hain?" / "are you human?" → politely say: "Ji, main AI assistant hoon, order lene mein madad kar ${verbHelp}." Then return to the order.
+- NEVER claim to be a human, staff member in the kitchen, or a real person.
+=======================================================
+
+=======================================================
+SPEECH — NATURAL LAHORI URDU (CRITICAL — SMOOTH, NO LAG):
+- Speak in one continuous breath. No mid-sentence pause, no stutter, no drag on Assalamualaikum.
+- NEVER write "...", "..", "…", or a double space. Those characters become silent gaps on the phone.
+- Use a comma only when the grammar needs it. Do not stack commas to sound thoughtful.
+- Max 1–2 short sentences per turn, then WAIT. Ask ONE question only. EXCEPTION: a category PHONE SCRIPT must be spoken in full, every item and price, even if it is longer.
+- When the caller starts speaking, STOP immediately.
+- Acknowledgments, one short word, then the next sentence with no gap: "Ji bilkul", "Acha ji", "Theek hai", "Zaroor". Do not repeat the same one every turn.
+- Prefer TTS-friendly spellings: "paanch", "chhe", "raabta", "bhejwa", "daraj", "shukriya", "mehfooz", "rupay", "teks", "Assalamualaikum".
+- FORBIDDEN: Hindi, Devanagari, bookish Urdu, long paragraphs, repeating a phrase, English fillers (okay / sure / check / please hold).
+- While a tool runs, say NOTHING yourself. The phone already plays one short filler. Do not add "Ji, ek second" or any waiting line. When the tool returns, read "speak" immediately.
+- Dish names may stay as on the menu; EVERY other spoken word = smooth Pakistani Roman Urdu.
 - Prices: copy exact MUST SPEAK hint. Whole rupay as natural words. Paisay after the point = EACH DIGIT (Rs 3.43 → "teen rupay chaar teen paisay", NEVER "chalees teen"). Never dollar/cent/$.
-- Dish names may stay as on the menu; EVERY other word = smooth Roman Urdu.
 =======================================================
 
 =======================================================
 GENDER (${isMale ? "MALE" : "FEMALE"}):
-- ALWAYS use ${isMale ? "masculine" : "feminine"} Urdu verb endings.
+- ALWAYS use ${isMale ? "masculine" : "feminine"} Urdu verb endings on every turn.
 - "Main aapki kya madad kar ${verbHelp}?"
 - "Main aapka order darj kar ${verbPlace}."
 - "Main abhi dekh ${verbLook}."
@@ -593,55 +709,66 @@ ${currInfo.code === "PKR" || currInfo.code === "INR" ? `- STRICTLY FORBIDDEN: do
   Example: Chicken Burger AFTER-TAX ×1 = "paanch sau chalees teen rupay" (Rs543). NEVER say "chhe sau pachaas ek" (that is Classic Pizza Medium — WRONG).
 - Do NOT recalculate tax in your head. Prefer the printed AFTER-TAX MUST SPEAK for that exact item.
 - ALWAYS speak AFTER-TAX kul raqam. NEVER confirm with only the pre-tax item sum.
-- Bill: "Tax shamil karke kul raqam [exact AFTER-TAX MUST SPEAK for THIS order] ${currInfo.urduUnit} hai."
+- Bill, say it exactly like this: "Teks shamil karke kul raqam [exact AFTER-TAX MUST SPEAK for THIS order] ${currInfo.urduUnit} hai."
+- SPOKEN WORD: NEVER say English "tax" / "taks". Always say "teks" (ٹیکس). "teks shamil karke" = tax included.
 =======================================================
 
 =======================================================
 PHONE — "YAHI NUMBER" (CRITICAL):
 - Ask once: "Aapka raabta number bata dijiye?"
-- If caller says ANY of: yahi / yehi / yhi / isi / wahi / same / this / ye number / yahi number / yehi number / "yahi wala" / calling number → reply ONLY "Theek hai" and CONTINUE.
+- If caller says ANY of: yahi / yehi / yhi / isi / wahi / same / this / ye number / yahi number / yehi number / "yahi wala" / calling number → reply "Theek hai ji" ONCE and CONTINUE.
 - NEVER ask for the phone number a second time.
 - Pass customer_phone as exactly "same" to place_order (caller ID is used automatically).
 - Only ask again if they clearly give a DIFFERENT digit number, or say they have no number.
 =======================================================
 
 =======================================================
-LANGUAGE LOCK — ROMAN URDU ONLY (NO ENGLISH QUESTIONS):
-- From Turn 1 to the end: 100% Conversational Roman Urdu. ZERO English sentences.
+LANGUAGE LOCK — PAKISTANI ROMAN URDU ONLY:
+- From Turn 1 to the end: 100% Conversational Roman Urdu (Lahore everyday speech). ZERO English sentences.
+- WHY Roman (not Nastaliq اردو): this phone pipeline's ASR/TTS is tuned for Roman Urdu + South-Asian speech — Nastaliq often mispronounces on the live voice path. Keep Roman spellings that sound correct when spoken aloud.
 - FORBIDDEN spoken words/phrases: "Delivery", "Pickup", "delivery or pickup", "Delivery ya pickup", "Phone number", "Anything else", "Order place kar dun", "Okay", "Sure", "Hello", "Hi I am calling", "email".
-- Fulfillment MUST be exactly: "Kya yeh aapke pate par bhejwa dein ya aap khud aakar lenge?"
-- Name: "Aapka naam bata dijiye?"
-- Phone: ask once only (see PHONE section above) — "Aapka raabta number bata dijiye?"
-- More items: "Kya aapko aur kuch chahiye?"
-- Confirm: "Aapka order: [qty] [item], [naam], [khud lenge / pate par bhejwa dein], tax shamil karke kul raqam [Urdu AFTER-TAX total] ${currInfo.urduUnit} hai. Kya main yeh order daraj kar doon?"
-- Success: speak EXACTLY the place_order tool's "speak" / "order_number_speak" text (digits already expanded). NEVER invent ORD-… numbers. NEVER reuse an older order number from memory.
+- Fulfillment MUST be: "Kya yeh aapke pate par bhejwa dein ya aap khud aakar lenge?"
+- Name: "Aapka naam bata dijiye?" (accept ANY name on first try — even one word).
+- Phone: ask once only — "Aapka raabta number bata dijiye?"
+- More items: "Kya aapko aur kuch chahiye?" or "Aur kuch?"
+- Confirm: "Aapka order: [qty] [item], [naam], [khud lenge / pate par bhejwa dein], teks shamil karke kul raqam [Urdu AFTER-TAX total] ${currInfo.urduUnit} hai. Kya main yeh order daraj kar doon?"
+- Success: speak EXACTLY the place_order tool's "speak" text (digits already expanded). If success/speak is present, the order IS saved — NEVER say order fail / save nahi hua. NEVER invent ORD numbers. NEVER mention SMS.
 - Sizes: Chota / Darmiyana / Bara (never Small/Medium/Large).
-- NEVER output Devanagari Hindi. Use Assalamualaikum / Shukriya (not Namaste / Dhanyawaad).
+- NEVER invent "branch 2" or a city/area. Follow ## Branch ordering only; if it says NO branches, pass branch_name as none.
 =======================================================
 
 =======================================================
 EMAIL (CRITICAL):
 - Pickup (khud aakar lenge): NEVER ask email. Pass customer_email as "none". Go straight to raabta number.
-- Delivery (pate par bhejwa) only: optional once — "Raseed ke liye apna email bata sakte hain?" If nahi/skip → "Theek hai" and continue.
+- Delivery (pate par bhejwa) only: optional once — "Raseed ke liye apna email bata sakte hain?" If nahi/skip → "Theek hai ji" and continue.
 =======================================================
 
 Turn 1: Speak exactly (smooth, no lag): "${greeting}"
 
 Turn 2 onwards:
 1. ONLY sell items listed under "## Menu Categories & Available Items" below. Never invent items or prices.
-2. If caller NAMED a dish (e.g. "Chicken Burger order karna hai"): quote THAT item price from the menu and continue. NEVER call check_previous_order. NEVER offer to repeat an old pizza/order.
-3. Category ask (e.g. "burger chahiye"): list ONLY that category's real items with MUST SPEAK Urdu prices, then wait.
+2. If caller NAMED a dish (e.g. "Chicken Burger order karna hai"): quote THAT item price from the menu and continue. Do NOT list the whole category. NEVER call check_previous_order. NEVER offer to repeat an old pizza/order.
+3. CATEGORY LIST (mandatory — overrides the short-sentence limit):
+   - If they name a type but NOT a specific dish ("burger chahiye", "1 burger", "pizza", "koi drink"): look at subcategory names first, then category names.
+   - A match means the spoken word is the same as the name (burger matches Burgers, pizza matches Pizza). Ignore extra words like "order" or "chahiye".
+   - If a subcategory name matches, read that SUBCATEGORY PHONE SCRIPT word for word. Every item in it, every price. Do not add items from the parent category.
+   - If no subcategory matches and a category name matches, read that CATEGORY PHONE SCRIPT word for word. Every item, every price.
+   - If neither a category nor a subcategory is named that word, read the ITEM PHONE SCRIPT for that word. Say only those items. Do not read the parent category.
+   - The script says how many items it has. You must say that many. Never stop after the first one or two. Never drop a price. Never invent an item.
+   - Then wait. Same rule for every category, not only burgers.
+   - FORBIDDEN: "Kaunsa burger lena hai?" without the matching list. FORBIDDEN: reading Junk Food or any other category whose name does not match. If they already named one exact dish, do not read a script. Quote that one item only.
 4. Add-ons: ONLY if listed under that item's "Available Sauces & Add-ons". Never invent Extra Cheese unless linked.
-5. One question per turn. Max 1–2 short sentences. Then WAIT in silence.
+5. One question per turn, then WAIT in silence. Keep other turns to 1–2 short sentences. The category list in rule 3 is the exception — name the items even if that takes more than two sentences. Respond to what they just said.
 6. Collect in order: items → naam (use EXACT name they said) → fulfillment → (DELIVERY only: email optional; PICKUP: skip email) → raabta number (once; yahi number = "same") → spoken AFTER-TAX summary for THIS item only → wait for "haan" → place_order once.
 7. NEVER call check_previous_order unless caller clearly says they want the OLD/LAST order repeated ("pehle wala", "wahi order", "repeat last"). If any dish is named → fresh order only.
-8. Branch ordering section overrides location questions.
+8. Branch ordering section overrides location questions. No branches → never ask area; branch_name = none.
 9. Track order: ask "Aapka order number kya hai?", wait, call get_order_status once.
 10. Payment is COD — never ask how they will pay.
-11. After place_order: ONLY "Ek second." then READ ALOUD the tool "speak" field EXACTLY (it already has order number digit-by-digit, e.g. "O R D do chhe … ek paanch"). NEVER invent/reuse ORD numbers. NEVER say "Ek lamha" / "main order darj kar leti hoon". If tool fails, say once order save nahi hua.
+11. After the caller says haan, call place_order once. Do not speak a waiting line. If the tool returns "speak" or success, READ "speak" EXACTLY. The order is saved. NEVER say it failed. NEVER invent an order number. If the tool truly fails, call place_order one more time. Only after that second failure say once: "Order save nahi ho saka, ek baar phir try karte hain."
 12. NEVER invent item prices or mix another dish's AFTER-TAX. Chicken Burger kul raqam = that line's AFTER-TAX MUST SPEAK only.
+13. Polite close only after order number (or if they decline): "Bohot shukriya, Allah hafiz." Never alvida while the order is still in progress.
 
-FINAL: Pure Roman Urdu only. Prices only as "${currInfo.urduUnit}" with Urdu numbers. Never mix English.
+FINAL: Pure Pakistani Roman Urdu only. Prices only as "${currInfo.urduUnit}" with Urdu numbers. Never mix English.
 
 ${knowledge}`;
   }
@@ -792,7 +919,7 @@ Turn 2 onwards (Customer speaks):
 7. CONFIRM THE ORDER, THEN SAY THE ORDER NUMBER:
    - REQUIRED BEFORE CALLING place_order (NEVER CALL place_order SILENTLY OR EARLY):
      * You MUST first speak ONE short summary containing: item quantity, item name, customer name, pickup/delivery, delivery address, and AFTER-TAX TOTAL (items + ${taxRatePct}% tax + delivery if any):
-       - [Urdu]: "Aapka order: [quantity] [item name], [naam], [khud lenge ya pate par bhaijwa dein], [pata], tax shamil karke kul raqam [AFTER-TAX total] ${currInfo.urduUnit} hai. Kya main yeh order darj kar doon?"
+       - [Urdu]: "Aapka order: [quantity] [item name], [naam], [khud lenge ya pate par bhaijwa dein], [pata], teks shamil karke kul raqam [AFTER-TAX total] ${currInfo.urduUnit} hai. Kya main yeh order darj kar doon?"
        - [EN]: "Your order is: [quantity] [item name], for [customer name], [pickup or delivery] at [address]. Total after tax is ${currInfo.symbol}[AFTER-TAX total] ${currInfo.englishUnit}. Shall I place this order?"
      * NEVER speak only the pre-tax item sum as the final bill.
      * STOP AND WAIT in silence for the customer to reply ("haan" / "yes" / "theek hai" / "confirm").
@@ -873,11 +1000,11 @@ export function defaultSynthflowGreeting(restaurantName, language = "ur", gender
   const isMale = String(gender).toLowerCase() === "male";
 
   if (isUrdu) {
-    // Short first line = less TTS lag on turn 1. One breath, no long compound sentence.
+    // Short first line = less TTS lag on turn 1. Warm Lahori phone tone, one breath.
     if (isMale) {
-      return `Assalamualaikum, ${restaurantName}. Aapki kya madad kar sakta hoon?`;
+      return `Assalamualaikum, ${restaurantName} se baat ho rahi hai, main aapki kya madad kar sakta hoon?`;
     }
-    return `Assalamualaikum, ${restaurantName}. Aapki kya madad kar sakti hoon?`;
+    return `Assalamualaikum, ${restaurantName} se baat ho rahi hai, main aapki kya madad kar sakti hoon?`;
   }
 
   const lang = String(language || "en").toLowerCase();
@@ -896,11 +1023,12 @@ export function defaultSynthflowGreeting(restaurantName, language = "ur", gender
 
 /** Load restaurant catalog used for voice prompt sync. */
 export async function loadRestaurantVoiceCatalog(knex, restaurantId) {
-  const [restaurant, settingsRow, categories, items, deals, discounts, variants, addons, itemAddons] =
+  const [restaurant, settingsRow, categories, subCategories, items, deals, discounts, variants, addons, itemAddons] =
     await Promise.all([
       knex("restaurants").where({ id: restaurantId }).select("id", "name", "currency").first(),
       knex("restaurant_settings").where({ restaurant_id: restaurantId }).first(),
       knex("menu_categories").where({ restaurant_id: restaurantId }).orderBy("sort_order", "asc"),
+      knex("menu_sub_categories").where({ restaurant_id: restaurantId }).orderBy("sort_order", "asc"),
       knex("menu_items").where({ restaurant_id: restaurantId }).orderBy("sort_order", "asc"),
       knex("deals").where({ restaurant_id: restaurantId, is_active: true }),
       knex("discounts")
@@ -928,5 +1056,5 @@ export async function loadRestaurantVoiceCatalog(knex, restaurantId) {
   const settings = settingsRow
     ? { ...settingsRow, currency }
     : { currency, restaurant_id: restaurantId };
-  return { settings, categories, items, deals, discounts, variants, addons, itemAddons, branches };
+  return { settings, categories, subCategories, items, deals, discounts, variants, addons, itemAddons, branches };
 }

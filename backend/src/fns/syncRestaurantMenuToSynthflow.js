@@ -79,11 +79,10 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
         prompt,
         greeting_message: greeting,
         language: lang,
-        // Default: ElevenLabs Jessica (cgSgsp…) — strong multilingual EN + South Asian / Urdu phone tone.
-        // Prefer Indian-accent or multilingual conversational voices in Synthflow if Jessica sounds too Western.
+        // Default Jessica — keep unless A/B tested Urdu Voice Library ID is set on the restaurant.
         voice_id: r.agent_voice_id || "cgSgspJ2msm6clMCkdW9",
         voice_gender: voiceGender,
-        voice_speed: 1.0,
+        voice_speed: 1.08,
         min_words_to_interrupt: 2,
         interruption_fade_out: 1,
         noise_cancellation: "standard",

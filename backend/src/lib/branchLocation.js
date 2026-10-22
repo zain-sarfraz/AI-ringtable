@@ -70,9 +70,9 @@ export function branchOrderingSection(branches) {
       "## Branch ordering",
       "This restaurant has NO branches and NO areas list.",
       "ABSOLUTE: Never ask which city, which area, which branch, or which location.",
-      "Never invent an area name. Never say \"just tell me the area\".",
+      "Never invent an area name, \"branch 2\", \"Main Branch\", or any city. Never say \"just tell me the area\".",
       "After delivery vs pickup: if delivery, ask only for the street address; if pickup, skip address and continue to email/phone.",
-      "Always pass branch_name as none to place_order and reserve_table.",
+      "Always pass branch_name as exactly none to place_order and reserve_table.",
     ].join("\n");
   }
 

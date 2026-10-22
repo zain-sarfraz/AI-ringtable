@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -348,6 +348,7 @@ export default function OrderDetail() {
   const [call, setCall] = useState<CallData | null>(null);
   const [conversations, setConversations] = useState<ConversationTurn[]>([]);
   const [callLoading, setCallLoading] = useState(false);
+  const loadGen = useRef(0);
 
   const load = useCallback(async () => {
     if (!id) {
@@ -356,6 +357,7 @@ export default function OrderDetail() {
       return;
     }
 
+    const gen = ++loadGen.current;
     setLoading(true);
     setError(null);
 
@@ -369,6 +371,7 @@ export default function OrderDetail() {
         supabase.from("restaurants").select("id, name").limit(100),
       ]);
 
+      if (gen !== loadGen.current) return;
       if (oRes.error) throw oRes.error;
       if (!oRes.data) {
         setError("Order not found");
@@ -663,6 +666,7 @@ export default function OrderDetail() {
       } catch (callErr) {
         console.warn("Could not fetch linked call for order:", callErr);
       }
+      if (gen !== loadGen.current) return;
       setCall(callData);
 
       if (callData?.id) {
@@ -684,6 +688,7 @@ export default function OrderDetail() {
       console.error("Order load error:", e);
       setError(e.message || "Failed to load order");
     } finally {
+      if (gen !== loadGen.current) return;
       setLoading(false);
     }
   }, [id]);

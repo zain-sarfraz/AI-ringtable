@@ -34,8 +34,8 @@ export async function handler(req: Request): Promise<Response> {
           text,
           model_id: "eleven_turbo_v2_5",
           voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
+            stability: 0.4,
+            similarity_boost: 0.8,
           },
         }),
       }

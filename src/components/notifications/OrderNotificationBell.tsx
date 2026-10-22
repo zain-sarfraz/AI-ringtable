@@ -182,7 +182,16 @@ export function OrderNotificationBell() {
   const isSuperAdmin = role === "super_admin";
   const isDriver = role === "driver";
   const canAlert = !isDriver;
-  const alertRestaurantIds = getAlertRestaurantIds(restaurantId, restaurants, activeRestaurant);
+  const restaurantFamilyKey = restaurants
+    .map((r) => `${r.id}:${r.parent_restaurant_id || ""}:${r.is_branch ? 1 : 0}`)
+    .join("|");
+  const alertRestaurantIds = useMemo(
+    () => getAlertRestaurantIds(restaurantId, restaurants, activeRestaurant),
+    // restaurantFamilyKey keeps this stable across parent re-renders. A new array
+    // every render was restarting the poller and swallowing the bell as "already seen".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [restaurantId, activeRestaurant?.id, activeRestaurant?.is_branch, activeRestaurant?.parent_restaurant_id, restaurantFamilyKey],
+  );
   const alertRestaurantIdSet = useMemo(() => new Set(alertRestaurantIds), [alertRestaurantIds]); 
 
   const [notifications, setNotifications] = useState<OrderNotification[]>(() => loadStoredNotifications(restaurantId));
@@ -436,7 +445,12 @@ export function OrderNotificationBell() {
 
             if (isInitial) {
               for (const sn of serverNotifs) {
-                knownIdsRef.current.add(sn.id);
+                const createdMs = sn.created_at ? new Date(sn.created_at).getTime() : 0;
+                const ringFresh =
+                  Number.isFinite(createdMs) &&
+                  Date.now() - createdMs < 30000 &&
+                  !knownIdsRef.current.has(sn.id);
+                if (!ringFresh) knownIdsRef.current.add(sn.id);
                 let meta: any = {};
                 try {
                   meta = typeof sn.metadata === "string" ? JSON.parse(sn.metadata) : sn.metadata || {};
@@ -465,7 +479,7 @@ export function OrderNotificationBell() {
                       null,
                     seen: Boolean(sn.is_read),
                   },
-                  false
+                  ringFresh
                 );
               }
               saveKnownIds(knownIdsRef.current, restaurantId);
@@ -519,7 +533,34 @@ export function OrderNotificationBell() {
         const orderList = (orderRows || []) as any[];
 
         if (isInitial) {
-          orderList.forEach((o) => knownIdsRef.current.add(o.id));
+          for (const o of orderList) {
+            const createdMs = o.created_at ? new Date(o.created_at).getTime() : 0;
+            const ringFresh =
+              Number.isFinite(createdMs) &&
+              Date.now() - createdMs < 30000 &&
+              !knownIdsRef.current.has(o.id);
+            if (!ringFresh) {
+              knownIdsRef.current.add(o.id);
+              continue;
+            }
+            const isTransfer = o.pending_transfer_to_restaurant_id === restaurantId && o.transfer_status === "pending";
+            addNotificationRef.current(
+              {
+                id: o.id,
+                restaurant_id: o.restaurant_id,
+                order_id: o.id,
+                order_number: o.order_number || `ORD-${o.id.slice(0, 6)}`,
+                customer_name: o.customer_name || "Customer",
+                total_amount: Number(o.total_amount ?? 0),
+                created_at: o.created_at ?? new Date().toISOString(),
+                type: isTransfer ? "transfer_requested" : "new_order",
+                title: isTransfer ? "🚨 Incoming Order Transfer Request" : "🛒 New Order Received",
+                source: o.call_id ? "phone" : o.source || null,
+                fulfillment_type: o.fulfillment_type || null,
+              },
+              true,
+            );
+          }
           saveKnownIds(knownIdsRef.current, restaurantId);
           isInitial = false;
           return;

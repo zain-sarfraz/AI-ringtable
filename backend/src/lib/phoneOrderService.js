@@ -632,7 +632,12 @@ export async function createPhoneOrder(knex, input) {
   let branchAssignedAt = null;
   let assignmentStatus = "assigned";
   let assignedBranchName = null;
-  const rawBranch = String(branch_name || "").trim();
+  let rawBranch = String(branch_name || "").trim();
+  // Agent often invents "branch 2" / "Main Branch" — treat as no preference.
+  if (/^branch\s*\d+$/i.test(rawBranch) || /^(main\s*)?branch$/i.test(rawBranch)) {
+    console.log(`🏪 Branch label ignored as invented: "${rawBranch}"`);
+    rawBranch = "";
+  }
   const branchRequested =
     !!rawBranch && !["none", "null", "n/a", "na", "any", "no", "no preference"].includes(rawBranch.toLowerCase());
 
@@ -641,18 +646,19 @@ export async function createPhoneOrder(knex, input) {
     console.log(
       `🏪 Branch resolve: restaurant=${restaurantId} has 0 child branches — skipping area question`,
     );
+    rawBranch = "";
   }
 
   // Try branch_name, then free-text area labels the agent often sends instead of exact names.
   const spokenCandidates = [
-    branch_name,
+    rawBranch,
     input.area,
     input.branch,
     input.branch_area,
     delivery_notes,
   ]
     .map((v) => String(v || "").trim())
-    .filter(Boolean);
+    .filter((v) => v && !/^branch\s*\d+$/i.test(v) && !/^(main\s*)?branch$/i.test(v) && !/^(none|null)$/i.test(v));
 
   let chosenBranch = null;
   for (const spoken of spokenCandidates) {

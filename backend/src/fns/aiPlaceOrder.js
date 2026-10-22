@@ -53,7 +53,7 @@ export async function aiPlaceOrder(req, res) {
     const resolved = await resolveRestaurantIdForVoiceTools(knex, body);
     const restaurantId = resolved.id;
 
-    const spokenBranch =
+    let spokenBranch =
       body.branch_name || body.branch || body.area || body.branch_area || body.city || null;
     console.log("👤 Customer:", body.customer_name);
     console.log("📦 Items:", JSON.stringify(body.items));
@@ -70,6 +70,37 @@ export async function aiPlaceOrder(req, res) {
         success: false,
         message: `${hint}. Set ELEVENLABS_AGENT_ID + restaurants.elevenlabs_agent_id, send restaurant_id in the tool, or set ELEVENLABS_DEFAULT_RESTAURANT_ID.`,
       });
+    }
+
+    // Agent sometimes invents "branch 2" / "Main Branch" when the restaurant has no child branches.
+    // Force none so place_order never fails or loops on a fake area question.
+    const childBranchCount = await knex("restaurants")
+      .where({ parent_restaurant_id: restaurantId, is_branch: true, is_active: true })
+      .count("id as c")
+      .first()
+      .then((row) => Number(row?.c || 0))
+      .catch(() => 0);
+    const inventedBranch =
+      !spokenBranch ||
+      /^(none|null|n\/a|na|any|no|no preference)$/i.test(String(spokenBranch).trim()) ||
+      /^branch\s*\d+$/i.test(String(spokenBranch).trim()) ||
+      /^(main\s*)?branch$/i.test(String(spokenBranch).trim());
+    if (childBranchCount === 0) {
+      if (spokenBranch && !/^(none|null)$/i.test(String(spokenBranch).trim())) {
+        console.log(
+          `🏬 Branch ignored (0 child branches): "${spokenBranch}" → none`,
+        );
+      }
+      spokenBranch = "none";
+      body.branch_name = "none";
+      body.branch = null;
+      body.area = null;
+      body.branch_area = null;
+    } else if (inventedBranch && /^branch\s*\d+$/i.test(String(spokenBranch || "").trim())) {
+      // Named "branch 2" is almost never a real DB branch name — clear so matcher can fall back.
+      console.log(`🏬 Branch label looks invented: "${spokenBranch}" — clearing for matcher`);
+      spokenBranch = null;
+      body.branch_name = null;
     }
 
     let callId = null;
@@ -221,9 +252,10 @@ export async function aiPlaceOrder(req, res) {
     const urduPrice = totalHints.urduSpeak;
     const orderSpeak = speakOrderNumberForPhone(order.order_number);
     // Locked script only — no English debug in `message` (LLM paraphrases and invents wrong ORD suffixes).
+    // Soft, natural Lahori close — still digit-safe for the order number.
     const spokenScript =
-      `Aapka order daraj ho chuka hai. Order number ${orderSpeak} hai. Mehfooz kar lijiye. ` +
-      `Tax shamil karke kul raqam ${urduPrice} hai. Bohot shukriya!` +
+      `Ji, aapka order daraj ho gaya. Order number ${orderSpeak} hai — mehfooz kar lijiye. ` +
+      `Teks shamil karke kul raqam ${urduPrice} hai. Bohot shukriya, Allah hafiz!` +
       (branchNote ? ` ${branchNote.trim()}` : "") +
       (couponNote ? ` ${couponNote.trim()}` : "");
 
@@ -240,7 +272,8 @@ export async function aiPlaceOrder(req, res) {
       branch_name: assignedBranchName,
       discount_amount: coupon.amount,
       speak: spokenScript,
-      message: `READ ALOUD EXACTLY — zero changes to any digit/word: ${spokenScript}`,
+      // SMS is sent async after this — never tell the caller the order failed because SMS failed.
+      message: `SUCCESS. READ ALOUD EXACTLY (zero digit changes). Do NOT say order failed. Do NOT mention SMS. Script: ${spokenScript}`,
     });
   } catch (e) {
     console.error("❌ Order Error:", e);

@@ -42,11 +42,14 @@ export async function handler(req: Request): Promise<Response> {
         },
         body: JSON.stringify({
           text,
+          // Multilingual v2: best current quality for Roman Urdu / Hindi-script South Asian speech on phone.
+          // (Eleven v3 has native Urdu label; keep v2 until conversational path is A/B tested live.)
           model_id: "eleven_multilingual_v2",
           voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-            style: 0.5,
+            // Lower stability = more natural intonation; higher similarity keeps the chosen voice identity.
+            stability: 0.4,
+            similarity_boost: 0.8,
+            style: 0.35,
             use_speaker_boost: true,
           },
         }),
