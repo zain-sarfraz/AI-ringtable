@@ -284,8 +284,13 @@ export function hasUsableOrderItems(items) {
  * @returns {Promise<{ id: string | null; error?: string }>}
  */
 export async function resolveRestaurantIdForVoiceTools(knex, b) {
-  if (b.restaurant_id) {
-    const row = await knex("restaurants").where({ id: String(b.restaurant_id) }).select("id").first();
+  // Prefer agent / dialed number over baked restaurant_id — local sync often bakes a
+  // wrong laptop UUID into a shared live agent; agent_id + Telnyx number are stable.
+  if (b.synthflow_agent_id) {
+    const row = await knex("restaurants")
+      .where({ synthflow_agent_id: String(b.synthflow_agent_id) })
+      .select("id")
+      .first();
     if (row) return { id: row.id };
   }
 
@@ -297,11 +302,8 @@ export async function resolveRestaurantIdForVoiceTools(knex, b) {
     if (row) return { id: row.id };
   }
 
-  if (b.synthflow_agent_id) {
-    const row = await knex("restaurants")
-      .where({ synthflow_agent_id: String(b.synthflow_agent_id) })
-      .select("id")
-      .first();
+  if (b.restaurant_id) {
+    const row = await knex("restaurants").where({ id: String(b.restaurant_id) }).select("id").first();
     if (row) return { id: row.id };
   }
 

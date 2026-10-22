@@ -82,11 +82,11 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur") {
 - Required fields every time: customer_name, customer_phone, items, fulfillment_type, branch_name, delivery_address.
 - Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email.
 - Delivery: full street address; email optional only.
-- If caller says yahi/yehi/same/this number → customer_phone exactly "same".
+- If caller says yahi/yehi/same/this number → customer_phone exactly "same". NEVER ask raabta number again after they answered once (yahi OR digits).
 - branch_name: follow ## Branch ordering. If NO branches → exactly "none". NEVER invent "branch 2" or a city.
 - items: real food lines with quantity (default 1). Never empty. Never "<order_items>".
 - After tool returns: if success or "speak" is present, READ "speak" EXACTLY. Order IS saved. NEVER say fail. NEVER invent ORD digits. NEVER mention SMS.
-- If phone_required: READ response "speak" (ask digits only). NEVER say "Order save nahi ho saka". Then call place_order again with digits.
+- If phone_required: READ response "speak" ONCE (digits only). NEVER say "Order save nahi ho saka". NEVER ask phone again after digits — retry place_order with those digits.
 - If success:false for other reasons: fix that field and call place_order again once. Do not invent an order number.
 - Collect order: items → naam → fulfillment → (pickup: no email) → raabta → summary → haan → place_order. NEVER ask phone before fulfillment.
 =======================================================
@@ -757,7 +757,7 @@ ${currInfo.code === "PKR" || currInfo.code === "INR" ? `- STRICTLY FORBIDDEN: do
 - Do NOT recalculate tax in your head. Prefer the printed AFTER-TAX MUST SPEAK for that exact item.
 - ALWAYS speak AFTER-TAX kul raqam. NEVER confirm with only the pre-tax item sum.
 - Bill, say it exactly like this: "Teks shamil karke kul raqam [exact AFTER-TAX MUST SPEAK for THIS order] ${currInfo.urduUnit} hai."
-- SPOKEN WORD: NEVER say English "tax" / "taks". Always say "teks" (ٹیکس). "teks shamil karke" = tax included.
+- SPOKEN WORD: NEVER say English "tax" / "taks" / "teks percent". Always say "teks" like "teeks" (ٹیکس). Bill line ONLY: "Teks shamil karke kul raqam [AFTER-TAX MUST SPEAK] rupay hai." Never say "8.5 percent tax" or mix English.
 =======================================================
 
 =======================================================

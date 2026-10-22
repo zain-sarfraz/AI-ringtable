@@ -152,7 +152,12 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
   const ids = [...already];
   const errors = [];
   const lookup = {};
-  if (restaurantId) lookup.restaurant_id = restaurantId;
+  // Never bake a laptop restaurant UUID into tools when PUBLIC_API_URL is a tunnel —
+  // that poisons shared live agents. Live resolves via synthflow_agent_id + Telnyx number.
+  const apiHost = String(process.env.PUBLIC_API_URL || "");
+  const isTunnel =
+    /trycloudflare|ngrok|loca\.lt|localhost|127\.0\.0\.1/i.test(apiHost);
+  if (restaurantId && !isTunnel) lookup.restaurant_id = restaurantId;
   if (identity.synthflowAgentId) lookup.synthflow_agent_id = identity.synthflowAgentId;
   if (identity.phone) lookup.twilio_to = identity.phone;
 

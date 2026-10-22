@@ -166,17 +166,17 @@ export async function aiPlaceOrder(req, res) {
     );
 
     if (!phoneToUse) {
-      // Soft fail — NEVER tell the agent "order failed". Phone missing is recoverable.
+      // Soft fail — NEVER tell the agent "order failed". Ask digits ONCE; never loop phone questions.
       const speakUr =
-        "Ji, raabta number digits mein bata dijiye? Yahi number kaam nahi aa raha.";
+        "Ji, raabta number digits mein bata dijiye?";
       return res.status(200).json({
         success: false,
         phone_required: true,
         speak: speakUr,
         message:
-          "PHONE NEEDED — NOT an order failure. Do NOT say order save nahi hua / failed. Speak EXACTLY: \"" +
+          "PHONE NEEDED — NOT an order failure. Do NOT say order save nahi hua / failed. Speak EXACTLY once: \"" +
           speakUr +
-          "\" Wait for digits, then call place_order again with customer_phone as those digits (or \"same\" if they repeat yahi/yehi). Do NOT invent an order number.",
+          "\" After they give ANY digits, call place_order again with customer_phone as those digits only — NEVER ask raabta number a second time. If they said yahi/yehi, pass customer_phone as \"same\". Do NOT invent an order number.",
       });
     }
 

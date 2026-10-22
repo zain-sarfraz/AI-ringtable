@@ -32,6 +32,30 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
       throw new Error("Create a Synthflow agent for this restaurant first");
     }
 
+    // Refuse to point a live ringtable.io agent at a local tunnel (causes phone-order loops).
+    const publicApi = String(process.env.PUBLIC_API_URL || "").trim();
+    if (/trycloudflare|ngrok|loca\.lt|localhost|127\.0\.0\.1/i.test(publicApi)) {
+      const { getAssistant } = await import("../lib/synthflowClient.js");
+      try {
+        const found = await getAssistant(r.synthflow_agent_id);
+        const wh = String(
+          found?.assistant?.external_webhook_url ||
+            found?.assistant?.inbound_call_webhook_url ||
+            "",
+        );
+        if (/ringtable\.io/i.test(wh)) {
+          return res.status(200).json({
+            success: false,
+            error:
+              "This Synthflow agent is linked to live ringtable.io. Local tunnel sync is blocked — it breaks place_order (phone keeps asking for number). Update from Pizza Go on ringtable.io only.",
+            code: "REFUSE_OVERWRITE_LIVE_AGENT",
+          });
+        }
+      } catch {
+        /* if lookup fails, continue — create path still guarded elsewhere */
+      }
+    }
+
     const catalog = await loadRestaurantVoiceCatalog(knex, restaurant_id);
     const currency = catalog.settings?.currency || r.currency || "USD";
     const agentLanguage = r.agent_language || "ur";
@@ -107,7 +131,7 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
     });
 
     let toolWarning = null;
-    const publicApi = String(process.env.PUBLIC_API_URL || "").trim().replace(/\/$/, "");
+    const publicApiNorm = publicApi.replace(/\/$/, "");
     try {
       const actionIds = await refreshSynthflowPlaceOrderTool(r);
       if (actionIds) {
@@ -123,15 +147,15 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
 
     const ordersLandLocal =
       String(process.env.APP_ENV || "").toLowerCase() === "development" &&
-      publicApi &&
-      !/ringtable\.io/i.test(publicApi);
+      publicApiNorm &&
+      !/ringtable\.io/i.test(publicApiNorm);
 
     return res.json({
       success: true,
       synthflow_agent_id: r.synthflow_agent_id,
       synced_at: new Date().toISOString(),
-      public_api_url: publicApi || null,
-      place_order_url: publicApi ? `${publicApi}/api/functions/ai-place-order` : null,
+      public_api_url: publicApiNorm || null,
+      place_order_url: publicApiNorm ? `${publicApiNorm}/api/functions/ai-place-order` : null,
       post_call_webhook_url: webhookUrl || null,
       orders_land_on: ordersLandLocal ? "local" : "remote",
       warning: toolWarning,
