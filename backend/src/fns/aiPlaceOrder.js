@@ -273,13 +273,14 @@ export async function aiPlaceOrder(req, res) {
     const currCode = restSettings?.currency || targetRest?.currency || "USD";
     const currInfo = getCurrencyDetails(currCode);
     const totalHints = spokenPriceHints(totals.total, currInfo);
-    const urduPrice = totalHints.urduSpeak;
+    // English number words (TTS-safe) + unit — never Urdu numbers, never decimals
+    const spokenTotal = totalHints.urduSpeak;
     const orderSpeak = speakOrderNumberForPhone(order.order_number);
     // Locked script only — no English debug in `message` (LLM paraphrases and invents wrong ORD suffixes).
     // Soft, natural Lahori close — still digit-safe for the order number.
     const spokenScript =
       `Ji, aapka order daraj ho gaya. Order number ${orderSpeak} hai — mehfooz kar lijiye. ` +
-      `Teks shamil karke kul raqam ${urduPrice} hai. Bohot shukriya, Allah hafiz!` +
+      `Teks shamil karke kul raqam ${spokenTotal} hai. Bohot shukriya, Allah hafiz!` +
       (branchNote ? ` ${branchNote.trim()}` : "") +
       (couponNote ? ` ${couponNote.trim()}` : "");
 
