@@ -575,6 +575,28 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       });
     }
 
+    // Block local tunnel from rewriting a live ringtable.io agent's tool URLs.
+    if (publicApi && /trycloudflare|ngrok|loca\.lt|localhost|127\.0\.0\.1/i.test(publicApi)) {
+      try {
+        const existing = await getAssistant(modelId);
+        const wh = String(
+          existing?.assistant?.external_webhook_url ||
+            existing?.assistant?.inbound_call_webhook_url ||
+            "",
+        );
+        if (/ringtable\.io/i.test(wh)) {
+          return res.status(200).json({
+            success: false,
+            code: "REFUSE_OVERWRITE_LIVE_AGENT",
+            error:
+              "This agent is live on ringtable.io. Local tunnel Update is blocked (it breaks place_order / phone loops). Use Pizza Go → Update on ringtable.io only.",
+          });
+        }
+      } catch {
+        /* continue if lookup fails */
+      }
+    }
+
     // NEVER send phone_number on update — prevents stealing / re-attaching numbers across agents
     const updatePayload = {
       name: agentName,
