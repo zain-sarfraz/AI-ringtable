@@ -1,6 +1,7 @@
 import { updateAgent } from "./synthflowClient.js";
 import {
   applyBranchOrdering,
+  appendPlaceOrderToolContract,
   buildRestaurantVoiceKnowledge,
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
@@ -43,9 +44,12 @@ export async function pushBranchListToAgent(knex, parentRestaurantId) {
           agentLanguage,
           voiceGender
         );
-  const prompt = applyBranchOrdering(
-    base.includes("## Menu") || base.includes("# ") ? base : `${base}\n\n${knowledge}`,
-    catalog.branches,
+  const prompt = appendPlaceOrderToolContract(
+    applyBranchOrdering(
+      base.includes("## Menu") || base.includes("# ") ? base : `${base}\n\n${knowledge}`,
+      catalog.branches,
+    ),
+    agentLanguage,
   );
 
   await updateAgent(restaurant.synthflow_agent_id, {

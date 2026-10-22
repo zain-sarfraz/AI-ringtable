@@ -1,7 +1,16 @@
 import { getKnex } from "../db.js";
 import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
+import { appendPlaceOrderToolContract } from "../lib/restaurantVoiceContext.js";
 
 const EL_API = "https://api.elevenlabs.io";
+
+function publicApiBase() {
+  const raw =
+    process.env.PUBLIC_API_URL ||
+    process.env.PUBLIC_URL ||
+    "";
+  return String(raw).trim().replace(/\/$/, "");
+}
 
 function defaultPrompt(name) {
   return `You are the friendly, direct, and polite female AI phone assistant for ${name}.
@@ -24,12 +33,12 @@ You help callers in three ways:
    - Step 1: Ask if for delivery to address or self-pickup (in the customer's language).
    - Step 2: Collect food items (with quantities, sizes, flavors, and add-ons). For sizes in Urdu, use Chota, Darmiyana, Bara.
    - Step 3: Collect customer full name (accept on first try).
-   - Step 4: For delivery: collect delivery address. For pickup, note Pickup.
-   - Step 5: Collect customer email address for receipt (optional).
-   - Step 6: Collect contact phone number.
+   - Step 4: For delivery: collect delivery address. For pickup, pass delivery_address as "Pickup".
+   - Step 5: Collect customer email address for receipt (optional on delivery; skip on pickup).
+   - Step 6: Collect contact phone number. If they say yahi/yehi/same number, pass customer_phone as "same".
    - Payment rule: Payment is standard Cash on Delivery (COD) by default. Do NOT interrogate the caller to choose a payment method.
-   - Final Order Summary (MANDATORY): Before submitting the order, give ONE single complete summary containing: all ordered items, customer name, delivery address, phone number, and total bill. Wait for confirmation.
-   - When ready and confirmed, call the place_order tool.
+   - Final Order Summary (MANDATORY): Before submitting the order, give ONE single complete summary containing: all ordered items, customer name, delivery address, phone number, and total bill. Wait for confirmation (haan / yes).
+   - When ready and confirmed, call the place_order tool once. If the tool returns "speak" or success, READ "speak" EXACTLY — the order is already saved. NEVER invent an order number. NEVER say the order failed if speak/success is present.
 
 2) Check the status of an EXISTING order:
    - Ask order number (EN: "What is your order number?" | Urdu: "Aapka order number kya hai?"). STOP and WAIT.
@@ -52,70 +61,167 @@ IMPORTANT RULES:
 }
 
 function defaultFirstMessage(name) {
-  return `Thanks for calling ${name}! How may I help you? / Main aapki kya madad kar sakti hoon?`;
+  return `Assalamualaikum, ${name} mein khush amdeed! Main aapki kya madad kar sakti hoon?`;
 }
 
-const TOOLS_CONFIG = [
-  {
-    name: "place_order",
-    description: "Use this to place a food delivery or pickup order. Call ONLY when you have: customer name, phone, delivery address (or 'pickup'), and items.",
-    endpoint: "ai-place-order",
-    parameters: {
-      type: "object",
-      properties: {
-        customer_name: { type: "string" },
-        customer_phone: { type: "string" },
-        customer_email: { type: "string", description: "Optional customer email for receipt" },
-        delivery_address: { type: "string" },
-        fulfillment_type: { type: "string", enum: ["delivery", "pickup"], description: "delivery or pickup" },
-        items: {
-          type: "array",
+function buildToolsConfig(restaurant) {
+  const rid = String(restaurant.id);
+  const agentId = String(restaurant.elevenlabs_agent_id || "").trim();
+  const phone = String(
+    restaurant.telnyx_phone_number || restaurant.twilio_phone_number || "",
+  ).trim();
+
+  return [
+    {
+      name: "place_order",
+      description:
+        "FOOD ORDERS ONLY. Save the caller's food order and return order_number + speak. Call ONLY after confirmation. On success: READ the response field \"speak\" EXACTLY — order already saved. NEVER invent ORD digits. NEVER say failed if speak/success is present. If NO branches, pass branch_name as none.",
+      endpoint: "ai-place-order",
+      parameters: {
+        type: "object",
+        properties: {
+          restaurant_id: {
+            type: "string",
+            description: `ALWAYS pass exactly: ${rid}`,
+          },
+          ...(agentId
+            ? {
+                elevenlabs_agent_id: {
+                  type: "string",
+                  description: `ALWAYS pass exactly: ${agentId}`,
+                },
+              }
+            : {}),
+          ...(phone
+            ? {
+                twilio_to: {
+                  type: "string",
+                  description: `ALWAYS pass exactly: ${phone}`,
+                },
+              }
+            : {}),
+          customer_name: { type: "string", description: "Caller full name" },
+          customer_phone: {
+            type: "string",
+            description:
+              'Contact phone. If caller says same/yahi/yehi/this number, pass exactly "same".',
+          },
+          caller_phone: {
+            type: "string",
+            description: "Dialed caller ID if known; otherwise omit or pass same as customer_phone.",
+          },
+          customer_email: {
+            type: "string",
+            description: 'Optional email for receipt, or "none"',
+          },
+          delivery_address: {
+            type: "string",
+            description: 'Full street address, or "Pickup" for self-pickup',
+          },
+          fulfillment_type: {
+            type: "string",
+            enum: ["delivery", "pickup"],
+            description: "delivery or pickup",
+          },
+          branch_name: {
+            type: "string",
+            description:
+              'Exact area/branch from Branch ordering, or "none" when there are no branches. NEVER invent "branch 2".',
+          },
+          coupon_code: {
+            type: "string",
+            description: 'Coupon code or "none"',
+          },
           items: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              quantity: { type: "integer" },
-              notes: { type: "string" }
-            }
-          }
-        }
+            description:
+              'Ordered items. Prefer array of {name, quantity, notes}. String like "1 Chicken Burger" is also OK.',
+            anyOf: [
+              { type: "string" },
+              {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    quantity: { type: "integer" },
+                    notes: { type: "string" },
+                  },
+                },
+              },
+            ],
+          },
+        },
+        required: ["customer_name", "customer_phone", "items", "branch_name"],
       },
-      required: ["customer_name", "customer_phone", "delivery_address", "items"]
-    }
-  },
-  {
-    name: "get_order_status",
-    description: "Look up a food order by order number (preferred, e.g. ORD-260929-01) or tracking code and return the current status.",
-    endpoint: "ai-order-status",
-    parameters: {
-      type: "object",
-      properties: {
-        order_number: { type: "string", description: "Customer order number such as ORD-260929-01. YYMMDD is the date, then the daily sequence." },
-        tracking_code: { type: "string", description: "Tracking code if the caller does not have the order number" }
+    },
+    {
+      name: "get_order_status",
+      description:
+        "Look up a food order by order number (preferred, e.g. ORD-260929-01) or tracking code and return the current status.",
+      endpoint: "ai-order-status",
+      parameters: {
+        type: "object",
+        properties: {
+          restaurant_id: {
+            type: "string",
+            description: `ALWAYS pass exactly: ${rid}`,
+          },
+          order_number: {
+            type: "string",
+            description:
+              "Customer order number such as ORD-260929-01. YYMMDD is the date, then the daily sequence.",
+          },
+          tracking_code: {
+            type: "string",
+            description: "Tracking code if the caller does not have the order number",
+          },
+        },
+        required: ["order_number"],
       },
-      required: ["order_number"]
-    }
-  },
-  {
-    name: "reserve_table",
-    description: "Reserve a table at the restaurant. Call this when a customer wants to book a table for dine-in. Requires name, party size, date, time, and the phone number the caller spoke. Never silently use caller ID. Duration is strictly fixed to 1 hour.",
-    endpoint: "ai-reserve-table",
-    parameters: {
-      type: "object",
-      properties: {
-        customer_name: { type: "string", description: "Full name of the customer" },
-        customer_phone: { type: "string", description: "Phone number the caller spoke for this reservation. Do not fill from caller ID unless they said same number." },
-        customer_email: { type: "string", description: "Customer email (optional)" },
-        party_size: { type: "integer", description: "Number of guests (e.g. 2, 4, 6)" },
-        reservation_date: { type: "string", description: "Date in YYYY-MM-DD format" },
-        reservation_time: { type: "string", description: "LATEST time the caller requested, HH:MM 24-hour (e.g. 19:00). If they changed the time, use only the newest time, never an earlier one." },
-        slot_duration_hours: { type: "number", description: "Duration in hours. Strictly fixed to 1 hour by default. Never ask customer for duration.", default: 1 },
-        notes: { type: "string", description: "Any special requests or notes from the customer" }
+    },
+    {
+      name: "reserve_table",
+      description:
+        "Reserve a table at the restaurant. Call this when a customer wants to book a table for dine-in. Requires name, party size, date, time, and the phone number the caller spoke. Never silently use caller ID. Duration is strictly fixed to 1 hour.",
+      endpoint: "ai-reserve-table",
+      parameters: {
+        type: "object",
+        properties: {
+          restaurant_id: {
+            type: "string",
+            description: `ALWAYS pass exactly: ${rid}`,
+          },
+          customer_name: { type: "string", description: "Full name of the customer" },
+          customer_phone: {
+            type: "string",
+            description:
+              'Phone number the caller spoke. If they said same number, pass "same".',
+          },
+          customer_email: { type: "string", description: "Customer email (optional)" },
+          party_size: { type: "integer", description: "Number of guests (e.g. 2, 4, 6)" },
+          reservation_date: { type: "string", description: "Date in YYYY-MM-DD format" },
+          reservation_time: {
+            type: "string",
+            description:
+              "LATEST time the caller requested, HH:MM 24-hour (e.g. 19:00). If they changed the time, use only the newest time, never an earlier one.",
+          },
+          slot_duration_hours: {
+            type: "number",
+            description:
+              "Duration in hours. Strictly fixed to 1 hour by default. Never ask customer for duration.",
+            default: 1,
+          },
+          notes: { type: "string", description: "Any special requests or notes from the customer" },
+          branch_name: {
+            type: "string",
+            description: 'Branch/area from Branch ordering, or "none"',
+          },
+        },
+        required: ["customer_name", "party_size", "reservation_date", "reservation_time"],
       },
-      required: ["customer_name", "party_size", "reservation_date", "reservation_time"]
-    }
-  }
-];
+    },
+  ];
+}
 
 export async function createRestaurantAgent(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
@@ -129,7 +235,11 @@ export async function createRestaurantAgent(req, res) {
     if (!r) return res.status(404).json({ error: "Restaurant not found" });
 
     const API_KEY = r.elevenlabs_api_key || process.env.ELEVENLABS_API_KEY;
-    const systemPrompt = (r.agent_system_prompt || "").trim() || defaultPrompt(r.name);
+    const lang = r.agent_language || "ur";
+    const systemPrompt = appendPlaceOrderToolContract(
+      (r.agent_system_prompt || "").trim() || defaultPrompt(r.name),
+      lang,
+    );
     const firstMessage = (r.agent_first_message || "").trim() || defaultFirstMessage(r.name);
 
     let elAgentId = r.elevenlabs_agent_id;
@@ -141,47 +251,73 @@ export async function createRestaurantAgent(req, res) {
       action = "skipped";
     } else {
       try {
-        // 1. Create Tools (or find if they exist)
         const toolIds = [];
-        const ngrokUrl = process.env.PUBLIC_URL || "";
+        const apiBase = publicApiBase();
 
-        if (ngrokUrl && ngrokUrl !== "YOUR_NGROK_URL") {
-          for (const toolSpec of TOOLS_CONFIG) {
-            const webhookUrl = `${ngrokUrl}/api/functions/${toolSpec.endpoint}`;
-            
+        if (apiBase && apiBase !== "YOUR_NGROK_URL") {
+          const tools = buildToolsConfig(r);
+          for (const toolSpec of tools) {
+            // Bake restaurant_id into the URL so imported/custom EL agents still resolve the restaurant.
+            const webhookUrl = `${apiBase}/api/functions/${toolSpec.endpoint}?restaurant_id=${encodeURIComponent(r.id)}`;
+
             try {
               const resp = await fetch(`${EL_API}/v1/convai/tools`, {
                 method: "POST",
                 headers: { "xi-api-key": API_KEY, "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  name: toolSpec.name,
-                  description: toolSpec.description,
-                  api_schema: {
-                    request_body_schema: toolSpec.parameters,
-                    url: webhookUrl,
-                    method: "POST"
-                  }
+                  tool_config: {
+                    name: toolSpec.name,
+                    description: toolSpec.description,
+                    type: "webhook",
+                    api_schema: {
+                      request_body_schema: toolSpec.parameters,
+                      url: webhookUrl,
+                      method: "POST",
+                    },
+                  },
                 }),
               });
-              
-              const data = await resp.json();
-              if (resp.ok && data.tool_id) {
-                toolIds.push(data.tool_id);
+
+              const data = await resp.json().catch(() => ({}));
+              const toolId = data.tool_id || data.id || data.tool?.id;
+              if (resp.ok && toolId) {
+                toolIds.push(toolId);
+              } else {
+                // Fallback older EL payload shape (name/description at root)
+                const resp2 = await fetch(`${EL_API}/v1/convai/tools`, {
+                  method: "POST",
+                  headers: { "xi-api-key": API_KEY, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    name: toolSpec.name,
+                    description: toolSpec.description,
+                    api_schema: {
+                      request_body_schema: toolSpec.parameters,
+                      url: webhookUrl,
+                      method: "POST",
+                    },
+                  }),
+                });
+                const data2 = await resp2.json().catch(() => ({}));
+                const id2 = data2.tool_id || data2.id;
+                if (resp2.ok && id2) toolIds.push(id2);
+                else console.warn(`Tool setup notice for ${toolSpec.name}:`, data.detail || data2.detail || resp.status);
               }
             } catch (tErr) {
               console.warn(`Tool setup notice for ${toolSpec.name}:`, tErr.message);
             }
           }
+        } else {
+          warning =
+            "PUBLIC_API_URL (or PUBLIC_URL) is not set — ElevenLabs place_order tools were NOT registered. Orders will not create from the phone agent until the public API URL is set and the agent is re-synced.";
         }
 
-        // 2. Create or Update Agent
         const conversation_config = {
           agent: {
             first_message: firstMessage,
-            language: r.agent_language || "en",
+            language: lang,
             prompt: { prompt: systemPrompt },
-            ...(toolIds.length > 0 ? { tools: toolIds.map(id => ({ type: "webhook", tool_id: id })) } : {})
-          }
+            ...(toolIds.length > 0 ? { tools: toolIds.map((id) => ({ type: "webhook", tool_id: id })) } : {}),
+          },
         };
 
         if (r.agent_voice_id) {
@@ -224,6 +360,11 @@ export async function createRestaurantAgent(req, res) {
           }
           action = "updated";
         }
+
+        if (toolIds.length === 0 && !warning) {
+          warning =
+            "ElevenLabs agent saved but no place_order tools were attached — check PUBLIC_API_URL and re-sync.";
+        }
       } catch (err) {
         console.warn("⚠️ ElevenLabs agent creation skipped:", err.message);
         warning = err instanceof Error ? err.message : String(err);
@@ -231,10 +372,9 @@ export async function createRestaurantAgent(req, res) {
       }
     }
 
-    // 3. Update local DB
     const updateData = {
       agent_system_prompt: systemPrompt,
-      agent_first_message: firstMessage
+      agent_first_message: firstMessage,
     };
     if (elAgentId) {
       updateData.elevenlabs_agent_id = elAgentId;

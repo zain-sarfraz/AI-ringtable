@@ -64,6 +64,53 @@ function rewriteSavedBranchRules(text, branchCount) {
   return out;
 }
 
+/**
+ * Mandatory place_order contract appended to EVERY agent prompt (custom or default).
+ * Sir / operators may rewrite conversation style — this block keeps order creation reliable.
+ */
+export function appendPlaceOrderToolContract(prompt, lang = "ur") {
+  const text = String(prompt || "").trim();
+  if (!text) return text;
+  if (/## PLACE_ORDER TOOL CONTRACT/i.test(text)) return text;
+
+  const ur = String(lang || "").toLowerCase().startsWith("ur");
+  const block = ur
+    ? `
+=======================================================
+## PLACE_ORDER TOOL CONTRACT (NEVER REMOVE — ORDERS FAIL WITHOUT THIS)
+- Call place_order ONLY after the caller confirms (haan / theek hai / yes).
+- Required fields every time: customer_name, customer_phone, items, fulfillment_type, branch_name, delivery_address.
+- Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email.
+- Delivery: full street address; email optional only.
+- If caller says yahi/yehi/same/this number → customer_phone exactly "same".
+- branch_name: follow ## Branch ordering. If NO branches → exactly "none". NEVER invent "branch 2" or a city.
+- items: real food lines with quantity (default 1). Never empty. Never "<order_items>".
+- After tool returns: if success or "speak" is present, READ "speak" EXACTLY. Order IS saved. NEVER say fail. NEVER invent ORD digits. NEVER mention SMS.
+- If phone_required: READ response "speak" (ask digits only). NEVER say "Order save nahi ho saka". Then call place_order again with digits.
+- If success:false for other reasons: fix that field and call place_order again once. Do not invent an order number.
+- Collect order: items → naam → fulfillment → (pickup: no email) → raabta → summary → haan → place_order. NEVER ask phone before fulfillment.
+=======================================================
+`
+    : `
+=======================================================
+## PLACE_ORDER TOOL CONTRACT (NEVER REMOVE — ORDERS FAIL WITHOUT THIS)
+- Call place_order ONLY after the caller confirms (yes / okay / confirm).
+- Required every time: customer_name, customer_phone, items, fulfillment_type, branch_name, delivery_address.
+- Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email.
+- Delivery: full street address; email optional only.
+- Same/this/calling number → customer_phone exactly "same".
+- branch_name: follow ## Branch ordering. If NO branches → "none". Never invent branch names.
+- items: real menu lines with quantity (default 1). Never empty placeholders.
+- On success/speak: read "speak" EXACTLY. Order is saved. Never invent ORD numbers. Never mention SMS.
+- On phone_required: read "speak", ask digits only — never say the order failed. Retry place_order with digits.
+- On other success:false: fix the missing field and retry place_order once. Never invent an order number.
+- Collect: items → name → fulfillment → (pickup: skip email) → phone → summary → confirm → place_order.
+=======================================================
+`;
+
+  return `${text}\n${block}`.trim();
+}
+
 /** Replace or insert the branch list so a saved custom prompt stays current. */
 export function applyBranchOrdering(prompt, branches) {
   const list = branches || [];
@@ -616,7 +663,7 @@ export function buildRestaurantVoiceKnowledge({
     lines.push("3. Collect customer name (accept ANY name on first try). Acknowledge with a natural \"Ji\" / \"Acha ji\" — do not repeat the same filler every turn.");
     lines.push("4. Ask fulfillment ONLY in Urdu: \"Kya yeh aapke pate par bhejwa dein ya aap khud aakar lenge?\" NEVER say \"Delivery\" or \"Pickup\". Then follow Branch ordering (if NO branches → never ask area; pass branch_name none).");
     lines.push(
-      "5. Email: ONLY if delivery (pate par bhejwa). Pickup (khud aakar lenge): NEVER ask email — skip to phone, pass customer_email as none. Delivery optional ask: \"Raseed ke liye apna email bata sakte hain?\"",
+      "5. Email: Pickup (khud aakar lenge) = NEVER ask email / raseed — jump to raabta number, customer_email=none. Delivery only: optional once \"Raseed ke liye apna email bata sakte hain?\"",
     );
     lines.push(
       "6. Phone: \"Aapka raabta number bata dijiye?\" If they say yahi/yehi/yhi/isi/same/this number → say \"Theek hai ji\" ONCE, NEVER ask phone again, pass customer_phone as \"same\".",
@@ -738,8 +785,11 @@ LANGUAGE LOCK — PAKISTANI ROMAN URDU ONLY:
 =======================================================
 
 =======================================================
-EMAIL (CRITICAL):
-- Pickup (khud aakar lenge): NEVER ask email. Pass customer_email as "none". Go straight to raabta number.
+EMAIL (CRITICAL — ZERO EXCEPTIONS):
+- If fulfillment is pickup / "khud aakar lenge" / self-collect:
+  * NEVER ask for email. NEVER say the word "email". NEVER say "raseed".
+  * Immediately ask raabta number next. Pass customer_email as exactly "none" to place_order.
+  * FORBIDDEN after pickup: "Raseed ke liye email?", "Email bata dein?", "Koi email?"
 - Delivery (pate par bhejwa) only: optional once — "Raseed ke liye apna email bata sakte hain?" If nahi/skip → "Theek hai ji" and continue.
 =======================================================
 
@@ -764,7 +814,7 @@ Turn 2 onwards:
 8. Branch ordering section overrides location questions. No branches → never ask area; branch_name = none.
 9. Track order: ask "Aapka order number kya hai?", wait, call get_order_status once.
 10. Payment is COD — never ask how they will pay.
-11. After the caller says haan, call place_order once. Do not speak a waiting line. If the tool returns "speak" or success, READ "speak" EXACTLY. The order is saved. NEVER say it failed. NEVER invent an order number. If the tool truly fails, call place_order one more time. Only after that second failure say once: "Order save nahi ho saka, ek baar phir try karte hain."
+11. After the caller says haan, call place_order once. Do not speak a waiting line. If the tool returns "speak" or success, READ "speak" EXACTLY. The order is saved. NEVER say it failed. NEVER invent an order number. If phone_required: read "speak", get digits, retry place_order — do NOT say order failed. Only after TWO hard failures (no phone_required, no speak) say once: "Order save nahi ho saka, ek baar phir try karte hain."
 12. NEVER invent item prices or mix another dish's AFTER-TAX. Chicken Burger kul raqam = that line's AFTER-TAX MUST SPEAK only.
 13. Polite close only after order number (or if they decline): "Bohot shukriya, Allah hafiz." Never alvida while the order is still in progress.
 

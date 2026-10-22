@@ -16,6 +16,7 @@ import {
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
   applyBranchOrdering,
+  appendPlaceOrderToolContract,
   isMaleVoice,
 } from "../lib/restaurantVoiceContext.js";
 import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
@@ -164,7 +165,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "place_order",
         description:
-          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name EXACTLY from ## Branch ordering — if that section says NO branches, pass branch_name as none (NEVER invent 'branch 2' or a city). After success: READ ALOUD the response field \"speak\" EXACTLY — order already saved. NEVER say order failed if speak/success is present. NEVER invent or change any digit. NEVER reuse an older ORD number. FORBIDDEN wait lines: Ek lamha, main order darj kar leti hoon, Ek chhoti si der, bas thodi dair aur.",
+          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name EXACTLY from ## Branch ordering — if that section says NO branches, pass branch_name as none (NEVER invent 'branch 2' or a city). After success: READ ALOUD the response field \"speak\" EXACTLY — order already saved. If phone_required: READ \"speak\" (ask digits) — NEVER say order failed / save nahi hua; then retry with digit phone. NEVER invent or change any digit. NEVER reuse an older ORD number. FORBIDDEN wait lines: Ek lamha, main order darj kar leti hoon, Ek chhoti si der, bas thodi dair aur.",
         // Fixed short filler — empty string lets the LLM invent long "please wait" loops
         speech_while_using_the_tool: "Ji.",
         failure_timeout: 25,
@@ -195,7 +196,11 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
           ...lookup,
           customer_name: "<customer_name>",
           customer_phone: "<customer_phone>",
+          // Outbound test call: user/to = dialed customer; inbound: user/from = caller ID
           caller_phone: "<user_phone_number>",
+          user_phone_number: "<user_phone_number>",
+          to_phone_number: "<to_phone_number>",
+          from_phone_number: "<from_phone_number>",
           synthflow_call_id: "<call_id>",
           delivery_address: "<delivery_address>",
           items: "<order_items>",
@@ -510,9 +515,14 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       customPrompt && !looksLikeOurTemplate && !looksLikeLegacyEl
         ? customPrompt
         : defaultSynthflowPrompt(r.name, knowledge, currency, agentLanguage, voiceGender);
-    const fullPrompt = applyBranchOrdering(
-      prompt.includes("## Menu") || prompt.includes("# ") ? prompt : `${prompt}\n\n${knowledge}`,
-      catalog.branches,
+    const withMenu =
+      prompt.includes("## Menu") || prompt.includes("# ")
+        ? prompt
+        : `${prompt}\n\n${knowledge}`;
+    // Custom prompts (Sir / operators) still get the hard place_order contract so orders save.
+    const fullPrompt = appendPlaceOrderToolContract(
+      applyBranchOrdering(withMenu, catalog.branches),
+      agentLanguage,
     );
 
     const agentName = body.name || `${r.name} Order Agent`;
@@ -525,8 +535,7 @@ export async function restaurantCreateSynthflowAgent(req, res) {
     ].filter(Boolean);
 
     // Synthflow → ElevenLabs path: only fields Synthflow documents are sent.
-    // Default Jessica (cgSgsp…) is multilingual; for more Pakistani tone, set restaurants.agent_voice_id
-    // to a Voice Library Urdu / South-Asian conversational voice after A/B listening tests — do not swap blind.
+    // Default = live Pizza Go Sarah (EXAVITQ…). Never Jessica — empty agent_voice_id used to swap voices on sync.
     // 1.08 keeps Urdu moving in one breath. 0.98 left audible gaps mid-sentence.
     const agentConfig = {
       name: agentName,
@@ -542,7 +551,7 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       patience_level: "low",
       transcriber_keywords: menuKeywords,
       send_user_idle_reminders: false,
-      voice_id: voiceId || "cgSgspJ2msm6clMCkdW9",
+      voice_id: voiceId || "EXAVITQu4vr4xnSDxMaL",
       voice_gender: voiceGender,
     };
 

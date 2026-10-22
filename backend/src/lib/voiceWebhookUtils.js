@@ -32,7 +32,7 @@ export function isSamePhonePhrase(value) {
   const hasSameCue =
     /\b(same|this|that|calling|caller|dial(l)?ed?|my)\b/.test(s) ||
     /\b(yeh?ee?|yeh?i|yah?i|yehe|isi|wahi|usi|ye|woh|yeh|yhi)\b/.test(s) ||
-    /(यही|इसी|वही|اسی|یہی|وہی|یہیے|یہیء)/.test(raw);
+    /(यही|येही|इसी|वही|यही\s*नंबर|اسی|یہی|وہی|یہیے|یہیء)/.test(raw);
 
   if (digits.length >= 8 && !hasSameCue) return false;
 
@@ -59,6 +59,7 @@ export function isSamePhonePhrase(value) {
  * @param {{ callerFallback?: string|null }} [opts]
  */
 export function resolveSpokenCustomerPhone(body, opts = {}) {
+  // Synthflow outbound test calls often omit caller ID; the dialed "to" number IS the customer.
   const callerRaw =
     body?.caller_phone ||
     body?.twilio_from ||
@@ -66,12 +67,31 @@ export function resolveSpokenCustomerPhone(body, opts = {}) {
     body?.user_phone_number ||
     body?.user_number ||
     body?.lead_phone ||
+    body?.system__caller_id ||
+    body?.system_caller_id ||
     opts.callerFallback ||
     null;
 
+  const dialedTo =
+    body?.to_phone_number ||
+    body?.twilio_to ||
+    body?.to_number ||
+    body?.to ||
+    body?.called_number ||
+    body?.dialed_number ||
+    body?.destination_phone ||
+    body?.lead_phone_number ||
+    null;
+
+  const fromPhone = body?.from_phone_number || body?.twilio_from || null;
+
   let phone = body?.customer_phone;
   if (isSamePhonePhrase(phone) || !looksLikePhoneNumber(phone)) {
-    phone = looksLikePhoneNumber(callerRaw) ? callerRaw : null;
+    // Prefer real caller / dialed party — skip unresolved Synthflow placeholders like "<user_phone_number>"
+    const pick = [callerRaw, dialedTo, fromPhone].find(
+      (v) => looksLikePhoneNumber(v) && !/^<[^>]+>$/.test(String(v || "").trim()),
+    );
+    phone = pick || null;
   }
   if (phone && /^<[^>]+>$/.test(String(phone).trim())) phone = null;
   if (!phone || isSamePhonePhrase(phone) || !looksLikePhoneNumber(phone)) return null;
@@ -189,25 +209,72 @@ export function normalizeElevenLabsToolBody(raw) {
     out.call_sid = String(callSid).trim();
   }
 
+  // Synthflow / EL aliases
+  if (!out.items && out.order_items != null) out.items = out.order_items;
+  if (!out.caller_phone) {
+    const callerAlias =
+      out.system__caller_id ||
+      out.system_caller_id ||
+      out.caller_id ||
+      out.from_number ||
+      out.user_phone_number;
+    if (callerAlias != null && String(callerAlias).trim()) {
+      out.caller_phone = String(callerAlias).trim();
+    }
+  }
+  if (!out.elevenlabs_agent_id) {
+    const elAlias = out.system__agent_id || out.system_agent_id;
+    if (elAlias != null && String(elAlias).trim()) {
+      out.elevenlabs_agent_id = String(elAlias).trim();
+    }
+  }
+
   // Normalize items: ElevenLabs may send as a plain string like "2 Pizza, 1 Burger"
   if (out.items && !Array.isArray(out.items) && typeof out.items === "string") {
     const itemStr = out.items.trim();
-    out.items = itemStr
-      .split(/,\s*/)
-      .map((part) => {
-        const match = part.trim().match(/^(\d+)\s*[xX]?\s*(.+)$/) || part.trim().match(/^(.+?)\s+[xX]?(\d+)$/);
-        if (match) {
-          const [, a, b] = match;
-          const qty = parseInt(a, 10);
-          if (!isNaN(qty)) return { name: b.trim(), quantity: qty };
-          return { name: a.trim(), quantity: parseInt(b, 10) || 1 };
-        }
-        return { name: part.trim(), quantity: 1 };
-      })
-      .filter((it) => it.name);
+    if (!itemStr || /^<[^>]+>$/.test(itemStr) || /^(none|null|n\/a)$/i.test(itemStr)) {
+      out.items = [];
+    } else {
+      out.items = itemStr
+        .split(/,\s*/)
+        .map((part) => {
+          const match =
+            part.trim().match(/^(\d+)\s*[xX]?\s*(.+)$/) ||
+            part.trim().match(/^(.+?)\s+[xX]?(\d+)$/);
+          if (match) {
+            const [, a, b] = match;
+            const qty = parseInt(a, 10);
+            if (!isNaN(qty)) return { name: b.trim(), quantity: qty };
+            return { name: a.trim(), quantity: parseInt(b, 10) || 1 };
+          }
+          return { name: part.trim(), quantity: 1 };
+        })
+        .filter((it) => it.name);
+    }
   }
 
   return out;
+}
+
+/** True when place_order payload has at least one usable item line. */
+export function hasUsableOrderItems(items) {
+  if (items == null) return false;
+  if (Array.isArray(items)) {
+    return items.some((it) => {
+      if (!it) return false;
+      if (typeof it === "string") {
+        const s = it.trim();
+        return s && !/^<[^>]+>$/.test(s) && !/^(none|null|n\/a)$/i.test(s);
+      }
+      const name = String(it.name || it.item_name || it.title || "").trim();
+      return Boolean(name) && !/^<[^>]+>$/.test(name);
+    });
+  }
+  if (typeof items === "string") {
+    const s = items.trim();
+    return Boolean(s) && !/^<[^>]+>$/.test(s) && !/^(none|null|n\/a)$/i.test(s);
+  }
+  return false;
 }
 
 /**

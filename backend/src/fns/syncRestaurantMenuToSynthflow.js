@@ -6,6 +6,7 @@ import {
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
   applyBranchOrdering,
+  appendPlaceOrderToolContract,
   isMaleVoice,
 } from "../lib/restaurantVoiceContext.js";
 import { refreshSynthflowPlaceOrderTool } from "./restaurantCreateSynthflowAgent.js";
@@ -56,9 +57,12 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
       /^ہیلو،/i.test(savedGreeting)
         ? defaultSynthflowGreeting(r.name, agentLanguage, voiceGender)
         : savedGreeting;
-    const prompt = applyBranchOrdering(
-      defaultSynthflowPrompt(r.name, knowledge, currency, agentLanguage, voiceGender),
-      catalog.branches
+    const prompt = appendPlaceOrderToolContract(
+      applyBranchOrdering(
+        defaultSynthflowPrompt(r.name, knowledge, currency, agentLanguage, voiceGender),
+        catalog.branches,
+      ),
+      agentLanguage,
     );
     const webhookUrl = postCallWebhookUrl();
     const menuKeywords = [
@@ -79,8 +83,8 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
         prompt,
         greeting_message: greeting,
         language: lang,
-        // Default Jessica — keep unless A/B tested Urdu Voice Library ID is set on the restaurant.
-        voice_id: r.agent_voice_id || "cgSgspJ2msm6clMCkdW9",
+        // Pizza Go / Urdu live voice (Sarah). Never fall back to Jessica — that mismatch is what Sir hears.
+        voice_id: r.agent_voice_id || "EXAVITQu4vr4xnSDxMaL",
         voice_gender: voiceGender,
         voice_speed: 1.08,
         min_words_to_interrupt: 2,

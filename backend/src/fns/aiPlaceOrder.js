@@ -6,6 +6,7 @@ import {
   looksLikePhoneNumber,
   isSamePhonePhrase,
   normalizeE164,
+  hasUsableOrderItems,
 } from "../lib/voiceWebhookUtils.js";
 import { createPhoneOrder } from "../lib/phoneOrderService.js";
 import { cleanUrduText } from "../lib/devanagariTransliterator.js";
@@ -27,20 +28,37 @@ export async function aiPlaceOrder(req, res) {
     );
     console.log("=".repeat(50));
 
-    const rawBody = req.body || {};
+    // Query params (baked into ElevenLabs tool URLs) merge under body fields.
+    const rawBody = { ...(req.query || {}), ...(req.body || {}) };
     const body = normalizeElevenLabsToolBody(rawBody);
+
+    // Only inject env agent id when the tool omitted it — never invent a dead/mismatched id.
     if (!body.elevenlabs_agent_id && process.env.ELEVENLABS_AGENT_ID) {
-      body.elevenlabs_agent_id = String(process.env.ELEVENLABS_AGENT_ID).trim();
+      const envAgent = String(process.env.ELEVENLABS_AGENT_ID).trim();
+      if (envAgent) body.elevenlabs_agent_id = envAgent;
     }
 
     if (String(body.customer_email || "").trim().toLowerCase() === "none") body.customer_email = null;
     if (String(body.coupon_code || "").trim().toLowerCase() === "none") body.coupon_code = null;
 
-    if (!body.customer_name || !body.items) {
-      console.error("❌ Validation Failed: Missing customer_name or items");
+    const fulfillment = String(body.fulfillment_type || "delivery").toLowerCase();
+    const isPickup = fulfillment === "pickup" || /pickup|khud|aakar|lenge/i.test(String(body.delivery_address || ""));
+    if (isPickup) {
+      body.fulfillment_type = "pickup";
+      if (!body.delivery_address || /^(none|null|n\/a)$/i.test(String(body.delivery_address).trim())) {
+        body.delivery_address = "Pickup";
+      }
+    }
+
+    if (!body.customer_name || !hasUsableOrderItems(body.items)) {
+      console.error("❌ Validation Failed: Missing customer_name or items", {
+        name: body.customer_name || null,
+        items: body.items,
+      });
       return res.status(200).json({
+        success: false,
         message:
-          "I'm sorry, I missed some details. Could you please provide your name and the items you'd like to order again?",
+          "Missing customer_name or items. Ask once for name and items, then call place_order again. Do NOT invent an order number.",
       });
     }
 
@@ -148,11 +166,17 @@ export async function aiPlaceOrder(req, res) {
     );
 
     if (!phoneToUse) {
+      // Soft fail — NEVER tell the agent "order failed". Phone missing is recoverable.
+      const speakUr =
+        "Ji, raabta number digits mein bata dijiye? Yahi number kaam nahi aa raha.";
       return res.status(200).json({
         success: false,
         phone_required: true,
+        speak: speakUr,
         message:
-          "Respond ONLY in the caller's LOCKED language (do not switch). Ask once for their contact phone number with digits, then call place_order again. If they said yehi/same/this number, pass customer_phone as \"same\" — we will use the dialed caller ID automatically.",
+          "PHONE NEEDED — NOT an order failure. Do NOT say order save nahi hua / failed. Speak EXACTLY: \"" +
+          speakUr +
+          "\" Wait for digits, then call place_order again with customer_phone as those digits (or \"same\" if they repeat yahi/yehi). Do NOT invent an order number.",
       });
     }
 
@@ -305,6 +329,13 @@ export async function aiPlaceOrder(req, res) {
         requested_branch: e.requestedBranch || null,
         available_areas: areas,
         message: `Respond ONLY in the caller's LOCKED language: I need to confirm which area for your order. Which area would you like: ${areaList}? After they answer, call place_order again with branch_name set to that area name. Do NOT invent an order number.`,
+      });
+    }
+    if (/no order items/i.test(String(e.message || ""))) {
+      return res.status(200).json({
+        success: false,
+        message:
+          "Items were empty. Ask which food they want, then call place_order again with items. Do NOT invent an order number.",
       });
     }
     return res.status(500).json({ error: e.message || "failed" });
