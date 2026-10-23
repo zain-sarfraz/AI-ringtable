@@ -92,7 +92,7 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
     const menuKeywords = [
       r.name,
       ...(catalog.items || []).slice(0, 30).map((i) => i.name),
-      "order", "burger", "pizza", "rupay", "rupiya", "small", "medium", "large",
+      "order", "burger", "pizza", "rupees", "rupee", "small", "medium", "large",
       "delivery", "pickup", "confirm", "shukriya",
     ].filter(Boolean);
 

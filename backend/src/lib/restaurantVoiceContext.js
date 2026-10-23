@@ -87,7 +87,7 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur") {
 - If caller says yahi/yehi/same/this number → customer_phone exactly "same". NEVER ask raabta number again after they answered once (yahi OR digits).
 - branch_name: follow ## Branch ordering. If NO branches → exactly "none". NEVER invent "branch 2" or a city. NEVER ask Johar Town / Iqbal Town / any area unless ## Branch ordering lists that exact area.
 - items: real food lines with quantity (default 1). Never empty. Never "<order_items>".
-- Amounts: ENGLISH number words only (e.g. five hundred forty rupay). NO decimals. NO Urdu numbers for money.
+- Amounts: ENGLISH number words + "rupees" only (e.g. five hundred forty rupees). NO decimals. NEVER say "rupay".
 - After tool returns: if success or "speak" is present, READ "speak" EXACTLY (Roman Urdu). Order IS saved. NEVER paraphrase into English. NEVER say fail. NEVER invent ORD digits. NEVER mention SMS.
 - If phone_required: READ response "speak" ONCE (digits only). NEVER say "Order save nahi ho saka". NEVER ask phone again after digits — retry place_order with those digits.
 - If branch_required but ## Branch ordering says NO branches: do NOT ask area — immediately retry place_order with branch_name "none".
@@ -107,7 +107,7 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur") {
 - Same/this/calling number → customer_phone exactly "same".
 - branch_name: follow ## Branch ordering. If NO branches → "none". Never invent branch/area names (no Johar Town / Iqbal Town unless listed).
 - items: real menu lines with quantity (default 1). Never empty placeholders.
-- Amounts: ENGLISH number words only (e.g. five hundred forty rupees). NO decimals.
+- Amounts: ENGLISH number words + unit (e.g. five hundred forty rupees). NO decimals. NEVER say "rupay".
 - On success/speak: read "speak" EXACTLY. Order is saved. Never invent ORD numbers. Never mention SMS.
 - On phone_required: read "speak", ask digits only — never say the order failed. Retry place_order with digits.
 - On branch_required but ## Branch ordering says NO branches: retry place_order with branch_name "none" — do not ask area.
@@ -142,19 +142,19 @@ export function applyBranchOrdering(prompt, branches) {
 export function getCurrencyDetails(rawCurrency = "USD") {
   const code = String(rawCurrency || "USD").trim().toUpperCase();
   const map = {
-    PKR: { code: "PKR", symbol: "Rs", urduUnit: "rupay", urduUnitSingular: "rupiya", englishUnit: "rupees", exampleUrdu: "five hundred rupay" },
-    USD: { code: "USD", symbol: "$", urduUnit: "dollar", urduUnitSingular: "dollar", englishUnit: "dollars", exampleUrdu: "four dollar" },
-    EUR: { code: "EUR", symbol: "€", urduUnit: "euro", urduUnitSingular: "euro", englishUnit: "euros", exampleUrdu: "ten euro" },
-    GBP: { code: "GBP", symbol: "£", urduUnit: "pound", urduUnitSingular: "pound", englishUnit: "pounds", exampleUrdu: "ten pound" },
-    AED: { code: "AED", symbol: "AED", urduUnit: "dirham", urduUnitSingular: "dirham", englishUnit: "dirhams", exampleUrdu: "twenty five dirham" },
-    SAR: { code: "SAR", symbol: "SAR", urduUnit: "riyal", urduUnitSingular: "riyal", englishUnit: "riyals", exampleUrdu: "thirty riyal" },
-    CAD: { code: "CAD", symbol: "C$", urduUnit: "dollar", urduUnitSingular: "dollar", englishUnit: "dollars", exampleUrdu: "fifteen dollar" },
-    AUD: { code: "AUD", symbol: "A$", urduUnit: "dollar", urduUnitSingular: "dollar", englishUnit: "dollars", exampleUrdu: "fifteen dollar" },
-    INR: { code: "INR", symbol: "₹", urduUnit: "rupay", urduUnitSingular: "rupiya", englishUnit: "rupees", exampleUrdu: "two hundred fifty rupay" },
-    KWD: { code: "KWD", symbol: "KWD", urduUnit: "dinar", urduUnitSingular: "dinar", englishUnit: "dinars", exampleUrdu: "five dinar" },
-    QAR: { code: "QAR", symbol: "QAR", urduUnit: "riyal", urduUnitSingular: "riyal", englishUnit: "riyals", exampleUrdu: "twenty riyal" },
-    OMR: { code: "OMR", symbol: "OMR", urduUnit: "rial", urduUnitSingular: "rial", englishUnit: "rials", exampleUrdu: "five rial" },
-    BHD: { code: "BHD", symbol: "BHD", urduUnit: "dinar", urduUnitSingular: "dinar", englishUnit: "dinars", exampleUrdu: "five dinar" },
+    PKR: { code: "PKR", symbol: "Rs", urduUnit: "rupees", urduUnitSingular: "rupee", englishUnit: "rupees", exampleUrdu: "five hundred rupees" },
+    USD: { code: "USD", symbol: "$", urduUnit: "dollars", urduUnitSingular: "dollar", englishUnit: "dollars", exampleUrdu: "four dollars" },
+    EUR: { code: "EUR", symbol: "€", urduUnit: "euros", urduUnitSingular: "euro", englishUnit: "euros", exampleUrdu: "ten euros" },
+    GBP: { code: "GBP", symbol: "£", urduUnit: "pounds", urduUnitSingular: "pound", englishUnit: "pounds", exampleUrdu: "ten pounds" },
+    AED: { code: "AED", symbol: "AED", urduUnit: "dirhams", urduUnitSingular: "dirham", englishUnit: "dirhams", exampleUrdu: "twenty five dirhams" },
+    SAR: { code: "SAR", symbol: "SAR", urduUnit: "riyals", urduUnitSingular: "riyal", englishUnit: "riyals", exampleUrdu: "thirty riyals" },
+    CAD: { code: "CAD", symbol: "C$", urduUnit: "dollars", urduUnitSingular: "dollar", englishUnit: "dollars", exampleUrdu: "fifteen dollars" },
+    AUD: { code: "AUD", symbol: "A$", urduUnit: "dollars", urduUnitSingular: "dollar", englishUnit: "dollars", exampleUrdu: "fifteen dollars" },
+    INR: { code: "INR", symbol: "₹", urduUnit: "rupees", urduUnitSingular: "rupee", englishUnit: "rupees", exampleUrdu: "two hundred fifty rupees" },
+    KWD: { code: "KWD", symbol: "KWD", urduUnit: "dinars", urduUnitSingular: "dinar", englishUnit: "dinars", exampleUrdu: "five dinars" },
+    QAR: { code: "QAR", symbol: "QAR", urduUnit: "riyals", urduUnitSingular: "riyal", englishUnit: "riyals", exampleUrdu: "twenty riyals" },
+    OMR: { code: "OMR", symbol: "OMR", urduUnit: "rials", urduUnitSingular: "rial", englishUnit: "rials", exampleUrdu: "five rials" },
+    BHD: { code: "BHD", symbol: "BHD", urduUnit: "dinars", urduUnitSingular: "dinar", englishUnit: "dinars", exampleUrdu: "five dinars" },
   };
   return (
     map[code] || {
@@ -333,15 +333,15 @@ export function speakOrderNumberForPhone(orderNumber) {
 /**
  * How the agent should SPEAK a price.
  * ALWAYS whole numbers only (no decimals / paisay).
- * Amount words ALWAYS in English (TTS fails on Urdu numbers) — e.g. "five hundred forty rupay".
+ * Amount words ALWAYS in English + English unit — e.g. "five hundred forty rupees" (NEVER "rupay").
  */
 export function spokenPriceHints(amount, currInfo) {
   const whole = Math.round(Math.abs(Number(amount || 0)));
   const display = `${currInfo.symbol}${whole}`;
   const words = numberToEnglishWords(whole);
-  const urduSpeak = `${words} ${currInfo.urduUnit}`;
-  const enSpeak = `${words} ${currInfo.englishUnit}`;
-  return { display, urduSpeak, enSpeak, words };
+  const unit = currInfo.englishUnit || currInfo.urduUnit || "rupees";
+  const speak = `${words} ${unit}`;
+  return { display, urduSpeak: speak, enSpeak: speak, words };
 }
 
 /**
@@ -416,7 +416,7 @@ export function buildRestaurantVoiceKnowledge({
     // Pre-compute after-tax so the model copies the string (no LLM math → no 1606 vs 1628)
     const after = afterTaxOne(amount);
     const hAfter = spokenPriceHints(after, currInfo);
-    // Amount words ALWAYS English (TTS); unit may stay rupay/rupees
+    // Amount words ALWAYS English + english unit (e.g. "five hundred forty rupees")
     if (taxRatePct > 0 && after !== Math.round(Number(amount || 0))) {
       return (
         `${h.display} — MUST SPEAK item: "${h.urduSpeak}" | ` +
@@ -431,7 +431,7 @@ export function buildRestaurantVoiceKnowledge({
   lines.push(`# ${restaurantName} — Menu, Flavors, Sizes, Add-ons, and Ordering Guide`);
   lines.push("");
   if (settings) {
-    lines.push(`Currency: ${currInfo.code} (${currInfo.englishUnit} / Urdu: ${currInfo.urduUnit})`);
+    lines.push(`Currency: ${currInfo.code} (speak as ${currInfo.englishUnit} — NEVER rupay)`);
     if (settings.address) lines.push(`Restaurant address: ${settings.address}`);
     if (settings.phone) lines.push(`Restaurant phone: ${settings.phone}`);
     lines.push(`Tax rate: ${settings.tax_rate ?? 0}%`);
@@ -459,10 +459,10 @@ export function buildRestaurantVoiceKnowledge({
       `6. Prefer the menu line "AFTER-TAX ×1" hint for a single item; for qty>1 multiply that AFTER-TAX unit, then add delivery if any.`,
     );
     lines.push(
-      `7. AMOUNTS: speak ONLY English number words (e.g. "five hundred forty ${currInfo.urduUnit}"). NEVER Urdu numbers (paanch sau…). NEVER decimals / paisay / cents.`,
+      `7. AMOUNTS: speak ONLY English number words + "${currInfo.englishUnit}" (e.g. "five hundred forty ${currInfo.englishUnit}"). NEVER say "rupay". NEVER Urdu numbers. NEVER decimals.`,
     );
     lines.push(
-      `   Example wording: "Items [X], teks shamil karke kul raqam five hundred forty ${currInfo.urduUnit} hai."`,
+      `   Example wording: "Items [X], teks shamil karke kul raqam five hundred forty ${currInfo.englishUnit} hai."`,
     );
     lines.push("");
   }
@@ -730,7 +730,7 @@ export function buildRestaurantVoiceKnowledge({
   lines.push("DO NOT DRAG the order. One short question per turn, accept answers on first try, then confirm quickly.");
   if (urduPriceMode) {
     lines.push("1. Greet warmly in Pakistani Roman Urdu (Lahore style) and ask what they would like — one short question, then wait.");
-    lines.push("2. Capture ordered items/sizes/flavors from THIS menu only. Sizes ALWAYS English: Small / Medium / Large (NEVER Chota / Darmiyana / Bara). Speak each price using the MUST SPEAK hint with ENGLISH number words (e.g. 'five hundred forty rupay'). NEVER Urdu numbers. NEVER decimals. NEVER say dollar, cent, or $.");
+    lines.push("2. Capture ordered items/sizes/flavors from THIS menu only. Sizes ALWAYS English: Small / Medium / Large (NEVER Chota / Darmiyana / Bara). Speak each price using the MUST SPEAK hint with ENGLISH number words + rupees (e.g. 'five hundred forty rupees'). NEVER say rupay. NEVER Urdu numbers. NEVER decimals. NEVER say dollar, cent, or $.");
     lines.push("2b. CATEGORY (mandatory): if they name a type but not one exact dish, match subcategory name first, then category name. Read that matching PHONE SCRIPT in full, every item and price. If no category or subcategory has that name, read the ITEM PHONE SCRIPT only. Never read a parent category just because one item sits inside it. If they already named the exact dish, do not read a script.");
     lines.push("3. Collect customer name (accept ANY name on first try). Acknowledge with a natural \"Ji\" / \"Acha ji\" — do not repeat the same filler every turn.");
     lines.push("4. MANDATORY fulfillment ask (every new order) — ENGLISH words only: \"Kya yeh order delivery ke liye hai ya pickup?\" NEVER skip. NEVER say pate/bhejwa/khud aakar. Then follow Branch ordering (if NO branches → never ask area; pass branch_name none).");
@@ -798,12 +798,12 @@ SPEECH — NATURAL LAHORI URDU (CRITICAL — SMOOTH, NO LAG):
 - Max 1–2 short sentences per turn, then WAIT. Ask ONE question only. EXCEPTION: a category PHONE SCRIPT must be spoken in full, every item and price, even if it is longer.
 - When the caller starts speaking, STOP immediately.
 - Acknowledgments, one short word, then the next sentence with no gap: "Ji bilkul", "Acha ji", "Theek hai", "Zaroor". Do not repeat the same one every turn.
-- Prefer TTS-friendly spellings: "raabta", "confirm", "shukriya", "mehfooz", "rupay", "teks", "Assalamualaikum", "delivery", "pickup".
-- FORBIDDEN words: "daraj", "darj", "pate par bhejwa", "khud aakar lenge" (use confirm / delivery / pickup instead).
+- Prefer TTS-friendly spellings: "raabta", "confirm", "shukriya", "mehfooz", "rupees", "teks", "Assalamualaikum", "delivery", "pickup".
+- FORBIDDEN words: "daraj", "darj", "rupay", "rupiya", "pate par bhejwa", "khud aakar lenge" (use confirm / delivery / pickup / rupees instead).
 - FORBIDDEN: Hindi, Devanagari, bookish Urdu, long paragraphs, repeating a phrase, English fillers (okay / sure / check / please hold).
 - While a tool runs, say NOTHING yourself. The phone already plays one short filler. Do not add "Ji, ek second" or any waiting line. When the tool returns, read "speak" immediately.
 - Dish names may stay as on the menu; EVERY other spoken word = smooth Pakistani Roman Urdu — EXCEPT amounts, sizes, and delivery/pickup (see below).
-- Prices: copy exact MUST SPEAK hint. Amount = ENGLISH number words only (540 → "five hundred forty rupay"). NEVER Urdu numbers (paanch sau…). NEVER decimals / paisay. Never dollar/cent/$.
+- Prices: copy exact MUST SPEAK hint. Amount = ENGLISH number words + "rupees" (540 → "five hundred forty rupees"). NEVER "rupay". NEVER Urdu numbers. NEVER decimals / paisay. Never dollar/cent/$.
 - DO NOT DRAG: keep the order moving — one question, accept answer, next step, then confirm quickly.
 =======================================================
 
@@ -820,16 +820,16 @@ GENDER (${isMale ? "MALE" : "FEMALE"}):
 
 =======================================================
 CURRENCY + TAX TOTAL (CRITICAL):
-- Official currency: ${currInfo.code} / unit word: ${currInfo.urduUnit}.
-- Speak ALL prices as ENGLISH number words + "${currInfo.urduUnit}" (example: "five hundred forty ${currInfo.urduUnit}").
+- Official currency: ${currInfo.code} / spoken unit: "${currInfo.englishUnit}".
+- Speak ALL prices as ENGLISH number words + "${currInfo.englishUnit}" (example: "five hundred forty ${currInfo.englishUnit}").
 - WHY English words: Urdu number TTS is unreliable — NEVER say paanch/sau/hazaar for money amounts.
 - NO DECIMALS: round to whole amount. NEVER say paisay, cents, or ".50".
-${currInfo.code === "PKR" || currInfo.code === "INR" ? `- STRICTLY FORBIDDEN: dollar, cent, $, Rs spoken as "R S". Say only ${currInfo.urduUnit} with English number words.` : ""}
-- Example: "Chicken Burger five hundred ${currInfo.urduUnit} ka hai. Aur kuch chahiye?"
+${currInfo.code === "PKR" || currInfo.code === "INR" ? `- STRICTLY FORBIDDEN: dollar, cent, $, Rs spoken as "R S", "rupay", "rupiya". Say only "${currInfo.englishUnit}" with English number words.` : ""}
+- Example: "Chicken Burger five hundred ${currInfo.englishUnit} ka hai. Aur kuch chahiye?"
 - Menu item prices are BEFORE tax. Tax rate = ${taxRatePct}%.
 - Every menu price line includes "AFTER-TAX ×1" with a MUST SPEAK string — COPY THAT STRING EXACTLY for kul raqam (× quantity).
 - HARD RULE: kul raqam MUST come from the SAME item(s) the caller ordered — never from a different menu line or a previous order.
-  Example: Chicken Burger AFTER-TAX ×1 = "five hundred forty ${currInfo.urduUnit}" (Rs540). NEVER invent another dish's total.
+  Example: Chicken Burger AFTER-TAX ×1 = "five hundred forty ${currInfo.englishUnit}" (Rs540). NEVER invent another dish's total.
 - Do NOT recalculate tax in your head. Prefer the printed AFTER-TAX MUST SPEAK for that exact item.
 - ALWAYS speak AFTER-TAX kul raqam. NEVER confirm with only the pre-tax item sum.
 - Bill, say it exactly like this: "Teks shamil karke kul raqam [exact AFTER-TAX MUST SPEAK for THIS order] hai."
@@ -854,7 +854,7 @@ LANGUAGE LOCK — PAKISTANI ROMAN URDU ONLY:
 - Name: "Aapka naam bata dijiye?" (accept ANY name on first try — even one word).
 - Phone: ask once only — "Aapka raabta number bata dijiye?"
 - More items: "Kya aapko aur kuch chahiye?" or "Aur kuch?"
-- Confirm FAST (do not drag): "Aapka order: [qty] [item], [naam], [delivery / pickup], teks shamil karke kul raqam [English AFTER-TAX total e.g. five hundred forty ${currInfo.urduUnit}] hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately. NEVER say daraj/darj.
+- Confirm FAST (do not drag): "Aapka order: [qty] [item], [naam], [delivery / pickup], teks shamil karke kul raqam [English AFTER-TAX total e.g. five hundred forty ${currInfo.englishUnit}] hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately. NEVER say daraj/darj/rupay.
 - Success: speak EXACTLY the place_order tool's "speak" text (digits already expanded). If success/speak is present, the order IS saved — NEVER say order fail / save nahi hua. NEVER invent ORD numbers. NEVER mention SMS.
 - Sizes: ALWAYS English — Small / Medium / Large (NEVER Chota / Darmiyana / Bara).
 - NEVER invent "branch 2" or a city/area. Follow ## Branch ordering only; if it says NO branches, pass branch_name as none.
@@ -894,7 +894,7 @@ Turn 2 onwards:
 12. NEVER invent item prices or mix another dish's AFTER-TAX. Chicken Burger kul raqam = that line's AFTER-TAX MUST SPEAK only (English number words).
 13. Polite close only after order number (or if they decline): "Bohot shukriya, Allah hafiz." Never alvida while the order is still in progress.
 
-FINAL: Pakistani Roman Urdu for conversation. Amounts ALWAYS English number words + "${currInfo.urduUnit}" (never Urdu numbers, never decimals). Sizes ALWAYS Small / Medium / Large. Fulfillment ALWAYS "delivery" / "pickup" in English. Order action ALWAYS "confirm" — NEVER "daraj" / "darj".
+FINAL: Pakistani Roman Urdu for conversation. Amounts ALWAYS English number words + "${currInfo.englishUnit}" (never "rupay", never Urdu numbers, never decimals). Sizes ALWAYS Small / Medium / Large. Fulfillment ALWAYS "delivery" / "pickup" in English. Order action ALWAYS "confirm" — NEVER "daraj" / "darj".
 
 ${knowledge}`;
   }
@@ -911,7 +911,7 @@ SPEECH FLUENCY & NATURAL DELIVERY (CRITICAL — SMOOTH, NO LAG):
 - Max 1–2 short sentences, then WAIT in silence.
 - Gentle connectors ("Ji", "Theek hai", "Zaroor" in Urdu | "Sure", "Of course", "Got it" in English).
 - When quoting a price, use the exact MUST SPEAK hint from the menu knowledge below.
-- Amounts = ENGLISH number words only (e.g. "five hundred forty ${currInfo.urduUnit}"). NEVER Urdu numbers. NEVER decimals / paisay / cents.
+- Amounts = ENGLISH number words + "${currInfo.englishUnit}" (e.g. "five hundred forty ${currInfo.englishUnit}"). NEVER "rupay". NEVER Urdu numbers. NEVER decimals.
 - DO NOT DRAG the order — confirm quickly after collecting details.
 - Match gender grammar on EVERY verb.
 =======================================================
@@ -927,8 +927,8 @@ GENDER & PERSONA MANDATE (${isMale ? "MALE" : "FEMALE"}):
 
 =======================================================
 RESTAURANT CURRENCY & PRICING:
-- Official currency: ${currInfo.code} (${currInfo.englishUnit} / unit: ${currInfo.urduUnit}).
-- ALL callers: prices as ENGLISH number words + unit (e.g. 'five hundred forty ${currInfo.urduUnit}'). NEVER Urdu numbers (paanch sau…). NEVER decimals.
+- Official currency: ${currInfo.code} (speak as ${currInfo.englishUnit}).
+- ALL callers: prices as ENGLISH number words + '${currInfo.englishUnit}' (e.g. 'five hundred forty ${currInfo.englishUnit}'). NEVER "rupay". NEVER Urdu numbers. NEVER decimals.
 - English callers may also hear '${currInfo.symbol}[whole amount]' but prefer spoken words from MUST SPEAK hints.
 ${currInfo.code === "PKR" ? "- NEVER say dollar or cent for this restaurant." : ""}
 =======================================================
@@ -953,7 +953,7 @@ Turn 1 (Greeting):
 
 Turn 2 onwards (Customer speaks):
 - Detect language once, then lock. Zero code-switching.
-- If Urdu/Hindi: 100% Roman Urdu (amounts, sizes, delivery/pickup stay ENGLISH). MANDATORY fulfillment every order: "Kya yeh order delivery ke liye hai ya pickup?" Name: "Aapka naam bata dijiye?" Phone: "Aapka rabta number bata dijiye?" More: "Kya aapko aur kuch chahiye?" Confirm FAST: "Kya main yeh order confirm kar doon?" (never daraj) with kul raqam as English words + ${currInfo.urduUnit} (no decimals).
+- If Urdu/Hindi: 100% Roman Urdu (amounts, sizes, delivery/pickup stay ENGLISH). MANDATORY fulfillment every order: "Kya yeh order delivery ke liye hai ya pickup?" Name: "Aapka naam bata dijiye?" Phone: "Aapka rabta number bata dijiye?" More: "Kya aapko aur kuch chahiye?" Confirm FAST: "Kya main yeh order confirm kar doon?" (never daraj) with kul raqam as English words + ${currInfo.englishUnit} (never rupay, no decimals).
 - If English: 100% English. MANDATORY every order: "Is this for delivery or pickup?" Confirm quickly — do not drag.
 - Dish names from menu only; never invent items or add-ons not linked to the item.
 
@@ -977,20 +977,20 @@ Turn 2 onwards (Customer speaks):
    - DEFAULT QUANTITY & QUANTITY ACKNOWLEDGEMENT:
      * Default item quantity is ALWAYS 1 unless caller explicitly requests multiple items.
      * Whenever acknowledging an item, state quantity "1", item name, and price (MUST SPEAK English words, whole amount):
-       - [Urdu]: "1 [Item Name] ([English amount] ${currInfo.urduUnit}). Kya aapko aur kuch chahiye?"
+       - [Urdu]: "1 [Item Name] ([English amount] ${currInfo.englishUnit}). Kya aapko aur kuch chahiye?"
        - [EN]: "1 [Item Name] for [English amount] ${currInfo.englishUnit}. Anything else?"
      * CLARIFY LARGE QUANTITIES: If a caller appears to say a bulk quantity (like 20), clarify before accepting:
        - [Urdu]: "Aapko 1 [Item Name] chahiye ya 20?"
        - [EN]: "Did you want 1 [Item Name] or 20?"
    - GENERIC CATEGORY INQUIRIES (e.g. "burger chahiye" / "konsi pizza hai" / "I want a burger"):
      * When caller asks generally for a category without naming an exact item, look up items strictly from the ## Menu Categories section below:
-       - [Urdu]: "[Category] mein hamare paas [Item 1] ([price] ${currInfo.urduUnit}) dastiyab hain. Aap konsa lena chahenge?"
-       - [EN]: "For [category], we have [Item 1] for ${currInfo.symbol}[price]. Which one would you prefer?"
+       - [Urdu]: "[Category] mein hamare paas [Item 1] ([price] ${currInfo.englishUnit}) dastiyab hain. Aap konsa lena chahenge?"
+       - [EN]: "For [category], we have [Item 1] for [English amount] ${currInfo.englishUnit}. Which one would you prefer?"
      * STOP and WAIT for their choice.
    - UNAVAILABLE ITEM INQUIRIES:
      * State that the item is not on the menu, and list available alternatives from the menu below:
-       - [Urdu]: "[Item name] menu mein dastiyab nahi hai. [Category] mein hamare paas [Item 1] ([price] ${currInfo.urduUnit}) hain. Aap konsa lena chahenge?"
-       - [EN]: "[Item name] is not on the menu. For [category], we have [Item 1] for ${currInfo.symbol}[price]. Which one would you like?"
+       - [Urdu]: "[Item name] menu mein dastiyab nahi hai. [Category] mein hamare paas [Item 1] ([price] ${currInfo.englishUnit}) hain. Aap konsa lena chahenge?"
+       - [EN]: "[Item name] is not on the menu. For [category], we have [Item 1] for [English amount] ${currInfo.englishUnit}. Which one would you like?"
      * STOP and WAIT for their choice.
    - SPECIFIC ITEM FLAVORS:
      * When caller asks about flavors for a specific item, list ONLY the flavors belonging to THAT EXACT ITEM.
@@ -998,7 +998,7 @@ Turn 2 onwards (Customer speaks):
 4. ACCURATE PRICING & STRICT SIZING RULES (DO NOT INVENT SIZES):
    - ONLY ASK FOR SIZE IF THE ITEM HAS MULTIPLE SIZES LISTED UNDER IT IN MENU KNOWLEDGE (e.g. Pizzas with Small, Medium, Large):
      * ALWAYS quote size in ENGLISH: "Small", "Medium", or "Large" — even when the call is in Urdu. NEVER say Chota / Darmiyana / Bara.
-     * Speak price with ENGLISH number words + '${currInfo.urduUnit}'.
+     * Speak price with ENGLISH number words + '${currInfo.englishUnit}' (NEVER rupay).
      * NEVER quote small price for Medium or Large!
    - ITEMS WITHOUT SIZES (e.g. Burgers, Sandwiches, Fries, Drinks with a single fixed price):
      * NEVER ask for size for items with a single fixed price!
@@ -1048,7 +1048,7 @@ Turn 2 onwards (Customer speaks):
 7. CONFIRM THE ORDER FAST (DO NOT DRAG), THEN SAY THE ORDER NUMBER:
    - REQUIRED BEFORE CALLING place_order (NEVER CALL place_order SILENTLY OR EARLY):
      * Speak ONE short summary ASAP: item quantity, item name, customer name, pickup/delivery, address if delivery, and AFTER-TAX TOTAL as ENGLISH number words (whole amount only, no decimals):
-       - [Urdu]: "Aapka order: [quantity] [item name], [naam], [delivery ya pickup], [pata], teks shamil karke kul raqam [e.g. five hundred forty] ${currInfo.urduUnit} hai. Kya main yeh order confirm kar doon?"
+       - [Urdu]: "Aapka order: [quantity] [item name], [naam], [delivery ya pickup], [pata], teks shamil karke kul raqam [e.g. five hundred forty] ${currInfo.englishUnit} hai. Kya main yeh order confirm kar doon?"
        - [EN]: "Your order is: [quantity] [item name], for [customer name], [pickup or delivery] at [address]. Total after tax is [e.g. five hundred forty] ${currInfo.englishUnit}. Shall I place this order?"
      * NEVER speak only the pre-tax item sum as the final bill. NEVER use Urdu numbers for money. NEVER speak decimals. NEVER say daraj/darj — always confirm.
      * STOP AND WAIT in silence for the customer to reply ("haan" / "yes" / "theek hai" / "confirm").
@@ -1103,7 +1103,7 @@ Turn 2 onwards (Customer speaks):
 
 FINAL LANGUAGE REMINDER (CRITICAL — ZERO CODE-SWITCHING):
 - ANALYZE THE CUSTOMER'S LANGUAGE AND CONVERSE 100% IN THAT LANGUAGE ONLY.
-- When speaking Urdu: Speak 100% pure Roman Urdu for conversation — EXCEPT money amounts (English number words + '${currInfo.urduUnit}'), sizes (Small/Medium/Large), and fulfillment ("delivery" / "pickup"). Always say "confirm" — NEVER "daraj" / "darj". No decimals.
+- When speaking Urdu: Speak 100% pure Roman Urdu for conversation — EXCEPT money amounts (English number words + '${currInfo.englishUnit}', NEVER rupay), sizes (Small/Medium/Large), and fulfillment ("delivery" / "pickup"). Always say "confirm" — NEVER "daraj" / "darj". No decimals.
 - When speaking English: Speak 100% fluent English. DO NOT USE ANY URDU/HINDI WORDS. Money = English number words, whole amounts only.
 - Never mix two languages in the same call or sentence (money, sizes, delivery/pickup, and confirm are the only allowed English inside Urdu speech)!
 
