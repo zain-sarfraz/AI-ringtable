@@ -7,6 +7,7 @@ import {
   resolveSynthflowPromptUpdate,
   ensurePlaceOrderToolContract,
   stripPlaceOrderToolContract,
+  rewriteStaleOrderSpeechRules,
 } from "./promptMerge.js";
 
 const BRANCH_NONE = [
@@ -49,6 +50,26 @@ ${BRANCH_NONE}
 7. Payment is CASH ONLY — never ask the caller to choose a payment method.
    - Delivery: tell them naturally payment will be collected in cash at delivery.
 `.trim();
+
+describe("rewriteStaleOrderSpeechRules", () => {
+  it("converts keyword confirmation and blocks branch ask when no branches", () => {
+    const stale = `
+Confirm FAST (do not drag): "Aapka order: [qty] [item], [naam], [delivery / pickup], teks shamil karke kul raqam [English AFTER-TAX total e.g. five hundred forty rupees] hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately. NEVER say daraj/darj/rupay.
+10. Payment is COD — never ask how they will pay.
+8. Branch ordering section overrides location questions. No branches → never ask area; branch_name = none.
+11. After the caller says haan, call place_order once immediately. Do not speak a waiting line.
+
+Turn 1: Speak exactly: "Assalamualaikum"
+`.trim();
+    const fixed = rewriteStaleOrderSpeechRules(stale, 0);
+    assert.match(fixed, /Aapka order yeh hai/);
+    assert.match(fixed, /ke naam par hai/);
+    assert.match(fixed, /CASH ONLY/);
+    assert.match(fixed, /AFTER HAAN — NO BRANCH ASK/i);
+    assert.match(fixed, /branch_name "none"/);
+    assert.doesNotMatch(fixed, /Aapka order: \[qty\] \[item\], \[naam\]/);
+  });
+});
 
 describe("isPartialPromptOverwrite", () => {
   it("flags a short editor payload that drops required sections", () => {

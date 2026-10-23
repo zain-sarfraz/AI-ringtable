@@ -92,8 +92,14 @@ export async function aiPlaceOrder(req, res) {
 
     // Agent sometimes invents "branch 2" / "Main Branch" when the restaurant has no child branches.
     // Force none so place_order never fails or loops on a fake area question.
+    // Match ## Branch ordering / loadActiveChildBranches (accepting only).
     const childBranchCount = await knex("restaurants")
-      .where({ parent_restaurant_id: restaurantId, is_branch: true, is_active: true })
+      .where({
+        parent_restaurant_id: restaurantId,
+        is_branch: true,
+        is_active: true,
+        is_accepting_orders: true,
+      })
       .count("id as c")
       .first()
       .then((row) => Number(row?.c || 0))
@@ -311,10 +317,11 @@ export async function aiPlaceOrder(req, res) {
       });
     }
     if (e.isBranchError) {
+      // availableAreas come only from accepting child branches (same as ## Branch ordering).
       const areas = (e.availableAreas || []).filter(Boolean);
       const areaList = areas.length ? areas.join(" ya ") : "";
       console.warn("⚠️ Branch not matched. Requested:", e.requestedBranch, "| areas:", areaList || "(none)");
-      // No areas configured → do not ask Johar Town / invent cities; tell agent to retry with branch_name none.
+      // No accepting areas → do not ask Johar Town / invent cities; retry with branch_name none.
       if (!areas.length) {
         const speakNone =
           "Theek hai ji, main order confirm karti hoon.";
@@ -337,7 +344,7 @@ export async function aiPlaceOrder(req, res) {
         speak: speakAreas,
         message:
           `READ "speak" EXACTLY once (Roman Urdu). After they answer, call place_order again with branch_name set to that exact area name. ` +
-          `ONLY use these areas — never invent Johar Town / Iqbal Town if they are not in the list. Do NOT invent an order number.`,
+          `ONLY use these areas from the tool response — never invent other areas. Do NOT invent an order number.`,
       });
     }
     if (/no order items/i.test(String(e.message || ""))) {

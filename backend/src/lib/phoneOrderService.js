@@ -619,11 +619,14 @@ export async function createPhoneOrder(knex, input) {
     .select("id", "name", "parent_restaurant_id", "is_branch")
     .first();
   const parentRestaurantId = restaurantId;
+  // Same filter as voice ## Branch ordering: only active + accepting children.
+  // Non-accepting leftovers must NOT force Johar/Iqbal (or any area) questions.
   const branches = await knex("restaurants")
     .where({
       parent_restaurant_id: restaurantId,
       is_branch: true,
       is_active: true,
+      is_accepting_orders: true,
     })
     .select(
       "id",
@@ -652,10 +655,10 @@ export async function createPhoneOrder(knex, input) {
   const branchRequested =
     !!rawBranch && !["none", "null", "n/a", "na", "any", "no", "no preference"].includes(rawBranch.toLowerCase());
 
-  // No real branches → never ask Johar/Iqbal/etc.; keep order on this restaurant.
+  // No accepting branches → never ask area; keep order on this restaurant.
   if (!branches.length) {
     console.log(
-      `🏪 Branch resolve: restaurant=${restaurantId} has 0 child branches — skipping area question`,
+      `🏪 Branch resolve: restaurant=${restaurantId} has 0 accepting child branches — skipping area question`,
     );
     rawBranch = "";
   }
@@ -679,9 +682,8 @@ export async function createPhoneOrder(knex, input) {
   }
 
   // Single accepting branch → auto-assign when the caller did not name one clearly.
-  const accepting = branches.filter((b) => b.is_accepting_orders !== false);
-  if (!chosenBranch && accepting.length === 1 && (isPickup || !branchRequested)) {
-    chosenBranch = accepting[0];
+  if (!chosenBranch && branches.length === 1 && (isPickup || !branchRequested)) {
+    chosenBranch = branches[0];
   }
 
   console.log(
@@ -700,7 +702,7 @@ export async function createPhoneOrder(knex, input) {
     autoAssigned = true;
     assignmentStatus = "assigned";
   } else if (branches.length > 0 && (isPickup || branchRequested)) {
-    // Pickup / named area must map to a real branch — do not park on parent HQ.
+    // Pickup / named area must map to a real accepting branch — do not park on parent HQ.
     const areas = [...new Set(branches.map((b) => branchArea(b)).filter(Boolean))];
     const err = new Error(
       `Could not match branch "${rawBranch || spokenCandidates[0] || "(missing)"}". Ask the caller which area: ${areas.join(" or ")}.`,

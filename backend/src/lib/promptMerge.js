@@ -19,6 +19,59 @@ export function promptHasMenuKnowledge(text) {
   return /# .+ — Menu/m.test(String(text || "")) || /## Menu Categories/i.test(String(text || ""));
 }
 
+/**
+ * Rewrite stale keyword-style confirmation + leftover COD / branch-ask lines in saved prompts.
+ * Keeps custom conversation rules; only patches known bad templates.
+ */
+export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
+  let text = String(prompt || "");
+
+  text = text.replace(
+    /Confirm FAST \(do not drag\): "Aapka order: \[qty\] \[item\], \[naam\], \[delivery \/ pickup\], teks shamil karke kul raqam \[English AFTER-TAX total e\.g\. five hundred forty [^\"]+\] hai\. Kya main yeh order confirm kar doon\?" Then WAIT — on haan call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
+    'Confirm FAST in natural sentences (NOT keyword lists): "Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX total] rupees bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately. NEVER say daraj/darj/rupay.',
+  );
+
+  text = text.replace(
+    /"Aapka order: \[quantity\] \[item name\], \[naam\], \[delivery ya pickup\], \[pata\], teks shamil karke kul raqam \[e\.g\. five hundred forty\] ([^"]+) hai\. Kya main yeh order confirm kar doon\?"/gi,
+    '"Aapka order yeh hai: [quantity] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye. Teks shamil karke kul bill [e.g. five hundred forty three] $1 bana hai. Kya main yeh order confirm kar doon?"',
+  );
+
+  text = text.replace(
+    /10\. Payment is COD — never ask how they will pay\./g,
+    '10. Payment is CASH ONLY — never ask how they will pay. Delivery: cash at delivery. Pickup: cash at pickup.',
+  );
+
+  if (Number(branchCount) === 0) {
+    text = text.replace(
+      /8\. Branch ordering section overrides location questions\. No branches → never ask area; branch_name = none\./g,
+      "8. Branch ordering section overrides location questions. No branches → never ask area/city/branch and NEVER say Johar Town or Iqbal Town; branch_name = none.",
+    );
+    text = text.replace(
+      /11\. After the caller says haan, call place_order once immediately\. Do not speak a waiting line\./g,
+      '11. After haan: call place_order ONCE immediately with branch_name "none". Do NOT ask Johar Town / Iqbal Town / area after haan. Do not speak a waiting line.',
+    );
+    if (!/AFTER HAAN — NO BRANCH ASK/i.test(text)) {
+      const guard = `
+=======================================================
+AFTER HAAN — NO BRANCH ASK (CRITICAL):
+- ## Branch ordering says this restaurant has NO branches.
+- After the caller says haan/yes: call place_order immediately with branch_name exactly "none".
+- FORBIDDEN after haan: asking Johar Town, Iqbal Town, city, area, or branch — even if a tool error mentions areas.
+- If a tool says branch_required: retry place_order with branch_name "none". Do NOT ask the caller.
+=======================================================
+`;
+      const turn1 = text.search(/\nTurn 1:/);
+      if (turn1 !== -1) {
+        text = `${text.slice(0, turn1)}\n${guard}${text.slice(turn1)}`;
+      } else {
+        text = `${text.trim()}\n${guard}`;
+      }
+    }
+  }
+
+  return text;
+}
+
 /** Remove an existing place_order contract block so it can be refreshed in place. */
 export function stripPlaceOrderToolContract(prompt) {
   return String(prompt || "")
@@ -178,7 +231,9 @@ export function resolveSynthflowPromptUpdate({
     }
   }
 
-  merged = applyBranchOrdering(merged, branches || []);
+  const branchList = branches || [];
+  merged = rewriteStaleOrderSpeechRules(merged, branchList.length);
+  merged = applyBranchOrdering(merged, branchList);
   merged = ensurePlaceOrderToolContract(merged, language);
 
   if (!String(merged || "").trim()) {

@@ -762,7 +762,7 @@ export function buildRestaurantVoiceKnowledge({
     );
     lines.push(...cashOnlyPaymentProtocolLines({ urdu: true }));
     lines.push(
-      "8. CONFIRM FAST — do not delay: ONE short AFTER-TAX summary (English number words, whole amount only), then ask \"Kya main yeh order confirm kar doon?\" NEVER say daraj/darj. WAIT for haan, then call place_order immediately. No extra questions after summary.",
+      "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan, then place_order immediately (NO branches → branch_name none; NEVER ask Johar/Iqbal/area after haan). NEVER say daraj/darj.",
     );
   } else {
     lines.push("1. Greet calmly and ask what the caller would like to order.");
@@ -772,7 +772,9 @@ export function buildRestaurantVoiceKnowledge({
     lines.push("5. Email: ONLY for delivery (optional receipt). Pickup: NEVER ask email — pass customer_email as none and go to phone. If caller skips email on delivery, proceed without a fake email.");
     lines.push("6. Collect contact phone number.");
     lines.push(...cashOnlyPaymentProtocolLines({ urdu: false }));
-    lines.push("8. CONFIRM FAST — do not drag: ONE short summary (items, name, pickup/delivery, AFTER-TAX total in English number words, no decimals), ask 'Shall I place this order?' / 'Kya main yeh order confirm kar doon?' (NEVER daraj/darj), WAIT for yes/haan, then call place_order immediately. NEVER call place_order before confirmation.");
+    lines.push(
+      "8. CONFIRM FAST in natural sentences (not keywords): state the items, the exact customer name, pickup or delivery, then the AFTER-TAX bill in English number words. Ask 'Shall I place this order?' / 'Kya main yeh order confirm kar doon?' (NEVER daraj/darj). WAIT for yes/haan, then place_order immediately (NO branches → branch_name none; never ask area after haan).",
+    );
   }
 
   return lines.join("\n");
@@ -874,10 +876,10 @@ LANGUAGE LOCK — PAKISTANI ROMAN URDU ONLY:
 - Name: "Aapka naam bata dijiye?" (accept ANY name on first try — even one word).
 - Phone: ask once only — "Aapka raabta number bata dijiye?"
 - More items: "Kya aapko aur kuch chahiye?" or "Aur kuch?"
-- Confirm FAST (do not drag): "Aapka order: [qty] [item], [naam], [delivery / pickup], teks shamil karke kul raqam [English AFTER-TAX total e.g. five hundred forty ${currInfo.englishUnit}] hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately. NEVER say daraj/darj/rupay.
-- Success: speak EXACTLY the place_order tool's "speak" text (digits already expanded). If success/speak is present, the order IS saved — NEVER say order fail / save nahi hua. NEVER invent ORD numbers. NEVER mention SMS.
+- Confirm FAST in natural sentences (NOT keyword lists like "item, name, pickup"): "Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX total e.g. five hundred forty three ${currInfo.englishUnit}] bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately with branch_name per ## Branch ordering (NO branches → "none"). NEVER ask area/Johar/Iqbal after haan when ## Branch ordering says NO branches. NEVER say daraj/darj/rupay.
+- Success: speak EXACTLY the place_order tool's "speak" text (digits already expanded). If success/speak is present, the order IS saved — NEVER say order fail / save nahi hua. NEVER invent ORD numbers. NEVER mention SMS. NEVER ask branch/area after a successful place_order.
 - Sizes: ALWAYS English — Small / Medium / Large (NEVER Chota / Darmiyana / Bara).
-- NEVER invent "branch 2" or a city/area. Follow ## Branch ordering only; if it says NO branches, pass branch_name as none.
+- NEVER invent "branch 2" or a city/area. Follow ## Branch ordering only; if it says NO branches, pass branch_name as none — and NEVER speak Johar Town / Iqbal Town / any area name.
 =======================================================
 
 =======================================================
@@ -907,10 +909,10 @@ Turn 2 onwards:
 5. One question per turn, then WAIT in silence. Keep other turns to 1–2 short sentences. The category list in rule 3 is the exception — name the items even if that takes more than two sentences. Respond to what they just said.
 6. Collect FAST in order (do not drag): items → naam (EXACT name) → MANDATORY fulfillment ask → (DELIVERY only: email optional; PICKUP: skip email) → raabta number (once; yahi = "same") → ONE short AFTER-TAX summary (English number words, no decimals) → wait for "haan" → place_order immediately.
 7. NEVER call check_previous_order unless caller clearly says they want the OLD/LAST order repeated ("pehle wala", "wahi order", "repeat last"). If any dish is named → fresh order only.
-8. Branch ordering section overrides location questions. No branches → never ask area; branch_name = none. Multiple → delivery: address only + branch_name none; pickup: ask listed area only.
+8. Branch ordering section overrides location questions. No branches → never ask area/city/branch and NEVER say Johar Town or Iqbal Town; branch_name = none. Multiple → delivery: address only + branch_name none; pickup: ask listed area only.
 9. Track order: ask "Aapka order number kya hai?", wait, call get_order_status once.
 10. Payment is CASH ONLY — never ask how they will pay. Delivery: "Payment delivery ke waqt cash mein kar dena." Pickup: "Pickup par payment cash mein hogi." Card/other: "Maazrat, filhal sirf cash payment available hai."
-11. After the caller says haan, call place_order once immediately. Do not speak a waiting line. If the tool returns "speak" or success, READ "speak" EXACTLY. The order is saved. NEVER say it failed. NEVER invent an order number. If phone_required: read "speak", get digits, retry place_order — do NOT say order failed. Only after TWO hard failures (no phone_required, no speak) say once: "Order save nahi ho saka, ek baar phir try karte hain."
+11. After haan: call place_order ONCE immediately (NO branches → branch_name "none"). Do NOT ask Johar Town / Iqbal Town / area after haan. Do not speak a waiting line. If the tool returns "speak" or success, READ "speak" EXACTLY. The order is saved. NEVER say it failed. NEVER invent an order number. If branch_required but ## Branch ordering says NO branches: retry place_order with branch_name "none" — do NOT ask area. If phone_required: read "speak", get digits, retry place_order — do NOT say order failed. Only after TWO hard failures (no phone_required, no speak) say once: "Order save nahi ho saka, ek baar phir try karte hain."
 12. NEVER invent item prices or mix another dish's AFTER-TAX. Chicken Burger kul raqam = that line's AFTER-TAX MUST SPEAK only (English number words).
 13. Polite close only after order number (or if they decline): "Bohot shukriya, Allah hafiz." Never alvida while the order is still in progress.
 
@@ -1068,8 +1070,8 @@ Turn 2 onwards (Customer speaks):
 7. CONFIRM THE ORDER FAST (DO NOT DRAG), THEN SAY THE ORDER NUMBER:
    - REQUIRED BEFORE CALLING place_order (NEVER CALL place_order SILENTLY OR EARLY):
      * Speak ONE short summary ASAP: item quantity, item name, customer name, pickup/delivery, address if delivery, and AFTER-TAX TOTAL as ENGLISH number words (whole amount only, no decimals):
-       - [Urdu]: "Aapka order: [quantity] [item name], [naam], [delivery ya pickup], [pata], teks shamil karke kul raqam [e.g. five hundred forty] ${currInfo.englishUnit} hai. Kya main yeh order confirm kar doon?"
-       - [EN]: "Your order is: [quantity] [item name], for [customer name], [pickup or delivery] at [address]. Total after tax is [e.g. five hundred forty] ${currInfo.englishUnit}. Shall I place this order?"
+       - [Urdu]: "Aapka order yeh hai: [quantity] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye[delivery only: , pata: …]. Teks shamil karke kul bill [e.g. five hundred forty three] ${currInfo.englishUnit} bana hai. Kya main yeh order confirm kar doon?"
+       - [EN]: "Your order is [quantity] [item name]. This order is under [exact customer name] for [pickup or delivery][delivery only: to …]. After tax the bill is [e.g. five hundred forty three] ${currInfo.englishUnit}. Shall I place this order?"
      * NEVER speak only the pre-tax item sum as the final bill. NEVER use Urdu numbers for money. NEVER speak decimals. NEVER say daraj/darj — always confirm.
      * STOP AND WAIT in silence for the customer to reply ("haan" / "yes" / "theek hai" / "confirm").
      * ONLY AFTER receiving confirmation, call place_order ONCE immediately (no extra questions). If they said same-number, pass customer_phone "same".
