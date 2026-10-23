@@ -1,17 +1,17 @@
 import { updateAgent } from "./synthflowClient.js";
 import {
-  applyBranchOrdering,
-  appendPlaceOrderToolContract,
   buildRestaurantVoiceKnowledge,
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
   isMaleVoice,
 } from "./restaurantVoiceContext.js";
+import { PromptMergeError, resolveSynthflowPromptUpdate } from "./promptMerge.js";
 import { refreshSynthflowPlaceOrderTool } from "../fns/restaurantCreateSynthflowAgent.js";
 
 /**
  * Put the current branch list into the phone agent's prompt.
  * Runs after a branch is added, renamed, or turned off.
+ * Preserves saved conversation rules; refreshes branch / menu / place_order sections only.
  */
 export async function pushBranchListToAgent(knex, parentRestaurantId) {
   if (!parentRestaurantId) return;
@@ -29,28 +29,39 @@ export async function pushBranchListToAgent(knex, parentRestaurantId) {
     preferUrduPrices,
     ...catalog,
   });
-  const saved = String(restaurant.agent_system_prompt || "").trim();
-  // Our generated templates must rebuild from code so language/branch fixes ship on sync.
-  const looksLikeOurTemplate =
-    /PRIMARY MISSION|CRITICAL RULES|LANGUAGE MATCHING|## Branch ordering/i.test(saved);
   const voiceGender = isMaleVoice(restaurant.agent_voice_id) ? "male" : "female";
-  const base =
-    saved && !looksLikeOurTemplate
-      ? saved
-      : defaultSynthflowPrompt(
+
+  let prompt;
+  try {
+    prompt = resolveSynthflowPromptUpdate({
+      incoming: null,
+      saved: restaurant.agent_system_prompt,
+      replaceFull: false,
+      refreshKnowledge: true,
+      knowledge,
+      branches: catalog.branches,
+      language: agentLanguage,
+      defaultPromptBuilder: () =>
+        defaultSynthflowPrompt(
           restaurant.name,
           knowledge,
           currency,
           agentLanguage,
-          voiceGender
-        );
-  const prompt = appendPlaceOrderToolContract(
-    applyBranchOrdering(
-      base.includes("## Menu") || base.includes("# ") ? base : `${base}\n\n${knowledge}`,
-      catalog.branches,
-    ),
-    agentLanguage,
-  );
+          voiceGender,
+        ),
+    });
+  } catch (mergeErr) {
+    if (mergeErr instanceof PromptMergeError) {
+      console.warn(
+        "Branch sync prompt merge blocked:",
+        parentRestaurantId,
+        mergeErr.code,
+        mergeErr.message,
+      );
+      return;
+    }
+    throw mergeErr;
+  }
 
   await updateAgent(restaurant.synthflow_agent_id, {
     agent: { prompt },

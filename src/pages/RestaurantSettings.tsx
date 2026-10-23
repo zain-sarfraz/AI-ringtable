@@ -180,6 +180,8 @@ export default function RestaurantSettings() {
   const [telnyxProvisionBusy, setTelnyxProvisionBusy] = useState(false);
   const [synthflowBusy, setSynthflowBusy] = useState(false);
   const [synthflowSyncBusy, setSynthflowSyncBusy] = useState(false);
+  /** Explicit full overwrite of the live agent prompt (default: merge / preserve). */
+  const [replaceFullPrompt, setReplaceFullPrompt] = useState(false);
   const [testCallPhone, setTestCallPhone] = useState("");
   const [testCallBusy, setTestCallBusy] = useState(false);
   const [telnyxCandidates, setTelnyxCandidates] = useState<{ phone_number: string; locality?: string }[]>([]);
@@ -752,13 +754,14 @@ export default function RestaurantSettings() {
     if (!r?.id) return;
     setSynthflowBusy(true);
     try {
+      // Do NOT write agent_system_prompt to DB before Synthflow succeeds — empty/partial
+      // editor text must not clear the saved prompt. Backend merges and persists after API OK.
       await supabase
         .from("restaurants")
         .update({
           agent_language: r.agent_language || "ur",
           agent_voice_id: r.agent_voice_id?.trim() || null,
           agent_first_message: r.agent_first_message?.trim() || null,
-          agent_system_prompt: r.agent_system_prompt?.trim() || null,
         })
         .eq("id", r.id);
 
@@ -770,6 +773,8 @@ export default function RestaurantSettings() {
           voice_id: r.agent_voice_id?.trim() || undefined,
           first_message: r.agent_first_message?.trim() || undefined,
           system_prompt: r.agent_system_prompt?.trim() || undefined,
+          replace_full_prompt: replaceFullPrompt,
+          expected_synced_at: r.synthflow_synced_at || undefined,
         },
       });
       if (error) {
@@ -805,6 +810,7 @@ export default function RestaurantSettings() {
         await loadRestaurantData();
         throw new Error(d?.error || "Failed");
       }
+      setReplaceFullPrompt(false);
       toast({
         title: "Synthflow agent updated",
         description:
@@ -1887,12 +1893,26 @@ export default function RestaurantSettings() {
           <div className="space-y-2">
             <Label>{t("restaurantSettings:systemPrompt", "System prompt (optional)")}</Label>
             <Textarea
-              rows={5}
+              rows={12}
               value={r.agent_system_prompt || ""}
               onChange={(e) => setR({ ...r, agent_system_prompt: e.target.value })}
-              placeholder="You are the friendly AI phone assistant…"
-              className="resize-y min-h-[120px]"
+              placeholder="Full current agent prompt loads here. Leave blank to keep the saved prompt and only refresh menu / branch / place_order sections."
+              className="resize-y min-h-[200px] font-mono text-xs"
             />
+            <p className="text-xs text-muted-foreground">
+              Updates merge with the latest saved prompt (menu, branch ordering, cash-only, and place_order rules are refreshed). Empty field keeps the existing prompt. Check the box below only if you intend to replace the entire prompt.
+            </p>
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={replaceFullPrompt}
+                onChange={(e) => setReplaceFullPrompt(e.target.checked)}
+              />
+              <span>
+                Replace full prompt (overwrite saved instructions with the editor text). Leave unchecked to preserve existing rules.
+              </span>
+            </label>
           </div>
 
           <div className="flex flex-wrap gap-2">

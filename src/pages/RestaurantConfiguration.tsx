@@ -451,7 +451,10 @@ export default function RestaurantConfiguration() {
           language: newAgent.language || restaurant.agent_language || "en",
           voice_id: newAgent.voice_id || restaurant.agent_voice_id || undefined,
           first_message: newAgent.first_message || restaurant.agent_first_message || undefined,
-          system_prompt: newAgent.system_prompt || restaurant.agent_system_prompt || undefined,
+          // Blank editor → omit so backend keeps the saved prompt (non-destructive merge).
+          system_prompt: newAgent.system_prompt?.trim() || undefined,
+          replace_full_prompt: false,
+          expected_synced_at: restaurant.synthflow_synced_at || undefined,
         },
       });
       if (error) {

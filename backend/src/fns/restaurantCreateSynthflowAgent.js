@@ -15,10 +15,9 @@ import {
   defaultSynthflowGreeting,
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
-  applyBranchOrdering,
-  appendPlaceOrderToolContract,
   isMaleVoice,
 } from "../lib/restaurantVoiceContext.js";
+import { PromptMergeError, resolveSynthflowPromptUpdate } from "../lib/promptMerge.js";
 import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 function isPhoneAlreadyAttachedError(err) {
@@ -507,28 +506,35 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       /^ہیلو،/i.test(savedGreeting)
         ? defaultSynthflowGreeting(r.name, agentLanguage, voiceGender)
         : savedGreeting;
-    // Auto-generated prompts (our template) are always rebuilt from code so language/track
-    // fixes ship on Update/Sync. Only a truly custom prompt without our markers is kept.
-    const customPrompt = (body.system_prompt ?? r.agent_system_prompt ?? "").trim();
-    const looksLikeOurTemplate =
-      /PRIMARY MISSION|CRITICAL RULES|LANGUAGE MATCHING|## Branch ordering|# .+ — Menu/i.test(
-        customPrompt,
-      );
-    const looksLikeLegacyEl =
-      /place_order tool|get_order_status tool|knowledge base/i.test(customPrompt);
-    const prompt =
-      customPrompt && !looksLikeOurTemplate && !looksLikeLegacyEl
-        ? customPrompt
-        : defaultSynthflowPrompt(r.name, knowledge, currency, agentLanguage, voiceGender);
-    const withMenu =
-      prompt.includes("## Menu") || prompt.includes("# ")
-        ? prompt
-        : `${prompt}\n\n${knowledge}`;
-    // Custom prompts (Sir / operators) still get the hard place_order contract so orders save.
-    const fullPrompt = appendPlaceOrderToolContract(
-      applyBranchOrdering(withMenu, catalog.branches),
-      agentLanguage,
-    );
+    // Non-destructive merge: keep saved conversation rules; refresh menu / branch / place_order.
+    // Full overwrite only when the client explicitly sets replace_full_prompt=true.
+    const replaceFull = body.replace_full_prompt === true || body.replace_full === true;
+    let fullPrompt;
+    try {
+      fullPrompt = resolveSynthflowPromptUpdate({
+        incoming: body.system_prompt,
+        saved: r.agent_system_prompt,
+        replaceFull,
+        refreshKnowledge: true,
+        knowledge,
+        branches: catalog.branches,
+        language: agentLanguage,
+        expectedSyncedAt: body.expected_synced_at || body.synthflow_synced_at || null,
+        currentSyncedAt: r.synthflow_synced_at || null,
+        defaultPromptBuilder: () =>
+          defaultSynthflowPrompt(r.name, knowledge, currency, agentLanguage, voiceGender),
+      });
+    } catch (mergeErr) {
+      if (mergeErr instanceof PromptMergeError) {
+        console.warn("Prompt merge blocked:", mergeErr.code, mergeErr.message);
+        return res.status(200).json({
+          success: false,
+          code: mergeErr.code,
+          error: mergeErr.message,
+        });
+      }
+      throw mergeErr;
+    }
 
     const agentName = body.name || `${r.name} Order Agent`;
 

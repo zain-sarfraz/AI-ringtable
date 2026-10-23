@@ -1,0 +1,233 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import {
+  PromptMergeError,
+  isPartialPromptOverwrite,
+  replaceMenuKnowledgeBlock,
+  resolveSynthflowPromptUpdate,
+  ensurePlaceOrderToolContract,
+  stripPlaceOrderToolContract,
+} from "./promptMerge.js";
+
+const BRANCH_NONE = [
+  "## Branch ordering",
+  "This restaurant has NO branches and NO areas list.",
+  "ABSOLUTE: Never ask which city, which area, which branch, or which location.",
+  "Always pass branch_name as exactly none to place_order and reserve_table.",
+].join("\n");
+
+const SAVED = `
+You are the phone assistant for Test Cafe.
+PRIMARY MISSION:
+Help with food orders.
+CUSTOM OPERATOR RULE: Always thank Sir at the end.
+Payment is CASH ONLY — never ask how they will pay.
+
+${BRANCH_NONE}
+
+# Test Cafe — Menu, Flavors, Sizes, Add-ons, and Ordering Guide
+
+## Menu Categories & Available Items
+- Old Burger — MUST SPEAK: "one hundred rupees"
+
+## Fast Ordering Protocol
+1. Greet
+7. Payment is CASH ONLY — do not ask payment method.
+`.trim();
+
+const FRESH_KNOWLEDGE = `
+# Test Cafe — Menu, Flavors, Sizes, Add-ons, and Ordering Guide
+
+Currency: PKR (speak as rupees — NEVER rupay)
+
+## Menu Categories & Available Items
+- New Pizza — MUST SPEAK: "five hundred rupees"
+
+${BRANCH_NONE}
+
+## Fast Ordering Protocol
+7. Payment is CASH ONLY — never ask the caller to choose a payment method.
+   - Delivery: tell them naturally payment will be collected in cash at delivery.
+`.trim();
+
+describe("isPartialPromptOverwrite", () => {
+  it("flags a short editor payload that drops required sections", () => {
+    assert.equal(
+      isPartialPromptOverwrite(SAVED, "You are a short custom line only."),
+      true,
+    );
+  });
+
+  it("allows a near-complete edited prompt", () => {
+    assert.equal(isPartialPromptOverwrite(SAVED, SAVED + "\nExtra note."), false);
+  });
+});
+
+describe("replaceMenuKnowledgeBlock", () => {
+  it("replaces menu knowledge while preserving conversation rules above it", () => {
+    const merged = replaceMenuKnowledgeBlock(SAVED, FRESH_KNOWLEDGE);
+    assert.match(merged, /CUSTOM OPERATOR RULE: Always thank Sir/);
+    assert.match(merged, /New Pizza/);
+    assert.doesNotMatch(merged, /Old Burger/);
+    assert.match(merged, /PRIMARY MISSION/);
+  });
+});
+
+describe("ensurePlaceOrderToolContract", () => {
+  it("replaces an existing contract instead of duplicating", () => {
+    const withOld = ensurePlaceOrderToolContract(SAVED + "\n", "ur");
+    const twice = ensurePlaceOrderToolContract(withOld, "ur");
+    const count = (twice.match(/## PLACE_ORDER TOOL CONTRACT/gi) || []).length;
+    assert.equal(count, 1);
+    assert.match(twice, /Payment: CASH ONLY/);
+    assert.equal(stripPlaceOrderToolContract(twice).includes("PLACE_ORDER TOOL CONTRACT"), false);
+  });
+});
+
+describe("resolveSynthflowPromptUpdate", () => {
+  it("editing with empty frontend field preserves saved instructions", () => {
+    const merged = resolveSynthflowPromptUpdate({
+      incoming: "",
+      saved: SAVED,
+      replaceFull: false,
+      refreshKnowledge: true,
+      knowledge: FRESH_KNOWLEDGE,
+      branches: [],
+      language: "ur",
+    });
+    assert.match(merged, /CUSTOM OPERATOR RULE: Always thank Sir/);
+    assert.match(merged, /New Pizza/);
+    assert.match(merged, /## Branch ordering/);
+    assert.match(merged, /## PLACE_ORDER TOOL CONTRACT/);
+    assert.match(merged, /CASH ONLY/);
+  });
+
+  it("section refresh keeps operator rules when only knowledge changes", () => {
+    const merged = resolveSynthflowPromptUpdate({
+      incoming: SAVED,
+      saved: SAVED,
+      replaceFull: false,
+      refreshKnowledge: true,
+      knowledge: FRESH_KNOWLEDGE,
+      branches: [],
+      language: "ur",
+    });
+    assert.match(merged, /CUSTOM OPERATOR RULE/);
+    assert.match(merged, /New Pizza/);
+    assert.doesNotMatch(merged, /Old Burger/);
+  });
+
+  it("empty/missing frontend fields do not clear saved content", () => {
+    const merged = resolveSynthflowPromptUpdate({
+      incoming: null,
+      saved: SAVED,
+      replaceFull: false,
+      refreshKnowledge: false,
+      branches: [],
+      language: "ur",
+    });
+    assert.match(merged, /CUSTOM OPERATOR RULE/);
+    assert.match(merged, /PRIMARY MISSION/);
+  });
+
+  it("rejects ambiguous partial overwrites instead of wiping sections", () => {
+    assert.throws(
+      () =>
+        resolveSynthflowPromptUpdate({
+          incoming: "Short override only",
+          saved: SAVED,
+          replaceFull: false,
+          refreshKnowledge: false,
+          branches: [],
+          language: "ur",
+        }),
+      (err) => err instanceof PromptMergeError && err.code === "AMBIGUOUS_PARTIAL_PROMPT",
+    );
+  });
+
+  it("rejects stale concurrent updates", () => {
+    assert.throws(
+      () =>
+        resolveSynthflowPromptUpdate({
+          incoming: SAVED,
+          saved: SAVED,
+          replaceFull: false,
+          refreshKnowledge: false,
+          branches: [],
+          language: "ur",
+          expectedSyncedAt: "2026-01-01T00:00:00.000Z",
+          currentSyncedAt: "2026-01-02T00:00:00.000Z",
+        }),
+      (err) => err instanceof PromptMergeError && err.code === "STALE_PROMPT_UPDATE",
+    );
+  });
+
+  it("replace_full_prompt requires non-empty incoming and then preserves merge of dynamic sections", () => {
+    assert.throws(
+      () =>
+        resolveSynthflowPromptUpdate({
+          incoming: "",
+          saved: SAVED,
+          replaceFull: true,
+          refreshKnowledge: false,
+          branches: [],
+          language: "ur",
+        }),
+      (err) => err instanceof PromptMergeError && err.code === "REPLACE_REQUIRES_PROMPT",
+    );
+
+    const custom = [
+      "Fully custom phone agent for Test Cafe.",
+      "PRIMARY MISSION: take orders only.",
+      "Payment is CASH ONLY.",
+      BRANCH_NONE,
+      FRESH_KNOWLEDGE,
+    ].join("\n\n");
+    const merged = resolveSynthflowPromptUpdate({
+      incoming: custom,
+      saved: SAVED,
+      replaceFull: true,
+      refreshKnowledge: true,
+      knowledge: FRESH_KNOWLEDGE,
+      branches: [],
+      language: "ur",
+    });
+    assert.match(merged, /Fully custom phone agent/);
+    assert.match(merged, /## PLACE_ORDER TOOL CONTRACT/);
+    assert.match(merged, /CASH ONLY/);
+  });
+
+  it("final prompt sent to Synthflow contains preserved rules and requested menu change", () => {
+    const merged = resolveSynthflowPromptUpdate({
+      incoming: SAVED.replace("thank Sir", "thank the manager"),
+      saved: SAVED,
+      replaceFull: false,
+      refreshKnowledge: true,
+      knowledge: FRESH_KNOWLEDGE,
+      branches: [],
+      language: "ur",
+    });
+    assert.match(merged, /thank the manager/);
+    assert.match(merged, /New Pizza/);
+    assert.match(merged, /## Branch ordering/);
+    assert.match(merged, /branch_name as exactly none/i);
+    assert.match(merged, /Payment: CASH ONLY/);
+    assert.match(merged, /## PLACE_ORDER TOOL CONTRACT/);
+  });
+
+  it("uses default builder only when nothing is saved (does not invent a wipe)", () => {
+    const merged = resolveSynthflowPromptUpdate({
+      incoming: "",
+      saved: "",
+      replaceFull: false,
+      refreshKnowledge: true,
+      knowledge: FRESH_KNOWLEDGE,
+      branches: [],
+      language: "ur",
+      defaultPromptBuilder: () =>
+        `DEFAULT BASE\nPRIMARY MISSION:\nOrders\nPayment is CASH ONLY.\n\n${FRESH_KNOWLEDGE}`,
+    });
+    assert.match(merged, /DEFAULT BASE/);
+    assert.match(merged, /## PLACE_ORDER TOOL CONTRACT/);
+  });
+});

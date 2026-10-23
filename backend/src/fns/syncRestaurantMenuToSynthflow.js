@@ -5,10 +5,9 @@ import {
   defaultSynthflowGreeting,
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
-  applyBranchOrdering,
-  appendPlaceOrderToolContract,
   isMaleVoice,
 } from "../lib/restaurantVoiceContext.js";
+import { PromptMergeError, resolveSynthflowPromptUpdate } from "../lib/promptMerge.js";
 import { refreshSynthflowPlaceOrderTool } from "./restaurantCreateSynthflowAgent.js";
 import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
@@ -81,13 +80,31 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
       /^ہیلو،/i.test(savedGreeting)
         ? defaultSynthflowGreeting(r.name, agentLanguage, voiceGender)
         : savedGreeting;
-    const prompt = appendPlaceOrderToolContract(
-      applyBranchOrdering(
-        defaultSynthflowPrompt(r.name, knowledge, currency, agentLanguage, voiceGender),
-        catalog.branches,
-      ),
-      agentLanguage,
-    );
+    let prompt;
+    try {
+      // Keep saved conversation rules; refresh menu/branch/place_order only.
+      prompt = resolveSynthflowPromptUpdate({
+        incoming: null,
+        saved: r.agent_system_prompt,
+        replaceFull: false,
+        refreshKnowledge: true,
+        knowledge,
+        branches: catalog.branches,
+        language: agentLanguage,
+        defaultPromptBuilder: () =>
+          defaultSynthflowPrompt(r.name, knowledge, currency, agentLanguage, voiceGender),
+      });
+    } catch (mergeErr) {
+      if (mergeErr instanceof PromptMergeError) {
+        console.warn("Menu sync prompt merge blocked:", mergeErr.code, mergeErr.message);
+        return res.status(200).json({
+          success: false,
+          code: mergeErr.code,
+          error: mergeErr.message,
+        });
+      }
+      throw mergeErr;
+    }
     const webhookUrl = postCallWebhookUrl();
     const menuKeywords = [
       r.name,
