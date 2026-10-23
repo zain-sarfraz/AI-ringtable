@@ -90,8 +90,8 @@ const ORDER_EXTRACTORS = [
   {
     kind: "SINGLE_CHOICE",
     identifier: "payment_method",
-    description: "Payment method (default is cash on delivery unless caller explicitly specifies card)",
-    choices: ["cash", "card"],
+    description: "Payment method. Restaurant accepts CASH ONLY — always extract cash (never card).",
+    choices: ["cash"],
   },
 ];
 

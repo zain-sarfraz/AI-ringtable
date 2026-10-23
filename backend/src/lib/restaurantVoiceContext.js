@@ -2,6 +2,24 @@ import { branchOrderingSection } from "./branchLocation.js";
 
 export { branchOrderingSection };
 
+/** Spoken cash-only rules for Fast Ordering / agent prompts (restaurant accepts cash only). */
+export function cashOnlyPaymentProtocolLines({ urdu = false } = {}) {
+  if (urdu) {
+    return [
+      "7. Payment is CASH ONLY — never ask the caller to choose a payment method.",
+      '   - Delivery: tell them naturally payment will be collected in cash at delivery (e.g. "Payment delivery ke waqt cash mein kar dena.").',
+      '   - Pickup: tell them payment is cash only at pickup (e.g. "Pickup par payment cash mein hogi.").',
+      '   - If they ask for card or any other method: "Maazrat, filhal sirf cash payment available hai." For delivery add "Payment delivery ke waqt kar dijiyega." For pickup add "Pickup par cash mein kar dijiyega."',
+    ];
+  }
+  return [
+    "7. Payment is CASH ONLY — do NOT ask the caller to choose a payment method.",
+    "   - Delivery: tell them payment will be collected in cash at delivery.",
+    "   - Pickup: tell them payment is cash only at pickup.",
+    '   - If they ask for card or another method: politely explain only cash is accepted (delivery: payable at delivery; pickup: cash at pickup).',
+  ];
+}
+
 /** Active child branches the phone agent may offer. */
 export async function loadActiveChildBranches(knex, restaurantId) {
   const restaurant = await knex("restaurants")
@@ -20,22 +38,22 @@ export async function loadActiveChildBranches(knex, restaurantId) {
     .select("id", "name", "address", "city", "area");
 }
 
-/** Older saved prompts told delivery to skip the branch question. Rewrite those lines. */
+/** Keep saved custom prompts aligned with current branch rules (delivery geo vs pickup ask). */
 function rewriteSavedBranchRules(text, branchCount) {
   let out = String(text || "");
   if (branchCount > 1) {
     out = out
       .replace(
-        /Delivery: ask "What is your complete delivery address\?" Accept and record the ENTIRE address on the first try\. Do not ask for a city or an area\. Pass branch_name as none\. -> WAIT\.\s*- Pickup: do not ask for a street address\. Follow the Branch ordering section\. If branches are in more than one city, ask the city, stop and wait, then ask the area\. If every branch is in the same city, ask the area only and do not ask the city\. Pass the matching exact branch_name to place_order\. -> WAIT\./,
-        `Delivery and pickup both follow the Branch ordering section before anything else. Ask the area, or the city first when branches are in more than one city. Pass that exact branch_name to place_order. For delivery, then ask for the street address and accept it on the first try. For pickup, do not ask for a street address. -> WAIT.`,
+        /Delivery and pickup both follow the Branch ordering section before anything else\. Ask the area, or the city first when branches are in more than one city\. Pass that exact branch_name to place_order\. For delivery, then ask for the street address and accept it on the first try\. For pickup, do not ask for a street address\. -> WAIT\./,
+        `Delivery: ask only for the complete delivery address; do not ask city/area/branch; pass branch_name as none (server assigns nearest branch). Pickup: follow Branch ordering — ask city then area when multi-city, else area only; pass that exact branch_name. -> WAIT.`,
       )
       .replace(
-        "4. Ask delivery or pickup. Delivery: accept the street address on the first try. Pickup or a table reservation: ask the area from the Branch ordering section. Do not ask the city when every branch is in the same city.",
         "4. Ask delivery or pickup, then ask the area from the Branch ordering section. For delivery, then accept the street address on the first try. For pickup, do not ask for a street address.",
+        "4. Ask delivery or pickup. Delivery: accept the street address on the first try; pass branch_name none. Pickup or a table reservation: ask the area from the Branch ordering section.",
       )
       .replace(
-        "Delivery orders do not use this question. Collect the delivery address and pass branch_name as none.",
         "Delivery orders use this question too. Ask the area first, then collect the street address, and pass the chosen branch_name.",
+        "Delivery orders do not use this question. Collect the delivery address and pass branch_name as none.",
       );
   } else {
     // Zero or one location: strip any leftover "ask the area" instructions.
@@ -85,7 +103,8 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur") {
 - Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email.
 - Delivery: full street address; email optional only.
 - If caller says yahi/yehi/same/this number → customer_phone exactly "same". NEVER ask raabta number again after they answered once (yahi OR digits).
-- branch_name: follow ## Branch ordering. If NO branches → exactly "none". NEVER invent "branch 2" or a city. NEVER ask Johar Town / Iqbal Town / any area unless ## Branch ordering lists that exact area.
+- branch_name: follow ## Branch ordering. If NO branches → exactly "none". NEVER invent "branch 2" or a city. NEVER ask Johar Town / Iqbal Town / any area unless ## Branch ordering lists that exact area. Delivery with multiple branches → branch_name "none" (server geo-assigns). Pickup with multiple → chosen area/branch only.
+- Payment: CASH ONLY. Never ask the caller to choose a payment method. place_order always uses cash.
 - items: real food lines with quantity (default 1). Never empty. Never "<order_items>".
 - Amounts: ENGLISH number words + "rupees" only (e.g. five hundred forty rupees). NO decimals. NEVER say "rupay".
 - After tool returns: if success or "speak" is present, READ "speak" EXACTLY (Roman Urdu). Order IS saved. NEVER paraphrase into English. NEVER say fail. NEVER invent ORD digits. NEVER mention SMS.
@@ -105,7 +124,8 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur") {
 - Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email.
 - Delivery: full street address; email optional only.
 - Same/this/calling number → customer_phone exactly "same".
-- branch_name: follow ## Branch ordering. If NO branches → "none". Never invent branch/area names (no Johar Town / Iqbal Town unless listed).
+- branch_name: follow ## Branch ordering. If NO branches → "none". Never invent branch/area names (no Johar Town / Iqbal Town unless listed). Delivery with multiple branches → "none". Pickup with multiple → chosen area/branch only.
+- Payment: CASH ONLY. Never ask the caller to choose a payment method. place_order always uses cash.
 - items: real menu lines with quantity (default 1). Never empty placeholders.
 - Amounts: ENGLISH number words + unit (e.g. five hundred forty rupees). NO decimals. NEVER say "rupay".
 - On success/speak: read "speak" EXACTLY. Order is saved. Never invent ORD numbers. Never mention SMS.
@@ -733,14 +753,14 @@ export function buildRestaurantVoiceKnowledge({
     lines.push("2. Capture ordered items/sizes/flavors from THIS menu only. Sizes ALWAYS English: Small / Medium / Large (NEVER Chota / Darmiyana / Bara). Speak each price using the MUST SPEAK hint with ENGLISH number words + rupees (e.g. 'five hundred forty rupees'). NEVER say rupay. NEVER Urdu numbers. NEVER decimals. NEVER say dollar, cent, or $.");
     lines.push("2b. CATEGORY (mandatory): if they name a type but not one exact dish, match subcategory name first, then category name. Read that matching PHONE SCRIPT in full, every item and price. If no category or subcategory has that name, read the ITEM PHONE SCRIPT only. Never read a parent category just because one item sits inside it. If they already named the exact dish, do not read a script.");
     lines.push("3. Collect customer name (accept ANY name on first try). Acknowledge with a natural \"Ji\" / \"Acha ji\" — do not repeat the same filler every turn.");
-    lines.push("4. MANDATORY fulfillment ask (every new order) — ENGLISH words only: \"Kya yeh order delivery ke liye hai ya pickup?\" NEVER skip. NEVER say pate/bhejwa/khud aakar. Then follow Branch ordering (if NO branches → never ask area; pass branch_name none).");
+    lines.push("4. MANDATORY fulfillment ask (every new order) — ENGLISH words only: \"Kya yeh order delivery ke liye hai ya pickup?\" NEVER skip. NEVER say pate/bhejwa/khud aakar. Then follow Branch ordering (NO branches → never ask area; pass branch_name none. Multiple → delivery: address only + branch_name none; pickup: ask listed area only).");
     lines.push(
       "5. Email: Pickup = NEVER ask email / raseed — jump to raabta number, customer_email=none. Delivery only: optional once \"Raseed ke liye apna email bata sakte hain?\"",
     );
     lines.push(
       "6. Phone: \"Aapka raabta number bata dijiye?\" If they say yahi/yehi/yhi/isi/same/this number → say \"Theek hai ji\" ONCE, NEVER ask phone again, pass customer_phone as \"same\".",
     );
-    lines.push("7. Payment is COD — do not ask payment method.");
+    lines.push(...cashOnlyPaymentProtocolLines({ urdu: true }));
     lines.push(
       "8. CONFIRM FAST — do not delay: ONE short AFTER-TAX summary (English number words, whole amount only), then ask \"Kya main yeh order confirm kar doon?\" NEVER say daraj/darj. WAIT for haan, then call place_order immediately. No extra questions after summary.",
     );
@@ -748,10 +768,10 @@ export function buildRestaurantVoiceKnowledge({
     lines.push("1. Greet calmly and ask what the caller would like to order.");
     lines.push("2. Capture ordered items, sizes (ONLY if item has sizes in menu), and flavors concisely, and state each item's price as it is ordered using ENGLISH number words (whole amounts only, no decimals). If caller asks for a category (e.g. 'burger') or an unavailable item, list the available items in that category with prices and let them choose.");
     lines.push("3. Collect customer name (accept ANY name on first try, even a single word like 'Akbar' — never ask again or reject it).");
-    lines.push("4. MANDATORY: Ask delivery or pickup every new order in ENGLISH (\"Is this for delivery or pickup?\" / \"Kya yeh order delivery ke liye hai ya pickup?\"), then follow Branch ordering: ask area/city ONLY if that section lists multiple locations; if it says no branches, do not ask. For delivery, then accept the street address on the first try. For pickup, do not ask for a street address.");
+    lines.push("4. MANDATORY: Ask delivery or pickup every new order in ENGLISH (\"Is this for delivery or pickup?\" / \"Kya yeh order delivery ke liye hai ya pickup?\"), then follow Branch ordering: if no branches, do not ask area; if multiple, delivery asks address only (branch_name none) and pickup asks a listed area only. For pickup, do not ask for a street address.");
     lines.push("5. Email: ONLY for delivery (optional receipt). Pickup: NEVER ask email — pass customer_email as none and go to phone. If caller skips email on delivery, proceed without a fake email.");
     lines.push("6. Collect contact phone number.");
-    lines.push("7. Payment is standard Cash on Delivery (COD) — do NOT interrogate caller to choose payment method.");
+    lines.push(...cashOnlyPaymentProtocolLines({ urdu: false }));
     lines.push("8. CONFIRM FAST — do not drag: ONE short summary (items, name, pickup/delivery, AFTER-TAX total in English number words, no decimals), ask 'Shall I place this order?' / 'Kya main yeh order confirm kar doon?' (NEVER daraj/darj), WAIT for yes/haan, then call place_order immediately. NEVER call place_order before confirmation.");
   }
 
@@ -887,9 +907,9 @@ Turn 2 onwards:
 5. One question per turn, then WAIT in silence. Keep other turns to 1–2 short sentences. The category list in rule 3 is the exception — name the items even if that takes more than two sentences. Respond to what they just said.
 6. Collect FAST in order (do not drag): items → naam (EXACT name) → MANDATORY fulfillment ask → (DELIVERY only: email optional; PICKUP: skip email) → raabta number (once; yahi = "same") → ONE short AFTER-TAX summary (English number words, no decimals) → wait for "haan" → place_order immediately.
 7. NEVER call check_previous_order unless caller clearly says they want the OLD/LAST order repeated ("pehle wala", "wahi order", "repeat last"). If any dish is named → fresh order only.
-8. Branch ordering section overrides location questions. No branches → never ask area; branch_name = none.
+8. Branch ordering section overrides location questions. No branches → never ask area; branch_name = none. Multiple → delivery: address only + branch_name none; pickup: ask listed area only.
 9. Track order: ask "Aapka order number kya hai?", wait, call get_order_status once.
-10. Payment is COD — never ask how they will pay.
+10. Payment is CASH ONLY — never ask how they will pay. Delivery: "Payment delivery ke waqt cash mein kar dena." Pickup: "Pickup par payment cash mein hogi." Card/other: "Maazrat, filhal sirf cash payment available hai."
 11. After the caller says haan, call place_order once immediately. Do not speak a waiting line. If the tool returns "speak" or success, READ "speak" EXACTLY. The order is saved. NEVER say it failed. NEVER invent an order number. If phone_required: read "speak", get digits, retry place_order — do NOT say order failed. Only after TWO hard failures (no phone_required, no speak) say once: "Order save nahi ho saka, ek baar phir try karte hain."
 12. NEVER invent item prices or mix another dish's AFTER-TAX. Chicken Burger kul raqam = that line's AFTER-TAX MUST SPEAK only (English number words).
 13. Polite close only after order number (or if they decline): "Bohot shukriya, Allah hafiz." Never alvida while the order is still in progress.
@@ -1019,7 +1039,7 @@ Turn 2 onwards (Customer speaks):
         - [Urdu]: "Kya yeh order delivery ke liye hai ya pickup?"
         - Follow Branch ordering section:
           * If it says NO branches / one location: do NOT ask city/area/branch.
-          * If it lists multiple areas: ask area once in the locked language.
+          * If it lists multiple areas: DELIVERY → do not ask area (address only, branch_name none). PICKUP → ask listed area once in the locked language.
         - Pickup: do not ask street address.
         - Delivery: ask street address once:
           * [EN]: "What is your delivery address?"
@@ -1037,13 +1057,13 @@ Turn 2 onwards (Customer speaks):
           * [Urdu]: "Aapka raabta number bata dijiye?"
         - If they say same / this / calling / dial / yahi / yehi / isi / "yahi number use karo" -> acknowledge ([Urdu] "Theek hai" | [EN] "Thank you") and pass customer_phone as "same" to place_order (caller ID is used automatically).
    - CRITICAL TRANSITION (ZERO EXCEPTIONS): Once phone is collected, DO NOT CALL check_previous_order or any other tool! You MUST immediately speak the Rule 7 Complete Order Summary and ask for customer confirmation!
-   - Payment is COD — do NOT ask how they will pay.
+   - Payment is CASH ONLY — do NOT ask how they will pay. Delivery: cash collected at delivery. Pickup: cash at pickup. If they ask for card: politely explain only cash is accepted.
 
 6. BRANCH FOR DELIVERY, PICKUP, AND TABLE RESERVATIONS:
    - The Branch ordering section OVERRIDES this section. Read it every time before asking location questions.
    - If that section says no branches: NEVER ask city/area/branch; pass branch_name as none; continue the flow.
    - If that section lists one location only: do not ask; pass that branch_name.
-   - Only when that section lists multiple areas: ask area in the caller's language.
+   - If that section lists multiple areas: DELIVERY → address only, branch_name none (server assigns). PICKUP / TABLE → ask area from the list only; never invent areas.
 
 7. CONFIRM THE ORDER FAST (DO NOT DRAG), THEN SAY THE ORDER NUMBER:
    - REQUIRED BEFORE CALLING place_order (NEVER CALL place_order SILENTLY OR EARLY):

@@ -11,6 +11,22 @@ import {
 } from "./tableReservationService.js";
 import { cleanUrduText } from "./devanagariTransliterator.js";
 
+/**
+ * Voice / phone orders are cash-only. Map COD aliases to cash; never store card or other methods.
+ * @returns {"cash"}
+ */
+export function normalizeVoicePaymentMethod(value) {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (!raw || raw === "cash" || raw === "cod" || raw === "cash_on_delivery" || raw === "cash_only") {
+    return "cash";
+  }
+  // Unsupported (card, online, etc.) → store the backend cash value only.
+  return "cash";
+}
+
 /** Menu lines and spoken item names that are a table booking, not food. */
 export function isTableReservationLine(name) {
   return /table\s*reserv|reserv\w*\s+(a\s+)?table|book\w*\s+(a\s+)?table/i.test(String(name || ""));
@@ -802,7 +818,7 @@ export async function createPhoneOrder(knex, input) {
         fulfillment_type: isPickup ? "pickup" : "delivery",
         source,
         status: "pending",
-        payment_method: payment_method || "cash",
+        payment_method: normalizeVoicePaymentMethod(payment_method),
         payment_status: "pending",
         subtotal,
         tax_amount: tax,

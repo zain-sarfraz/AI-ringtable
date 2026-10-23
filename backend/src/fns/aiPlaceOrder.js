@@ -8,7 +8,7 @@ import {
   normalizeE164,
   hasUsableOrderItems,
 } from "../lib/voiceWebhookUtils.js";
-import { createPhoneOrder } from "../lib/phoneOrderService.js";
+import { createPhoneOrder, normalizeVoicePaymentMethod } from "../lib/phoneOrderService.js";
 import { cleanUrduText } from "../lib/devanagariTransliterator.js";
 import {
   getCurrencyDetails,
@@ -217,7 +217,7 @@ export async function aiPlaceOrder(req, res) {
       delivery_notes: body.delivery_notes || body.notes || null,
       items: body.items,
       coupon_code: body.coupon_code || body.discount_code || null,
-      payment_method: body.payment_method ?? "cash",
+      payment_method: normalizeVoicePaymentMethod(body.payment_method),
       fulfillment_type: body.fulfillment_type || "delivery",
       branch_name: spokenBranch,
       area: body.area || body.branch_area || null,

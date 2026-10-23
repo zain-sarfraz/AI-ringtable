@@ -80,26 +80,30 @@ export function branchOrderingSection(branches) {
     const only = plan.rows[0];
     return [
       "## Branch ordering",
-      "This section overrides any older line that says not to ask which branch for a delivery order.",
+      "This section overrides any older line about when to ask for a branch or area.",
       "Use this for DELIVERY orders, PICKUP orders, and TABLE RESERVATIONS.",
       "Do not ask this when the caller only wants to track an order.",
-      `There is one location: ${only.area}${only.city ? `, ${only.city}` : ""}.`,
-      "Do not ask for a city or an area.",
+      `There is one active location: ${only.area}${only.city ? `, ${only.city}` : ""}.`,
+      "Do not ask for a city, an area, or which branch.",
       `Pass branch_name as "${only.name}".`,
-      "For a delivery order, still collect the street address. For pickup, do not ask for a street address.",
+      "DELIVERY: still collect the street address (server keeps this single branch).",
+      "PICKUP: do not ask for a street address.",
     ].join("\n");
   }
 
+  const areaExamples = plan.rows.map((row) => row.area).filter(Boolean).slice(0, 3);
   const lines = [
     "## Branch ordering",
-    "This section overrides any older line that told a delivery order to skip the area question.",
+    "This section overrides any older line about when to ask for a branch or area.",
     "Use this for DELIVERY orders, PICKUP orders, and TABLE RESERVATIONS.",
     "Do not ask this when the caller only wants to track an order.",
+    "DELIVERY: Do NOT ask which city, area, or branch. Ask only for the complete delivery address and accept it on the first try. Pass branch_name as exactly none. The server assigns the nearest active branch from the address.",
+    "PICKUP and TABLE RESERVATIONS: Ask which location using ONLY the configured list below. Never invent areas (never say Johar Town / Iqbal Town unless that exact area appears below).",
   ];
 
   if (plan.multiCity) {
     const cityNames = plan.cities.map((group) => group.city).filter(Boolean);
-    lines.push("These branches are in more than one city. Ask for the city first, then the area. Ask one question, then stop and wait.");
+    lines.push("For pickup/table only — branches are in more than one city. Ask for the city first, then the area. Ask one question, then stop and wait.");
     lines.push(`Ask: "Which city would you like: ${cityNames.join(" or ")}?"`);
     for (const group of plan.cities) {
       const areas = group.rows.map((row) => row.area).filter(Boolean);
@@ -113,8 +117,8 @@ export function branchOrderingSection(branches) {
     const areas = plan.rows.map((row) => row.area).filter(Boolean);
     lines.push(
       city
-        ? `All branches are in ${city}. Ask for the area only. Do not ask which city.`
-        : "These branches are in the same city. Ask for the area only. Do not ask which city.",
+        ? `For pickup/table only — all branches are in ${city}. Ask for the area only. Do not ask which city.`
+        : "For pickup/table only — these branches are in the same city. Ask for the area only. Do not ask which city.",
     );
     lines.push(`Ask: "Which area would you like: ${areas.join(" or ")}?" Then stop and wait.`);
     for (const row of plan.rows) {
@@ -122,12 +126,15 @@ export function branchOrderingSection(branches) {
     }
   }
 
-  lines.push("Ask this before the street address on a delivery order. After they choose the area, ask for the complete delivery address and accept it on the first try.");
   lines.push("For a pickup order, do not ask for a street address.");
-  lines.push("Ask the area in the caller's locked language.");
-  lines.push("On place_order / reserve_table, set branch_name to EITHER the exact quoted branch name OR the area label (e.g. Johar Town, Kashmir Road, Iqbal Town). The server matches both.");
-  lines.push("Use only a city and area from this list.");
-  lines.push("Never invent a city, area, or branch. Never pass none after they choose an area. Never skip branch_name on pickup.");
+  lines.push("Ask the pickup/table area in the caller's locked language.");
+  lines.push(
+    areaExamples.length
+      ? `On place_order / reserve_table for pickup or table: set branch_name to the exact quoted branch name OR the area label from this list (e.g. ${areaExamples.join(", ")}). The server matches both.`
+      : "On place_order / reserve_table for pickup or table: set branch_name to the exact quoted branch name from this list.",
+  );
+  lines.push("Use only a city and area from this list. Never invent a city, area, or branch.");
+  lines.push("Never pass none after they choose a pickup/table area. Never skip branch_name on pickup.");
   return lines.join("\n");
 }
 

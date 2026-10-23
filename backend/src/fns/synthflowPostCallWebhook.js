@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { getKnex } from "../db.js";
 import { resolveSpokenBranchId } from "../lib/branchLocation.js";
-import { createPhoneOrder, parseOrderItemsText } from "../lib/phoneOrderService.js";
+import { createPhoneOrder, normalizeVoicePaymentMethod, parseOrderItemsText } from "../lib/phoneOrderService.js";
 import {
   normalizeE164,
   isSamePhonePhrase,
@@ -891,7 +891,7 @@ export async function synthflowPostCallWebhook(req, res) {
       delivery_notes: notesRaw,
       items,
       coupon_code: couponRaw,
-      payment_method: emptyish(fields.payment_method) ? "cash" : fields.payment_method,
+      payment_method: normalizeVoicePaymentMethod(fields.payment_method),
       fulfillment_type: fields.fulfillment_type || "delivery",
       branch_name: fields.branch_name || null,
       call_id: callRow?.id,
