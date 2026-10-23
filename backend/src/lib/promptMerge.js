@@ -41,6 +41,18 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     '10. Payment is CASH ONLY — never ask how they will pay. Delivery: cash at delivery. Pickup: cash at pickup.',
   );
 
+  // Single-item PHONE SCRIPTs must not ask "konsa" (caller already has only one choice).
+  text = text.replace(
+    /(\w+ PHONE SCRIPT for "[^"]+" \(1 items? — say all 1, skip none\): )Ji, ([^.]+?) hain\. Aap konsa lena chahenge\?/gi,
+    (_m, prefix, list) => {
+      // list like: "Burger mein hamare paas Chicken Burger five hundred rupees"
+      const itemBit = String(list)
+        .replace(/^[^]*?\bmein hamare paas\s+/i, "")
+        .trim();
+      return `${prefix.replace(/say all 1, skip none/i, "say it once, then continue")}Acha ji, ${itemBit} ka hai. Main yeh note kar leti hoon.`;
+    },
+  );
+
   if (Number(branchCount) === 0) {
     text = text.replace(
       /8\. Branch ordering section overrides location questions\. No branches → never ask area; branch_name = none\./g,
@@ -48,24 +60,34 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     );
     text = text.replace(
       /11\. After the caller says haan, call place_order once immediately\. Do not speak a waiting line\./g,
-      '11. After haan: call place_order ONCE immediately with branch_name "none". Do NOT ask Johar Town / Iqbal Town / area after haan. Do not speak a waiting line.',
+      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask Johar Town / Iqbal Town / area after haan.',
     );
-    if (!/AFTER HAAN — NO BRANCH ASK/i.test(text)) {
-      const guard = `
+    text = text.replace(
+      /11\. After haan: call place_order ONCE immediately with branch_name "none"\. Do NOT ask Johar Town \/ Iqbal Town \/ area after haan\. Do not speak a waiting line\./g,
+      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask Johar Town / Iqbal Town / area after haan.',
+    );
+    const guardBody = `
 =======================================================
 AFTER HAAN — NO BRANCH ASK (CRITICAL):
 - ## Branch ordering says this restaurant has NO branches.
-- After the caller says haan/yes: call place_order immediately with branch_name exactly "none".
-- FORBIDDEN after haan: asking Johar Town, Iqbal Town, city, area, or branch — even if a tool error mentions areas.
+- After haan/yes: speak NOTHING — call place_order immediately with branch_name exactly "none".
+- FORBIDDEN (before or after haan): saying Johar Town, Iqbal Town, city, area, or branch — unless that exact name is printed under ## Branch ordering (it is not).
 - If a tool says branch_required: retry place_order with branch_name "none". Do NOT ask the caller.
 =======================================================
 `;
+    if (!/AFTER HAAN — NO BRANCH ASK/i.test(text)) {
       const turn1 = text.search(/\nTurn 1:/);
       if (turn1 !== -1) {
-        text = `${text.slice(0, turn1)}\n${guard}${text.slice(turn1)}`;
+        text = `${text.slice(0, turn1)}\n${guardBody}${text.slice(turn1)}`;
       } else {
-        text = `${text.trim()}\n${guard}`;
+        text = `${text.trim()}\n${guardBody}`;
       }
+    } else {
+      // Refresh stale AFTER HAAN block so "speak NOTHING" is present.
+      text = text.replace(
+        /={3,}\s*\nAFTER HAAN — NO BRANCH ASK \(CRITICAL\):[\s\S]*?\n={3,}/i,
+        guardBody.trim(),
+      );
     }
   }
 

@@ -66,8 +66,19 @@ Turn 1: Speak exactly: "Assalamualaikum"
     assert.match(fixed, /ke naam par hai/);
     assert.match(fixed, /CASH ONLY/);
     assert.match(fixed, /AFTER HAAN — NO BRANCH ASK/i);
+    assert.match(fixed, /speak NOTHING/i);
     assert.match(fixed, /branch_name "none"/);
     assert.doesNotMatch(fixed, /Aapka order: \[qty\] \[item\], \[naam\]/);
+  });
+
+  it("rewrites single-item PHONE SCRIPT so it does not ask konsa", () => {
+    const stale = `
+SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hain. Aap konsa lena chahenge?
+`.trim();
+    const fixed = rewriteStaleOrderSpeechRules(stale, 0);
+    assert.match(fixed, /Acha ji, Chicken Burger five hundred rupees ka hai/i);
+    assert.match(fixed, /say it once, then continue/i);
+    assert.doesNotMatch(fixed, /Aap konsa lena chahenge/i);
   });
 });
 

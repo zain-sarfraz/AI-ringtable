@@ -170,6 +170,43 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     });
     assert.match(knowledge, /DELIVERY: Do NOT ask which city, area, or branch/i);
     assert.match(knowledge, /Which area would you like: Johar Town or Iqbal Town/i);
-    assert.match(knowledge, /delivery: address only \+ branch_name none; pickup: ask listed area only/);
+    assert.match(knowledge, /pickup: ask ONLY areas printed under ## Branch ordering/i);
+  });
+
+  it("single-item subcategory script does not ask konsa; exact-dish rule is present", () => {
+    const knowledge = buildRestaurantVoiceKnowledge({
+      restaurantName: "Pizza Go",
+      currency: "PKR",
+      preferUrduPrices: true,
+      settings: { currency: "PKR", tax_rate: 8.5, delivery_fee: 0 },
+      categories: [{ id: "c1", name: "Fast Food", is_active: true }],
+      subCategories: [{ id: "s1", name: "Burger", category_id: "c1", is_active: true }],
+      items: [
+        {
+          id: "i1",
+          name: "Chicken Burger",
+          category_id: "c1",
+          sub_category_id: "s1",
+          price: 500,
+          is_available: true,
+        },
+      ],
+      deals: [],
+      discounts: [],
+      variants: [],
+      addons: [],
+      itemAddons: [],
+      branches: [],
+    });
+    assert.match(knowledge, /EXACT DISH FIRST/i);
+    assert.match(
+      knowledge,
+      /SUBCATEGORY PHONE SCRIPT for "Burger" \(1 item — say it once, then continue\): Acha ji, Chicken Burger five hundred rupees ka hai\. Main yeh note kar leti hoon\./i,
+    );
+    assert.doesNotMatch(
+      knowledge,
+      /SUBCATEGORY PHONE SCRIPT for "Burger"[^\n]*Aap konsa lena chahenge/i,
+    );
+    assert.match(knowledge, /speak NOTHING/i);
   });
 });
