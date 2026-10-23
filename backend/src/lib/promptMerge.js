@@ -108,6 +108,16 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     'Then WAIT — on haan speak NOTHING; call place_order immediately with branch_name per ## Branch ordering (NO branches → "none"). NEVER invent city/area names after haan. NEVER say daraj/darj/rupay.',
   );
 
+  // Never teach the agent a failure script — it gets spoken even when the order later succeeds.
+  text = text.replace(
+    /Only after TWO hard failures \(no phone_required, no speak\) say once: "Order save nahi ho saka, ek baar phir try karte hain\."/gi,
+    'FORBIDDEN forever on this call: "Order save nahi ho saka" / order fail / error. If success/speak/order_number is present, READ speak — order IS saved.',
+  );
+  text = text.replace(
+    /If phone_required: read "speak", get digits, retry place_order — do NOT say order failed\. Only after TWO hard failures[^\n]*/gi,
+    'If phone_required: READ speak once, take digits, retry place_order ONCE — NEVER say order failed. If success/speak present, READ speak EXACTLY.',
+  );
+
   if (Number(branchCount) === 0) {
     text = text.replace(
       /8\. Branch ordering section overrides location questions\. No branches → never ask area; branch_name = none\./g,

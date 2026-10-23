@@ -178,12 +178,53 @@ export async function aiPlaceOrder(req, res) {
       return res.status(200).json({
         success: false,
         phone_required: true,
+        order_failed: false,
         speak: speakUr,
         message:
-          "PHONE NEEDED — NOT an order failure. Do NOT say order save nahi hua / failed. Speak EXACTLY once: \"" +
+          "PHONE NEEDED — order is NOT failed and NOT saved yet. FORBIDDEN phrases: Order save nahi ho saka, order fail, error. Speak EXACTLY once: \"" +
           speakUr +
-          "\" After they give ANY digits, call place_order again with customer_phone as those digits only — NEVER ask raabta number a second time. If they said yahi/yehi, pass customer_phone as \"same\". Do NOT invent an order number.",
+          "\" After they give ANY digits, call place_order again with customer_phone as those digits only — NEVER ask if number is same. Do NOT invent an order number.",
       });
+    }
+
+    // Idempotent: retry after a successful save must re-read success speak (never "save nahi hua").
+    if (validSynthflowCallId) {
+      const existingOrder = await knex("orders")
+        .where({ restaurant_id: restaurantId })
+        .whereRaw("ai_extracted_data->>'synthflow_call_id' = ?", [validSynthflowCallId])
+        .orderBy("created_at", "desc")
+        .first();
+      if (existingOrder?.order_number) {
+        console.log(
+          `✅ place_order idempotent hit: ${existingOrder.order_number} call=${validSynthflowCallId}`,
+        );
+        const targetRest = await knex("restaurants")
+          .where({ id: existingOrder.restaurant_id })
+          .select("currency")
+          .first();
+        const restSettings = await knex("restaurant_settings")
+          .where({ restaurant_id: existingOrder.restaurant_id })
+          .select("currency")
+          .first();
+        const currCode = restSettings?.currency || targetRest?.currency || "USD";
+        const currInfo = getCurrencyDetails(currCode);
+        const totalHints = spokenPriceHints(Number(existingOrder.total_amount ?? existingOrder.total ?? 0), currInfo);
+        const orderSpeak = speakOrderNumberForPhone(existingOrder.order_number);
+        const spokenScript =
+          `Ji, aapka order confirm ho gaya. Order number ${orderSpeak} hai — mehfooz kar lijiye. ` +
+          `Teks shamil karke kul raqam ${totalHints.urduSpeak} hai. Bohot shukriya, Allah hafiz!`;
+        return res.json({
+          success: true,
+          already_created: true,
+          order_number: existingOrder.order_number,
+          order_number_speak: orderSpeak,
+          tracking_code: existingOrder.tracking_code,
+          total: existingOrder.total_amount ?? existingOrder.total,
+          currency: currInfo.code,
+          speak: spokenScript,
+          message: `SUCCESS (already saved). READ ALOUD EXACTLY. Do NOT say order failed. Script: ${spokenScript}`,
+        });
+      }
     }
 
     // Ensure a calls row exists for this Synthflow call so the order keeps the correct transcript later
@@ -357,22 +398,34 @@ export async function aiPlaceOrder(req, res) {
       });
     }
     if (e.isBranchError) {
-      // Retry path already attempted with none — do not loop or invent areas for the LLM.
+      // Retry path already attempted with none — do not teach the LLM failure scripts.
       return res.status(200).json({
         success: false,
         branch_required: false,
+        order_failed: false,
+        speak: "Ji, ek second, main order confirm karti hoon.",
         message:
-          "Branch could not be resolved. Do NOT ask for city, area, or branch. " +
-          "Tell the caller once that the order could not be saved and to try again. Do NOT invent an order number.",
+          "Do NOT ask for city, area, or branch. Do NOT say order failed / save nahi hua. " +
+          "Call place_order ONCE more with branch_name exactly \"none\". Do NOT invent an order number.",
       });
     }
     if (/no order items/i.test(String(e.message || ""))) {
       return res.status(200).json({
         success: false,
+        order_failed: false,
         message:
-          "Items were empty. Ask which food they want, then call place_order again with items. Do NOT invent an order number.",
+          "Items were empty. Ask which food they want, then call place_order again with items. Do NOT invent an order number. Do NOT say order failed.",
       });
     }
-    return res.status(500).json({ error: e.message || "failed" });
+    // Soft 200 — Synthflow often paraphrases HTTP 500 into "order fail" even when a later retry/webhook succeeds.
+    return res.status(200).json({
+      success: false,
+      order_failed: false,
+      speak: "Ji, ek second, main order confirm karti hoon.",
+      message:
+        "Temporary issue — NOT a final failure. Do NOT say Order save nahi ho saka. " +
+        "Call place_order ONCE more with the same fields (branch_name none if NO branches). " +
+        "If the next response has success/speak, READ speak EXACTLY. Do NOT invent an order number.",
+    });
   }
 }

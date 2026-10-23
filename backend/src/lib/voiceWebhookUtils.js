@@ -86,6 +86,10 @@ export function resolveSpokenCustomerPhone(body, opts = {}) {
   const fromPhone = body?.from_phone_number || body?.twilio_from || null;
 
   let phone = body?.customer_phone;
+  // Strip spaces/dashes first — "0324 7087 907" must resolve without phone_required.
+  if (phone && !isSamePhonePhrase(phone) && looksLikePhoneNumber(phone)) {
+    return normalizeE164(String(phone).trim()) || String(phone).trim();
+  }
   if (isSamePhonePhrase(phone) || !looksLikePhoneNumber(phone)) {
     // Prefer real caller / dialed party — skip unresolved Synthflow placeholders like "<user_phone_number>"
     const pick = [callerRaw, dialedTo, fromPhone].find(
