@@ -216,13 +216,17 @@ export async function aiPlaceOrder(req, res) {
         return res.json({
           success: true,
           already_created: true,
+          branch_required: false,
+          ask_branch: false,
           order_number: existingOrder.order_number,
           order_number_speak: orderSpeak,
           tracking_code: existingOrder.tracking_code,
           total: existingOrder.total_amount ?? existingOrder.total,
           currency: currInfo.code,
           speak: spokenScript,
-          message: `SUCCESS (already saved). READ ALOUD EXACTLY. Do NOT say order failed. Script: ${spokenScript}`,
+          message:
+            `SUCCESS (already saved). READ ALOUD EXACTLY. Do NOT say order failed. ` +
+            `FORBIDDEN: asking city/area/branch/town. Script: ${spokenScript}`,
         });
       }
     }
@@ -373,6 +377,8 @@ export async function aiPlaceOrder(req, res) {
 
     return res.json({
       success: true,
+      branch_required: false,
+      ask_branch: false,
       order_number: order.order_number,
       order_number_speak: orderSpeak,
       tracking_code: order.tracking_code,
@@ -385,7 +391,11 @@ export async function aiPlaceOrder(req, res) {
       discount_amount: coupon.amount,
       speak: spokenScript,
       // SMS is sent async after this — never tell the caller the order failed because SMS failed.
-      message: `SUCCESS. READ ALOUD EXACTLY (zero digit changes). Do NOT say order failed. Do NOT mention SMS. Script: ${spokenScript}`,
+      // ask_branch:false — branchless agents must NOT invent area questions after a saved order.
+      message:
+        `SUCCESS. Order already saved. READ ALOUD EXACTLY (zero digit changes). ` +
+        `FORBIDDEN next: asking city/area/branch/town, inventing locations, saying order failed, mentioning SMS. ` +
+        `Script: ${spokenScript}`,
     });
   } catch (e) {
     console.error("❌ Order Error:", e);

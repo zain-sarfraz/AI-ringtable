@@ -169,7 +169,9 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "place_order",
         description:
-          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name EXACTLY from ## Branch ordering — if that section says NO branches, pass branch_name as none and NEVER ask city/area. After haan: call this tool immediately with no spoken filler. After success: READ ALOUD the response field \"speak\" EXACTLY in Roman Urdu. If branch_required:true, READ speak once, take the caller's area answer, call place_order ONCE more with that area — never invent towns and never loop. If phone_required: READ \"speak\" (ask digits) then retry once with digit phone. NEVER invent order digits. NEVER say daraj/darj.",
+          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name EXACTLY from ## Branch ordering — if that section says NO branches, pass branch_name as none and NEVER ask city/area/town. After haan: call this tool immediately with no spoken filler. AFTER THE TOOL RETURNS: if success/speak/order_number is present, READ \"speak\" EXACTLY once in Roman Urdu — order IS saved. FORBIDDEN after this tool (success OR error): asking city, area, branch, or inventing any town name. If branch_required:true AND ## Branch ordering lists areas, READ speak once then retry with that exact listed area. If branch_required but ## Branch ordering says NO branches: silently retry once with branch_name none — do NOT ask the caller. If phone_required: READ \"speak\" (ask digits) then retry once. NEVER invent order digits. NEVER say daraj/darj.",
+        // Must be false — true lets the LLM invent area questions instead of reading "speak".
+        agent_speak_naturally: false,
         // Fixed short filler — empty string lets the LLM invent long "please wait" loops
         speech_while_using_the_tool: "Ji.",
         failure_timeout: 25,

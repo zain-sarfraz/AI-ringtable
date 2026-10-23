@@ -98,7 +98,7 @@ export function branchOrderingSection(branches) {
     "Use this for DELIVERY orders, PICKUP orders, and TABLE RESERVATIONS.",
     "Do not ask this when the caller only wants to track an order.",
     "DELIVERY: Do NOT ask which city, area, or branch. Ask only for the complete delivery address and accept it on the first try. Pass branch_name as exactly none. The server assigns the nearest active branch from the address.",
-    "PICKUP and TABLE RESERVATIONS: Ask which location using ONLY the configured list below. Never invent areas (never say Johar Town / Iqbal Town unless that exact area appears below).",
+    "PICKUP and TABLE RESERVATIONS: Ask which location using ONLY the configured list below. Never invent areas that are not listed below.",
   ];
 
   if (plan.multiCity) {

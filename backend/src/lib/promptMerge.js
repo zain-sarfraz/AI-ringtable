@@ -105,7 +105,7 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
 
   text = text.replace(
     /Then WAIT — on haan call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
-    'Then WAIT — on haan speak NOTHING; call place_order immediately with branch_name per ## Branch ordering (NO branches → "none"). NEVER invent city/area names after haan. NEVER say daraj/darj/rupay.',
+    'Then WAIT — on haan speak NOTHING; call place_order immediately with branch_name per the Branch ordering section (NO branches → "none"). NEVER invent city/area names after haan. NEVER say daraj/darj/rupay.',
   );
 
   // Never teach the agent a failure script — it gets spoken even when the order later succeeds.
@@ -119,6 +119,15 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
 
   if (Number(branchCount) === 0) {
+    // Branchless only: strip ironic town priming (naming towns teaches the model to say them).
+    // Never run this when the restaurant actually lists those areas under ## Branch ordering.
+    text = text.replace(/\bJohar Town\s*\/\s*Iqbal Town\b/gi, "city/area/branch");
+    text = text.replace(/\bJohar Town\b/gi, "city/area/branch");
+    text = text.replace(/\bIqbal Town\b/gi, "city/area/branch");
+    text = text.replace(/city\/area\/branch\s*\/\s*city\/area\/branch/gi, "city/area/branch");
+    text = text.replace(/city\/area\/branch\s*\/\s*any area/gi, "city/area/branch");
+    text = text.replace(/area\/city\/area\/branch/gi, "city/area/branch");
+
     text = text.replace(
       /8\. Branch ordering section overrides location questions\. No branches → never ask area; branch_name = none\./g,
       "8. Branch ordering section overrides location questions. No branches → never ask area/city/branch; never invent town names; branch_name = none.",
@@ -128,7 +137,7 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
       '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask city/area/branch after haan.',
     );
     text = text.replace(
-      /11\. After haan: (?:speak NOTHING — )?call place_order ONCE immediately with branch_name "none"\. Do NOT ask Johar Town \/ Iqbal Town \/ area after haan\.(?: Do not speak a waiting line\.)?/g,
+      /11\. After haan: (?:speak NOTHING — )?call place_order ONCE immediately with branch_name "none"\. Do NOT ask (?:Johar Town \/ Iqbal Town \/ area|city\/area\/branch(?: \/ area)?) after haan\.(?: Do not speak a waiting line\.)?/g,
       '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask city/area/branch after haan.',
     );
     const guardBody = `
@@ -136,7 +145,8 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
 AFTER HAAN — NO BRANCH ASK (CRITICAL):
 - ## Branch ordering says this restaurant has NO branches and NO areas list.
 - After haan/yes: speak NOTHING — call place_order immediately with branch_name exactly "none".
-- FORBIDDEN (before or after haan): asking city, area, branch, or inventing any town name. Only speak area names that appear under ## Branch ordering (none do).
+- FORBIDDEN (before or after haan, and AFTER place_order returns): asking city, area, branch, or inventing any town name.
+- After place_order: if success/speak/order_number is present, READ speak EXACTLY once — order IS saved. Do NOT ask another question. Do NOT call the tool again.
 - If a tool message says silently retry with branch_name "none": call place_order once more with "none" — do NOT ask the caller anything.
 =======================================================
 `;

@@ -103,13 +103,13 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur") {
 - Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email.
 - Delivery: full street address; email optional only.
 - If caller says yahi/yehi/same/this number → customer_phone exactly "same". NEVER ask raabta number again after they answered once (yahi OR digits).
-- branch_name: follow ## Branch ordering. If NO branches → exactly "none". NEVER invent "branch 2" or a city. NEVER ask Johar Town / Iqbal Town / any area unless ## Branch ordering lists that exact area. Delivery with multiple branches → branch_name "none" (server geo-assigns). Pickup with multiple → chosen area/branch only.
+- branch_name: follow ## Branch ordering. If NO branches → exactly "none". NEVER invent "branch 2" or any city/area name. Only ask an area if ## Branch ordering lists that exact area. Delivery with multiple branches → branch_name "none" (server geo-assigns). Pickup with multiple → chosen area/branch only.
 - Payment: CASH ONLY. Never ask the caller to choose a payment method. place_order always uses cash.
 - items: real food lines with quantity (default 1). Never empty. Never "<order_items>".
 - Amounts: ENGLISH number words + "rupees" only (e.g. five hundred forty rupees). NO decimals. NEVER say "rupay".
-- After tool returns: if success or "speak" is present, READ "speak" EXACTLY (Roman Urdu). Order IS saved. NEVER paraphrase into English. NEVER say fail. NEVER invent ORD digits. NEVER mention SMS.
+- After tool returns: if success or "speak" is present, READ "speak" EXACTLY (Roman Urdu). Order IS saved. NEVER paraphrase. NEVER ask city/area/branch after the tool. NEVER say fail. NEVER invent ORD digits. NEVER mention SMS.
 - If phone_required: READ response "speak" ONCE (digits only). NEVER say "Order save nahi ho saka" / fail / error. NEVER ask "number same hai?". After digits, retry place_order once with those digits.
-- If success/speak/order_number present (including already_created): READ "speak" EXACTLY — order IS saved. FORBIDDEN: "Order save nahi ho saka".
+- If success/speak/order_number present (including already_created): READ "speak" EXACTLY — order IS saved. FORBIDDEN: "Order save nahi ho saka". FORBIDDEN: any area/branch question.
 - If branch_required but ## Branch ordering says NO branches: do NOT ask area — immediately retry place_order with branch_name "none".
 - If success:false for other reasons: fix that field and call place_order again once. Do not invent an order number.
 - Collect FAST: items → naam → fulfillment (MUST ask) → (pickup: no email) → raabta → short summary → haan → place_order immediately. NEVER ask phone before fulfillment.
@@ -125,11 +125,11 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur") {
 - Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email.
 - Delivery: full street address; email optional only.
 - Same/this/calling number → customer_phone exactly "same".
-- branch_name: follow ## Branch ordering. If NO branches → "none". Never invent branch/area names (no Johar Town / Iqbal Town unless listed). Delivery with multiple branches → "none". Pickup with multiple → chosen area/branch only.
+- branch_name: follow ## Branch ordering. If NO branches → "none". Never invent branch/area names. Only ask an area if ## Branch ordering lists it. Delivery with multiple branches → "none". Pickup with multiple → chosen area/branch only.
 - Payment: CASH ONLY. Never ask the caller to choose a payment method. place_order always uses cash.
 - items: real menu lines with quantity (default 1). Never empty placeholders.
 - Amounts: ENGLISH number words + unit (e.g. five hundred forty rupees). NO decimals. NEVER say "rupay".
-- On success/speak: read "speak" EXACTLY. Order is saved. Never invent ORD numbers. Never mention SMS.
+- On success/speak: read "speak" EXACTLY. Order is saved. Never invent ORD numbers. Never ask city/area/branch after the tool. Never mention SMS.
 - On phone_required: read "speak", ask digits only — never say the order failed. Retry place_order with digits.
 - On branch_required but ## Branch ordering says NO branches: retry place_order with branch_name "none" — do not ask area.
 - On other success:false: fix the missing field and retry place_order once. Never invent an order number.
@@ -904,10 +904,10 @@ LANGUAGE LOCK — PAKISTANI ROMAN URDU ONLY:
 - Name: "Aapka naam bata dijiye?" (accept ANY name on first try — even one word).
 - Phone: ask once only — "Aapka raabta number bata dijiye?"
 - More items: "Kya aapko aur kuch chahiye?" or "Aur kuch?"
-- Confirm FAST in natural sentences (NOT keyword lists like "item, name, pickup"): "Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX total e.g. five hundred forty three ${currInfo.englishUnit}] bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately with branch_name per ## Branch ordering (NO branches → "none"). NEVER ask area/Johar/Iqbal after haan when ## Branch ordering says NO branches. NEVER say daraj/darj/rupay.
-- Success: speak EXACTLY the place_order tool's "speak" text (digits already expanded). If success/speak is present, the order IS saved — NEVER say order fail / save nahi hua. NEVER invent ORD numbers. NEVER mention SMS. NEVER ask branch/area after a successful place_order.
+- Confirm FAST in natural sentences (NOT keyword lists like "item, name, pickup"): "Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX total e.g. five hundred forty three ${currInfo.englishUnit}] bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately with branch_name per the Branch ordering section (NO branches → "none"). NEVER ask city/area/branch after haan when Branch ordering says NO branches. NEVER say daraj/darj/rupay.
+- Success: speak EXACTLY the place_order tool's "speak" text (digits already expanded). If success/speak is present, the order IS saved — NEVER say order fail / save nahi hua. NEVER invent ORD numbers. NEVER mention SMS. NEVER ask branch/area after place_order returns.
 - Sizes: ALWAYS English — Small / Medium / Large (NEVER Chota / Darmiyana / Bara).
-- NEVER invent "branch 2" or a city/area. Follow ## Branch ordering only; if it says NO branches, pass branch_name as none — and NEVER speak Johar Town / Iqbal Town / any area name.
+- NEVER invent "branch 2" or a city/area. Follow the Branch ordering section only; if it says NO branches, pass branch_name as none — and NEVER speak any area/town name.
 =======================================================
 
 =======================================================
