@@ -214,7 +214,7 @@ export async function aiPlaceOrder(req, res) {
         ? "elevenlabs"
         : "phone";
 
-    const { order, reservation, reservationError, unmatched, coupon, totals, assignedBranchName, assignmentStatus } = await createPhoneOrder(knex, {
+    const orderInput = (branchOverride) => ({
       restaurantId,
       customer_name: body.customer_name,
       customer_phone: phoneToUse,
@@ -225,9 +225,9 @@ export async function aiPlaceOrder(req, res) {
       coupon_code: body.coupon_code || body.discount_code || null,
       payment_method: normalizeVoicePaymentMethod(body.payment_method),
       fulfillment_type: body.fulfillment_type || "delivery",
-      branch_name: spokenBranch,
-      area: body.area || body.branch_area || null,
-      branch: body.branch || null,
+      branch_name: branchOverride !== undefined ? branchOverride : spokenBranch,
+      area: branchOverride === "none" ? null : body.area || body.branch_area || null,
+      branch: branchOverride === "none" ? null : body.branch || null,
       delivery_latitude: body.delivery_latitude ?? body.latitude ?? null,
       delivery_longitude: body.delivery_longitude ?? body.longitude ?? null,
       call_id: callId,
@@ -238,6 +238,46 @@ export async function aiPlaceOrder(req, res) {
         ...(validSynthflowCallId ? { synthflow_call_id: validSynthflowCallId } : {}),
       },
     });
+
+    let placed;
+    try {
+      placed = await createPhoneOrder(knex, orderInput());
+    } catch (branchErr) {
+      if (!branchErr?.isBranchError) throw branchErr;
+      const areas = (branchErr.availableAreas || []).filter(Boolean);
+      const forceNone =
+        childBranchCount === 0 ||
+        !areas.length ||
+        branchErr.shouldAskCaller === false;
+      console.warn(
+        "⚠️ Branch not matched. Requested:",
+        branchErr.requestedBranch,
+        "| areas:",
+        areas.join(" ya ") || "(none)",
+        "| forceNone:",
+        forceNone,
+      );
+      if (forceNone) {
+        // Root fix: branchless (or empty area list) — complete the order server-side.
+        // Do not return a speak script that lets the LLM invent town names.
+        placed = await createPhoneOrder(knex, orderInput("none"));
+      } else {
+        const areaList = areas.join(" ya ");
+        return res.status(200).json({
+          success: false,
+          branch_required: true,
+          requested_branch: branchErr.requestedBranch || null,
+          available_areas: areas,
+          speak: `Aap kaunsa area chahenge: ${areaList}?`,
+          message:
+            `READ "speak" EXACTLY once (Roman Urdu). After they answer, call place_order again ONCE with branch_name set to that exact area name. ` +
+            `ONLY use these areas from the tool response — never invent other areas. Do NOT invent an order number. Do NOT keep asking area after one answer.`,
+        });
+      }
+    }
+
+    const { order, reservation, reservationError, unmatched, coupon, totals, assignedBranchName, assignmentStatus } =
+      placed;
 
     if (!order) {
       if (reservation) {
@@ -317,34 +357,13 @@ export async function aiPlaceOrder(req, res) {
       });
     }
     if (e.isBranchError) {
-      // availableAreas come only from accepting child branches (same as ## Branch ordering).
-      const areas = (e.availableAreas || []).filter(Boolean);
-      const areaList = areas.length ? areas.join(" ya ") : "";
-      console.warn("⚠️ Branch not matched. Requested:", e.requestedBranch, "| areas:", areaList || "(none)");
-      // No accepting areas → do not ask Johar Town / invent cities; retry with branch_name none.
-      if (!areas.length) {
-        const speakNone =
-          "Theek hai ji, main order confirm karti hoon.";
-        return res.status(200).json({
-          success: false,
-          branch_required: false,
-          speak: speakNone,
-          message:
-            "NO BRANCHES — do NOT ask Johar Town, Iqbal Town, city, or area. " +
-            "Silently call place_order again with branch_name exactly \"none\". " +
-            "Do NOT invent an order number. Do not speak a waiting line.",
-        });
-      }
-      const speakAreas = `Aap kaunsa area chahenge: ${areaList}?`;
+      // Retry path already attempted with none — do not loop or invent areas for the LLM.
       return res.status(200).json({
         success: false,
-        branch_required: true,
-        requested_branch: e.requestedBranch || null,
-        available_areas: areas,
-        speak: speakAreas,
+        branch_required: false,
         message:
-          `READ "speak" EXACTLY once (Roman Urdu). After they answer, call place_order again with branch_name set to that exact area name. ` +
-          `ONLY use these areas from the tool response — never invent other areas. Do NOT invent an order number.`,
+          "Branch could not be resolved. Do NOT ask for city, area, or branch. " +
+          "Tell the caller once that the order could not be saved and to try again. Do NOT invent an order number.",
       });
     }
     if (/no order items/i.test(String(e.message || ""))) {

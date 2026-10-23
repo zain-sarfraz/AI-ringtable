@@ -535,6 +535,83 @@ function pickNamedBranch(branches, branchName) {
 }
 
 /**
+ * Pure voice branch decision (testable). No DB.
+ * @returns {{
+ *   ok: true,
+ *   chosenBranch: object | null,
+ *   skipAsk: boolean,
+ * } | {
+ *   ok: false,
+ *   availableAreas: string[],
+ *   requestedBranch: string | null,
+ *   shouldAskCaller: boolean,
+ * }}
+ */
+export function resolveVoiceBranchSelection({
+  branches = [],
+  fulfillment_type = "delivery",
+  branch_name = null,
+  area = null,
+  branch = null,
+  branch_area = null,
+  delivery_notes = null,
+} = {}) {
+  const isPickup = String(fulfillment_type || "delivery").toLowerCase() === "pickup";
+  let rawBranch = String(branch_name || "").trim();
+  if (/^branch\s*\d+$/i.test(rawBranch) || /^(main\s*)?branch$/i.test(rawBranch)) {
+    rawBranch = "";
+  }
+  const branchRequested =
+    !!rawBranch &&
+    !["none", "null", "n/a", "na", "any", "no", "no preference"].includes(rawBranch.toLowerCase());
+
+  const list = (branches || []).filter((b) => b && b.is_active !== false && b.is_accepting_orders !== false);
+
+  // No configured accepting branches → never ask area; order stays on parent restaurant.
+  if (!list.length) {
+    return { ok: true, chosenBranch: null, skipAsk: true };
+  }
+
+  const spokenCandidates = [rawBranch, area, branch, branch_area, delivery_notes]
+    .map((v) => String(v || "").trim())
+    .filter(
+      (v) =>
+        v &&
+        !/^branch\s*\d+$/i.test(v) &&
+        !/^(main\s*)?branch$/i.test(v) &&
+        !/^(none|null)$/i.test(v),
+    );
+
+  let chosenBranch = null;
+  for (const spoken of spokenCandidates) {
+    chosenBranch = pickNamedBranch(list, spoken);
+    if (chosenBranch) break;
+  }
+
+  if (!chosenBranch && list.length === 1 && (isPickup || !branchRequested)) {
+    chosenBranch = list[0];
+  }
+
+  if (chosenBranch) {
+    return { ok: true, chosenBranch, skipAsk: false };
+  }
+
+  if (isPickup || branchRequested) {
+    const areas = [...new Set(list.map((b) => branchArea(b)).filter(Boolean))];
+    return {
+      ok: false,
+      availableAreas: areas,
+      requestedBranch: rawBranch || spokenCandidates[0] || null,
+      // Empty area labels → do not invent towns; caller must not be asked.
+      shouldAskCaller: areas.length > 0,
+    };
+  }
+
+  // Delivery with multiple branches and no spoken match → geo / parent fallback (caller not asked).
+  return { ok: true, chosenBranch: null, skipAsk: true };
+}
+
+/**
  * Create a phone/AI order with menu matching + optional coupon.
  * @param {import("knex").Knex} knex
  * @param {object} input
@@ -646,54 +723,42 @@ export async function createPhoneOrder(knex, input) {
   let branchAssignedAt = null;
   let assignmentStatus = "assigned";
   let assignedBranchName = null;
-  let rawBranch = String(branch_name || "").trim();
-  // Agent often invents "branch 2" / "Main Branch" — treat as no preference.
-  if (/^branch\s*\d+$/i.test(rawBranch) || /^(main\s*)?branch$/i.test(rawBranch)) {
-    console.log(`🏪 Branch label ignored as invented: "${rawBranch}"`);
-    rawBranch = "";
-  }
-  const branchRequested =
-    !!rawBranch && !["none", "null", "n/a", "na", "any", "no", "no preference"].includes(rawBranch.toLowerCase());
 
-  // No accepting branches → never ask area; keep order on this restaurant.
-  if (!branches.length) {
-    console.log(
-      `🏪 Branch resolve: restaurant=${restaurantId} has 0 accepting child branches — skipping area question`,
-    );
-    rawBranch = "";
-  }
-
-  // Try branch_name, then free-text area labels the agent often sends instead of exact names.
-  const spokenCandidates = [
-    rawBranch,
-    input.area,
-    input.branch,
-    input.branch_area,
+  const branchDecision = resolveVoiceBranchSelection({
+    branches,
+    fulfillment_type,
+    branch_name,
+    area: input.area,
+    branch: input.branch,
+    branch_area: input.branch_area,
     delivery_notes,
-  ]
-    .map((v) => String(v || "").trim())
-    .filter((v) => v && !/^branch\s*\d+$/i.test(v) && !/^(main\s*)?branch$/i.test(v) && !/^(none|null)$/i.test(v));
-
-  let chosenBranch = null;
-  for (const spoken of spokenCandidates) {
-    if (!branches.length) break;
-    chosenBranch = pickNamedBranch(branches, spoken);
-    if (chosenBranch) break;
-  }
-
-  // Single accepting branch → auto-assign when the caller did not name one clearly.
-  if (!chosenBranch && branches.length === 1 && (isPickup || !branchRequested)) {
-    chosenBranch = branches[0];
-  }
+  });
 
   console.log(
     `🏪 Branch resolve: restaurant=${restaurantId} ` +
-      `spoken=${JSON.stringify(spokenCandidates)} matched=${chosenBranch?.name || "NONE"} ` +
+      `decision=${branchDecision.ok ? "ok" : "ask"} ` +
+      `matched=${branchDecision.chosenBranch?.name || "NONE"} ` +
       `ownChildren=${branches.map((b) => b.name).join(" | ") || "(none)"}` +
       (restaurantRow?.is_branch && restaurantRow?.parent_restaurant_id
         ? ` (row is_branch under ${restaurantRow.parent_restaurant_id} — ignored for tree)`
         : ""),
   );
+
+  if (!branchDecision.ok) {
+    const err = new Error(
+      `Could not match branch "${branchDecision.requestedBranch || "(missing)"}".` +
+        (branchDecision.shouldAskCaller
+          ? ` Ask the caller which area: ${branchDecision.availableAreas.join(" or ")}.`
+          : " No area list — use branch_name none."),
+    );
+    err.isBranchError = true;
+    err.availableAreas = branchDecision.availableAreas || [];
+    err.requestedBranch = branchDecision.requestedBranch || null;
+    err.shouldAskCaller = Boolean(branchDecision.shouldAskCaller);
+    throw err;
+  }
+
+  const chosenBranch = branchDecision.chosenBranch;
 
   if (chosenBranch) {
     targetRestaurantId = chosenBranch.id;
@@ -701,16 +766,6 @@ export async function createPhoneOrder(knex, input) {
     branchAssignedAt = new Date();
     autoAssigned = true;
     assignmentStatus = "assigned";
-  } else if (branches.length > 0 && (isPickup || branchRequested)) {
-    // Pickup / named area must map to a real accepting branch — do not park on parent HQ.
-    const areas = [...new Set(branches.map((b) => branchArea(b)).filter(Boolean))];
-    const err = new Error(
-      `Could not match branch "${rawBranch || spokenCandidates[0] || "(missing)"}". Ask the caller which area: ${areas.join(" or ")}.`,
-    );
-    err.isBranchError = true;
-    err.availableAreas = areas;
-    err.requestedBranch = rawBranch || spokenCandidates[0] || null;
-    throw err;
   } else if (branches.length > 0 && !isPickup) {
     if (lat != null && lng != null) {
       const nearest = await findNearestBranch(knex, parentRestaurantId, lat, lng);

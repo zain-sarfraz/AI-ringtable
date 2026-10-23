@@ -71,14 +71,24 @@ Turn 1: Speak exactly: "Assalamualaikum"
     assert.doesNotMatch(fixed, /Aapka order: \[qty\] \[item\], \[naam\]/);
   });
 
-  it("rewrites single-item PHONE SCRIPT so it does not ask konsa", () => {
+  it("rewrites single-item PHONE SCRIPT to explicit accept ask", () => {
     const stale = `
 SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hain. Aap konsa lena chahenge?
 `.trim();
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
-    assert.match(fixed, /Acha ji, Chicken Burger five hundred rupees ka hai/i);
-    assert.match(fixed, /say it once, then continue/i);
+    assert.match(fixed, /Kya aap Chicken Burger order karna chahenge\?/i);
+    assert.match(fixed, /offer then ask; do NOT auto-add/i);
     assert.doesNotMatch(fixed, /Aap konsa lena chahenge/i);
+    assert.doesNotMatch(fixed, /Main yeh note kar leti hoon/i);
+  });
+
+  it("rewrites auto-continue single-item script to explicit accept", () => {
+    const stale = `
+SUBCATEGORY PHONE SCRIPT for "Burger" (1 item — say it once, then continue): Acha ji, Chicken Burger five hundred rupees ka hai. Main yeh note kar leti hoon.
+`.trim();
+    const fixed = rewriteStaleOrderSpeechRules(stale, 0);
+    assert.match(fixed, /Kya aap Chicken Burger order karna chahenge\?/i);
+    assert.doesNotMatch(fixed, /Main yeh note kar leti hoon/i);
   });
 
   it("upgrades stale Turn-2 dish/category rules to exact-dish first", () => {
@@ -97,7 +107,7 @@ SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Ji, Bu
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
     assert.match(fixed, /Do NOT read any PHONE SCRIPT/i);
     assert.match(fixed, /NOT when they already said a full item name/i);
-    assert.match(fixed, /Single-item script \(1 item\)/i);
+    assert.match(fixed, /do NOT auto-add/i);
     assert.doesNotMatch(fixed, /CATEGORY LIST \(mandatory/i);
   });
 });

@@ -1,7 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { branchOrderingSection } from "./branchLocation.js";
-import { normalizeVoicePaymentMethod } from "./phoneOrderService.js";
+import {
+  normalizeVoicePaymentMethod,
+  resolveVoiceBranchSelection,
+} from "./phoneOrderService.js";
 import {
   cashOnlyPaymentProtocolLines,
   appendPlaceOrderToolContract,
@@ -173,7 +176,7 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     assert.match(knowledge, /pickup: ask ONLY areas printed under ## Branch ordering/i);
   });
 
-  it("single-item subcategory script does not ask konsa; exact-dish rule is present", () => {
+  it("type-alone burger with one SKU asks explicit Chicken Burger accept; exact dish skips re-ask", () => {
     const knowledge = buildRestaurantVoiceKnowledge({
       restaurantName: "Pizza Go",
       currency: "PKR",
@@ -199,14 +202,83 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
       branches: [],
     });
     assert.match(knowledge, /EXACT DISH FIRST/i);
+    assert.match(knowledge, /TYPE-ALONE \/ SINGLE-ITEM/i);
     assert.match(
       knowledge,
-      /SUBCATEGORY PHONE SCRIPT for "Burger" \(1 item — say it once, then continue\): Acha ji, Chicken Burger five hundred rupees ka hai\. Main yeh note kar leti hoon\./i,
+      /SUBCATEGORY PHONE SCRIPT for "Burger" \(1 item — offer then ask; do NOT auto-add\): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hai\. Kya aap Chicken Burger order karna chahenge\?/i,
     );
-    assert.doesNotMatch(
-      knowledge,
-      /SUBCATEGORY PHONE SCRIPT for "Burger"[^\n]*Aap konsa lena chahenge/i,
-    );
+    assert.match(knowledge, /never re-ask the same dish/i);
+    assert.match(knowledge, /Kya aap \[Item\] order karna chahenge\?/i);
+    assert.match(knowledge, /NO branches/i);
     assert.match(knowledge, /speak NOTHING/i);
+    assert.match(knowledge, /Delivery with no branches: street address only/i);
+  });
+});
+
+describe("resolveVoiceBranchSelection", () => {
+  it("no configured branches + pickup → ok, skipAsk, no area ask", () => {
+    const d = resolveVoiceBranchSelection({
+      branches: [],
+      fulfillment_type: "pickup",
+      branch_name: "none",
+    });
+    assert.equal(d.ok, true);
+    assert.equal(d.skipAsk, true);
+    assert.equal(d.chosenBranch, null);
+  });
+
+  it("no configured branches + delivery → ok without inventing a branch", () => {
+    const d = resolveVoiceBranchSelection({
+      branches: [],
+      fulfillment_type: "delivery",
+      branch_name: "Johar Town",
+    });
+    assert.equal(d.ok, true);
+    assert.equal(d.skipAsk, true);
+  });
+
+  it("multi-branch pickup without match → shouldAskCaller with configured areas only", () => {
+    const d = resolveVoiceBranchSelection({
+      branches: [johar, iqbal],
+      fulfillment_type: "pickup",
+      branch_name: "none",
+    });
+    assert.equal(d.ok, false);
+    assert.equal(d.shouldAskCaller, true);
+    assert.deepEqual(d.availableAreas.sort(), ["Iqbal Town", "Johar Town"].sort());
+  });
+
+  it("multi-branch delivery without spoken branch → ok (address/geo path, no area ask)", () => {
+    const d = resolveVoiceBranchSelection({
+      branches: [johar, iqbal],
+      fulfillment_type: "delivery",
+      branch_name: "none",
+    });
+    assert.equal(d.ok, true);
+    assert.equal(d.skipAsk, true);
+  });
+
+  it("pickup mismatch with blank area labels → shouldAskCaller false (no invented towns)", () => {
+    const d = resolveVoiceBranchSelection({
+      branches: [
+        { id: "x1", name: "", area: "", city: "", is_active: true, is_accepting_orders: true },
+        { id: "x2", name: "", area: "", city: "", is_active: true, is_accepting_orders: true },
+      ],
+      fulfillment_type: "pickup",
+      branch_name: "somewhere",
+    });
+    assert.equal(d.ok, false);
+    assert.equal(d.shouldAskCaller, false);
+    assert.deepEqual(d.availableAreas, []);
+  });
+
+  it("multi-branch pickup with spoken area → assigns that branch", () => {
+    const d = resolveVoiceBranchSelection({
+      branches: [johar, iqbal],
+      fulfillment_type: "pickup",
+      branch_name: "Johar Town",
+    });
+    assert.equal(d.ok, true);
+    assert.equal(d.chosenBranch?.id, "b1");
   });
 });

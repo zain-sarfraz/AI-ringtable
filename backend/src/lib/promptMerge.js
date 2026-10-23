@@ -41,57 +41,93 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     '10. Payment is CASH ONLY — never ask how they will pay. Delivery: cash at delivery. Pickup: cash at pickup.',
   );
 
-  // Single-item PHONE SCRIPTs must not ask "konsa" (caller already has only one choice).
+  // Stale single-item scripts that auto-continued → require explicit accept.
+  text = text.replace(
+    /(\w+ PHONE SCRIPT for "[^"]+" \(1 item — say it once, then continue\): )Acha ji, (.+?) ka hai\. Main yeh note kar leti hoon\./gi,
+    (_m, prefix, bit) => {
+      const itemName =
+        String(bit)
+          .replace(
+            /\s+(small|medium|large|family|four|five|six|seven|eight|nine|one|two|three|hundred|thousand|rupees|\d|"|').*$/i,
+            "",
+          )
+          .trim() || bit;
+      const label = prefix.match(/PHONE SCRIPT for "([^"]+)"/i)?.[1] || "menu";
+      return (
+        `${prefix.replace(/say it once, then continue/i, "offer then ask; do NOT auto-add")}` +
+        `Ji, ${label} mein hamare paas ${bit} hai. Kya aap ${itemName} order karna chahenge?`
+      );
+    },
+  );
   text = text.replace(
     /(\w+ PHONE SCRIPT for "[^"]+" \(1 items? — say all 1, skip none\): )Ji, ([^.]+?) hain\. Aap konsa lena chahenge\?/gi,
     (_m, prefix, list) => {
-      // list like: "Burger mein hamare paas Chicken Burger five hundred rupees"
       const itemBit = String(list)
         .replace(/^[^]*?\bmein hamare paas\s+/i, "")
         .trim();
-      return `${prefix.replace(/say all 1, skip none/i, "say it once, then continue")}Acha ji, ${itemBit} ka hai. Main yeh note kar leti hoon.`;
+      const itemName =
+        itemBit
+          .replace(
+            /\s+(small|medium|large|family|four|five|six|seven|eight|nine|one|two|three|hundred|thousand|rupees|\d|"|').*$/i,
+            "",
+          )
+          .trim() || itemBit;
+      const label = prefix.match(/PHONE SCRIPT for "([^"]+)"/i)?.[1] || "menu";
+      return (
+        `${prefix.replace(/say all 1, skip none/i, "offer then ask; do NOT auto-add")}` +
+        `Ji, ${label} mein hamare paas ${itemBit} hai. Kya aap ${itemName} order karna chahenge?`
+      );
     },
+  );
+  text = text.replace(
+    /SINGLE-ITEM SCRIPT: if a PHONE SCRIPT has only 1 item, say that item \+ price and continue the order — NEVER ask which one they want\./gi,
+    'TYPE-ALONE / SINGLE-ITEM: if they said only a type (e.g. "burger") and the matching script has 1 item, speak that item + price, then ask explicitly "Kya aap [Item] order karna chahenge?" WAIT for haan. Do NOT add the item until they accept. Never auto-select.',
   );
 
   // Turn-2 rules 2–3: exact dish must win over category PHONE SCRIPT (merge keeps old Turn rules).
   text = text.replace(
     /2\. If caller NAMED a dish \(e\.g\. "Chicken Burger order karna hai"\): quote THAT item price from the menu and continue\. Do NOT list the whole category\. NEVER call check_previous_order\. NEVER offer to repeat an old pizza\/order\.\n3\. CATEGORY LIST \(mandatory — overrides the short-sentence limit\):[\s\S]*?FORBIDDEN: "Kaunsa burger lena hai\?" without the matching list\. FORBIDDEN: reading Junk Food or any other category whose name does not match\. If they already named one exact dish, do not read a script\. Quote that one item only\./g,
-    `2. If caller NAMED an exact dish (e.g. "Chicken Burger" / "Chicken Burger order karna hai"): quote THAT item price only ("Acha ji, Chicken Burger five hundred rupees ka hai.") then continue to naam/fulfillment. Do NOT read any PHONE SCRIPT. Do NOT ask "konsa" / "kaunsa" / "aap konsa lena chahenge". NEVER call check_previous_order.
+    `2. If caller NAMED an exact dish (e.g. "Chicken Burger" / "Chicken Burger order karna hai"): quote THAT item price only ("Acha ji, Chicken Burger five hundred rupees ka hai.") then continue to naam/fulfillment. Do NOT read any PHONE SCRIPT. Do NOT ask again "Kya aap Chicken Burger order karna chahenge?" after they already named it. NEVER call check_previous_order.
 3. CATEGORY LIST (only when they named a TYPE, not a full dish — overrides the short-sentence limit):
    - Use ONLY for type-alone phrases ("burger chahiye", "1 burger", "pizza", "koi drink") — NOT when they already said a full item name like "Chicken Burger".
    - A type match means the spoken TYPE word equals the subcategory/category name (burger → Burgers). Extra words like "order"/"chahiye" are ignored, but a full dish name is NOT a type match.
    - If a subcategory name matches, read that SUBCATEGORY PHONE SCRIPT word for word. Every item in it, every price. Do not add items from the parent category.
    - If no subcategory matches and a category name matches, read that CATEGORY PHONE SCRIPT word for word. Every item, every price.
    - If neither a category nor a subcategory is named that word, read the ITEM PHONE SCRIPT for that word. Say only those items. Do not read the parent category.
-   - Multi-item script: say every listed item + price, then wait. Single-item script (1 item): say that one item + price and CONTINUE — never ask which one.
-   - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: "Kaunsa burger lena hai?" / "Aap konsa lena chahenge?" when only 1 item exists or the dish is already chosen.`,
+   - Multi-item script: say every listed item + price, then wait for their choice. Single-item script (1 item): say item + price, ask "Kya aap [Item] order karna chahenge?", WAIT for haan — do NOT auto-add.
+   - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: auto-selecting the only item in a category without the caller's yes.`,
+  );
+  text = text.replace(
+    /Multi-item script: say every listed item \+ price, then wait\. Single-item script \(1 item\): say that one item \+ price and CONTINUE — never ask which one\.\n\s*- FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named\. FORBIDDEN: "Kaunsa burger lena hai\?" \/ "Aap konsa lena chahenge\?" when only 1 item exists or the dish is already chosen\./g,
+    `Multi-item script: say every listed item + price, then wait for their choice. Single-item script (1 item): say item + price, ask "Kya aap [Item] order karna chahenge?", WAIT for haan — do NOT auto-add.
+   - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: auto-selecting the only item in a category without the caller's yes.`,
   );
 
   text = text.replace(
     /Then WAIT — on haan call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
-    'Then WAIT — on haan speak NOTHING; call place_order immediately with branch_name per ## Branch ordering (NO branches → "none"). NEVER ask area/Johar/Iqbal after haan. NEVER say daraj/darj/rupay.',
+    'Then WAIT — on haan speak NOTHING; call place_order immediately with branch_name per ## Branch ordering (NO branches → "none"). NEVER invent city/area names after haan. NEVER say daraj/darj/rupay.',
   );
 
   if (Number(branchCount) === 0) {
     text = text.replace(
       /8\. Branch ordering section overrides location questions\. No branches → never ask area; branch_name = none\./g,
-      "8. Branch ordering section overrides location questions. No branches → never ask area/city/branch and NEVER say Johar Town or Iqbal Town; branch_name = none.",
+      "8. Branch ordering section overrides location questions. No branches → never ask area/city/branch; never invent town names; branch_name = none.",
     );
     text = text.replace(
       /11\. After the caller says haan, call place_order once immediately\. Do not speak a waiting line\./g,
-      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask Johar Town / Iqbal Town / area after haan.',
+      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask city/area/branch after haan.',
     );
     text = text.replace(
-      /11\. After haan: call place_order ONCE immediately with branch_name "none"\. Do NOT ask Johar Town \/ Iqbal Town \/ area after haan\. Do not speak a waiting line\./g,
-      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask Johar Town / Iqbal Town / area after haan.',
+      /11\. After haan: (?:speak NOTHING — )?call place_order ONCE immediately with branch_name "none"\. Do NOT ask Johar Town \/ Iqbal Town \/ area after haan\.(?: Do not speak a waiting line\.)?/g,
+      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask city/area/branch after haan.',
     );
     const guardBody = `
 =======================================================
 AFTER HAAN — NO BRANCH ASK (CRITICAL):
-- ## Branch ordering says this restaurant has NO branches.
+- ## Branch ordering says this restaurant has NO branches and NO areas list.
 - After haan/yes: speak NOTHING — call place_order immediately with branch_name exactly "none".
-- FORBIDDEN (before or after haan): saying Johar Town, Iqbal Town, city, area, or branch — unless that exact name is printed under ## Branch ordering (it is not).
-- If a tool says branch_required: retry place_order with branch_name "none". Do NOT ask the caller.
+- FORBIDDEN (before or after haan): asking city, area, branch, or inventing any town name. Only speak area names that appear under ## Branch ordering (none do).
+- If a tool message says silently retry with branch_name "none": call place_order once more with "none" — do NOT ask the caller anything.
 =======================================================
 `;
     if (!/AFTER HAAN — NO BRANCH ASK/i.test(text)) {
@@ -102,7 +138,6 @@ AFTER HAAN — NO BRANCH ASK (CRITICAL):
         text = `${text.trim()}\n${guardBody}`;
       }
     } else {
-      // Refresh stale AFTER HAAN block so "speak NOTHING" is present.
       text = text.replace(
         /={3,}\s*\nAFTER HAAN — NO BRANCH ASK \(CRITICAL\):[\s\S]*?\n={3,}/i,
         guardBody.trim(),

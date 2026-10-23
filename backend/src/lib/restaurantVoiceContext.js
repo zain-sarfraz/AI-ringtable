@@ -504,13 +504,13 @@ export function buildRestaurantVoiceKnowledge({
 
   lines.push("## Menu Categories & Available Items");
   lines.push(
-    "EXACT DISH FIRST: if the caller already named a full menu item (e.g. \"Chicken Burger\"), quote THAT item price only and continue — do NOT read any PHONE SCRIPT, do NOT ask \"konsa\" / \"kaunsa\".",
+    "EXACT DISH FIRST: if the caller already named a full menu item (e.g. \"Chicken Burger\"), quote THAT item price only and continue — do NOT read any PHONE SCRIPT, do NOT ask again whether they want that same dish.",
   );
   lines.push(
     "When the caller names a type alone (burger, pizza, drink) and NOT one exact dish, match that word to a subcategory name first, then a category name. If the name matches, read THAT script in full — every item and every price. Do not read the parent category when a subcategory name matches. If no category or subcategory is named that word, read the ITEM PHONE SCRIPT for that word (only items whose name contains it). Never dump a different category.",
   );
   lines.push(
-    "SINGLE-ITEM SCRIPT: if a PHONE SCRIPT has only 1 item, say that item + price and continue the order — NEVER ask which one they want.",
+    "TYPE-ALONE / SINGLE-ITEM: if they said only a type (e.g. \"burger\") and the matching script has 1 item, speak that item + price, then ask explicitly \"Kya aap [Item] order karna chahenge?\" WAIT for haan. Do NOT add the item until they accept. Never auto-select.",
   );
 
   const byCategory = new Map();
@@ -613,13 +613,14 @@ export function buildRestaurantVoiceKnowledge({
     return spokenBits;
   }
 
-  function phoneScript(kind, label, bits) {
+  function phoneScript(kind, label, bits, itemNames = []) {
     const n = bits.length;
     if (n === 1) {
-      // One item only — never ask "konsa"; confirm the only option and continue.
+      // Type-alone with one SKU: offer price, then require explicit accept — never auto-add.
+      const itemName = String(itemNames[0] || bits[0] || label).trim();
       return (
-        `${kind} PHONE SCRIPT for "${label}" (1 item — say it once, then continue): ` +
-        `Acha ji, ${bits[0]} ka hai. Main yeh note kar leti hoon.`
+        `${kind} PHONE SCRIPT for "${label}" (1 item — offer then ask; do NOT auto-add): ` +
+        `Ji, ${label} mein hamare paas ${bits[0]} hai. Kya aap ${itemName} order karna chahenge?`
       );
     }
     return (
@@ -667,13 +668,20 @@ export function buildRestaurantVoiceKnowledge({
       lines.push(`#### Subcategory: ${sub.name} (inside ${cat.name})`);
       if (sub.description) lines.push(sub.description);
       for (const it of subItems) lines.push(renderItem(it));
-      lines.push(phoneScript("SUBCATEGORY", sub.name, spokenBitsFor(subItems)));
+      lines.push(
+        phoneScript(
+          "SUBCATEGORY",
+          sub.name,
+          spokenBitsFor(subItems),
+          subItems.map((it) => it.name),
+        ),
+      );
       lines.push(
         `Read the subcategory script above ONLY when the caller’s word matches the subcategory name "${sub.name}" (example: burger matches Burgers). Do not add other items from ${cat.name}.`,
       );
     }
 
-    lines.push(phoneScript("CATEGORY", cat.name, spokenBitsFor(list)));
+    lines.push(phoneScript("CATEGORY", cat.name, spokenBitsFor(list), list.map((it) => it.name)));
     lines.push(
       `Read this CATEGORY script ONLY when the caller’s word matches the category name "${cat.name}". If a subcategory name matches, read the subcategory script instead and skip this one.`,
     );
@@ -695,7 +703,7 @@ export function buildRestaurantVoiceKnowledge({
     lines.push("### Item-name scripts (no category or subcategory uses this name)");
     lines.push("Use one of these ONLY when the caller’s word does not match any category or subcategory name. Say only the items in that script. Do not read the parent category.");
     for (const [stem, list] of itemWordMap) {
-      lines.push(phoneScript("ITEM", stem, spokenBitsFor(list)));
+      lines.push(phoneScript("ITEM", stem, spokenBitsFor(list), list.map((it) => it.name)));
     }
   }
 
@@ -770,9 +778,9 @@ export function buildRestaurantVoiceKnowledge({
   if (urduPriceMode) {
     lines.push("1. Greet warmly in Pakistani Roman Urdu (Lahore style) and ask what they would like — one short question, then wait.");
     lines.push("2. Capture ordered items/sizes/flavors from THIS menu only. Sizes ALWAYS English: Small / Medium / Large (NEVER Chota / Darmiyana / Bara). Speak each price using the MUST SPEAK hint with ENGLISH number words + rupees (e.g. 'five hundred forty rupees'). NEVER say rupay. NEVER Urdu numbers. NEVER decimals. NEVER say dollar, cent, or $.");
-    lines.push("2b. EXACT DISH: if they named a full item (e.g. Chicken Burger), quote that price only — never read a PHONE SCRIPT, never ask konsa. CATEGORY script ONLY for type-alone (\"burger\", \"pizza\"). Single-item script: say the one item + price and continue — never \"Aap konsa lena chahenge?\"");
+    lines.push("2b. EXACT DISH: if they named a full item (e.g. Chicken Burger), quote that price only — never read a PHONE SCRIPT, never re-ask the same dish. TYPE-ALONE (\"burger\", \"pizza\"): read matching PHONE SCRIPT. If that script has 1 item, offer price then ask \"Kya aap [Item] order karna chahenge?\" and WAIT — do not auto-add until haan.");
     lines.push("3. Collect customer name (accept ANY name on first try). Acknowledge with a natural \"Ji\" / \"Acha ji\" — do not repeat the same filler every turn.");
-    lines.push("4. MANDATORY fulfillment ask (every new order) — ENGLISH words only: \"Kya yeh order delivery ke liye hai ya pickup?\" NEVER skip. NEVER say pate/bhejwa/khud aakar. Then follow Branch ordering ONLY: NO branches → never ask area/city and never say Johar/Iqbal; pass branch_name none. Multiple → delivery: address only + branch_name none; pickup: ask ONLY areas printed under ## Branch ordering.");
+    lines.push("4. MANDATORY fulfillment ask (every new order) — ENGLISH words only: \"Kya yeh order delivery ke liye hai ya pickup?\" NEVER skip. NEVER say pate/bhejwa/khud aakar. Then follow Branch ordering ONLY: NO branches → never ask city/area/branch (never invent town names); pass branch_name none. Delivery with no branches: street address only. Pickup with no branches: skip address. Multiple → delivery: address only + branch_name none; pickup: ask ONLY areas printed under ## Branch ordering.");
     lines.push(
       "5. Email: Pickup = NEVER ask email / raseed — jump to raabta number, customer_email=none. Delivery only: optional once \"Raseed ke liye apna email bata sakte hain?\"",
     );
@@ -781,7 +789,7 @@ export function buildRestaurantVoiceKnowledge({
     );
     lines.push(...cashOnlyPaymentProtocolLines({ urdu: true }));
     lines.push(
-      "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan — then speak NOTHING; call place_order immediately (NO branches → branch_name none). NEVER ask Johar/Iqbal/area after haan. NEVER say daraj/darj.",
+      "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan — then speak NOTHING; call place_order immediately (NO branches → branch_name none). NEVER invent city/area after haan. NEVER say daraj/darj.",
     );
   } else {
     lines.push("1. Greet calmly and ask what the caller would like to order.");
@@ -914,10 +922,10 @@ ${
     ? `
 =======================================================
 AFTER HAAN — NO BRANCH ASK (CRITICAL):
-- ## Branch ordering says this restaurant has NO branches.
+- ## Branch ordering says this restaurant has NO branches and NO areas list.
 - After haan/yes: speak NOTHING — call place_order immediately with branch_name exactly "none".
-- FORBIDDEN (before or after haan): saying Johar Town, Iqbal Town, city, area, or branch — unless that exact name is printed under ## Branch ordering (it is not).
-- If a tool says branch_required: retry place_order with branch_name "none". Do NOT ask the caller.
+- FORBIDDEN (before or after haan): asking city, area, branch, or inventing any town name. Only speak area names that appear under ## Branch ordering (none do).
+- If a tool message says silently retry with branch_name "none": call place_order once more with "none" — do NOT ask the caller anything.
 =======================================================
 `
     : ""
@@ -926,23 +934,23 @@ Turn 1: Speak exactly (smooth, no lag): "${greeting}"
 
 Turn 2 onwards:
 1. ONLY sell items listed under "## Menu Categories & Available Items" below. Never invent items or prices.
-2. If caller NAMED an exact dish (e.g. "Chicken Burger" / "Chicken Burger order karna hai"): quote THAT item price only ("Acha ji, Chicken Burger five hundred rupees ka hai.") then continue to naam/fulfillment. Do NOT read any PHONE SCRIPT. Do NOT ask "konsa" / "kaunsa" / "aap konsa lena chahenge". NEVER call check_previous_order.
+2. If caller NAMED an exact dish (e.g. "Chicken Burger" / "Chicken Burger order karna hai"): quote THAT item price only ("Acha ji, Chicken Burger five hundred rupees ka hai.") then continue to naam/fulfillment. Do NOT read any PHONE SCRIPT. Do NOT ask again "Kya aap Chicken Burger order karna chahenge?" after they already named it. NEVER call check_previous_order.
 3. CATEGORY LIST (only when they named a TYPE, not a full dish — overrides the short-sentence limit):
    - Use ONLY for type-alone phrases ("burger chahiye", "1 burger", "pizza", "koi drink") — NOT when they already said a full item name like "Chicken Burger".
    - A type match means the spoken TYPE word equals the subcategory/category name (burger → Burgers). Extra words like "order"/"chahiye" are ignored, but a full dish name is NOT a type match.
    - If a subcategory name matches, read that SUBCATEGORY PHONE SCRIPT word for word. Every item in it, every price. Do not add items from the parent category.
    - If no subcategory matches and a category name matches, read that CATEGORY PHONE SCRIPT word for word. Every item, every price.
    - If neither a category nor a subcategory is named that word, read the ITEM PHONE SCRIPT for that word. Say only those items. Do not read the parent category.
-   - Multi-item script: say every listed item + price, then wait. Single-item script (1 item): say that one item + price and CONTINUE — never ask which one.
-   - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: "Kaunsa burger lena hai?" / "Aap konsa lena chahenge?" when only 1 item exists or the dish is already chosen.
+   - Multi-item script: say every listed item + price, then wait for their choice. Single-item script (1 item): say item + price, ask "Kya aap [Item] order karna chahenge?", WAIT for haan — do NOT auto-add.
+   - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: auto-selecting the only item in a category without the caller's yes.
 4. Add-ons: ONLY if listed under that item's "Available Sauces & Add-ons". Never invent Extra Cheese unless linked.
 5. One question per turn, then WAIT in silence. Keep other turns to 1–2 short sentences. The category list in rule 3 is the exception — name the items even if that takes more than two sentences. Respond to what they just said.
 6. Collect FAST in order (do not drag): items → naam (EXACT name) → MANDATORY fulfillment ask → (DELIVERY only: email optional; PICKUP: skip email) → raabta number (once; yahi = "same") → ONE short AFTER-TAX summary (English number words, no decimals) → wait for "haan" → place_order immediately.
 7. NEVER call check_previous_order unless caller clearly says they want the OLD/LAST order repeated ("pehle wala", "wahi order", "repeat last"). If any dish is named → fresh order only.
-8. Branch ordering section overrides location questions. No branches → never ask area/city/branch; NEVER speak Johar Town, Iqbal Town, or any area not printed under ## Branch ordering; branch_name = none. Multiple branches only: delivery = address + branch_name none; pickup = ask ONLY areas listed under ## Branch ordering.
+8. Branch ordering section overrides location questions. No branches → never ask area/city/branch; NEVER invent any town/area name not printed under ## Branch ordering; branch_name = none. Multiple branches only: delivery = street address + branch_name none; pickup = ask ONLY areas listed under ## Branch ordering.
 9. Track order: ask "Aapka order number kya hai?", wait, call get_order_status once.
 10. Payment is CASH ONLY — never ask how they will pay. Delivery: "Payment delivery ke waqt cash mein kar dena." Pickup: "Pickup par payment cash mein hogi." Card/other: "Maazrat, filhal sirf cash payment available hai."
-11. After haan: speak NOTHING — call place_order ONCE immediately (NO branches → branch_name "none"). FORBIDDEN after haan: any area/city/branch question (Johar Town / Iqbal Town included) before or instead of the tool. First words after the tool = READ "speak" EXACTLY. Order is saved. NEVER invent an order number. If branch_required but ## Branch ordering says NO branches: retry place_order with branch_name "none" — do NOT ask area. If phone_required: read "speak", get digits, retry place_order — do NOT say order failed. Only after TWO hard failures (no phone_required, no speak) say once: "Order save nahi ho saka, ek baar phir try karte hain."
+11. After haan: speak NOTHING — call place_order ONCE immediately (NO branches → branch_name "none"). FORBIDDEN after haan: any area/city/branch question before or instead of the tool. First words after the tool = READ "speak" EXACTLY (or follow tool message if it says silently retry once with branch_name none). NEVER invent an order number. NEVER invent area names. If phone_required: read "speak", get digits, retry place_order once — do NOT say order failed. Only after TWO hard failures (no phone_required, no speak) say once: "Order save nahi ho saka, ek baar phir try karte hain."
 12. NEVER invent item prices or mix another dish's AFTER-TAX. Chicken Burger kul raqam = that line's AFTER-TAX MUST SPEAK only (English number words).
 13. Polite close only after order number (or if they decline): "Bohot shukriya, Allah hafiz." Never alvida while the order is still in progress.
 
