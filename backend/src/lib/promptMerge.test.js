@@ -80,6 +80,26 @@ SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Ji, Bu
     assert.match(fixed, /say it once, then continue/i);
     assert.doesNotMatch(fixed, /Aap konsa lena chahenge/i);
   });
+
+  it("upgrades stale Turn-2 dish/category rules to exact-dish first", () => {
+    const stale = `
+2. If caller NAMED a dish (e.g. "Chicken Burger order karna hai"): quote THAT item price from the menu and continue. Do NOT list the whole category. NEVER call check_previous_order. NEVER offer to repeat an old pizza/order.
+3. CATEGORY LIST (mandatory — overrides the short-sentence limit):
+   - If they name a type but NOT a specific dish ("burger chahiye", "1 burger", "pizza", "koi drink"): look at subcategory names first, then category names.
+   - A match means the spoken word is the same as the name (burger matches Burgers, pizza matches Pizza). Ignore extra words like "order" or "chahiye".
+   - If a subcategory name matches, read that SUBCATEGORY PHONE SCRIPT word for word. Every item in it, every price. Do not add items from the parent category.
+   - If no subcategory matches and a category name matches, read that CATEGORY PHONE SCRIPT word for word. Every item, every price.
+   - If neither a category nor a subcategory is named that word, read the ITEM PHONE SCRIPT for that word. Say only those items. Do not read the parent category.
+   - The script says how many items it has. You must say that many. Never stop after the first one or two. Never drop a price. Never invent an item.
+   - Then wait. Same rule for every category, not only burgers.
+   - FORBIDDEN: "Kaunsa burger lena hai?" without the matching list. FORBIDDEN: reading Junk Food or any other category whose name does not match. If they already named one exact dish, do not read a script. Quote that one item only.
+`.trim();
+    const fixed = rewriteStaleOrderSpeechRules(stale, 0);
+    assert.match(fixed, /Do NOT read any PHONE SCRIPT/i);
+    assert.match(fixed, /NOT when they already said a full item name/i);
+    assert.match(fixed, /Single-item script \(1 item\)/i);
+    assert.doesNotMatch(fixed, /CATEGORY LIST \(mandatory/i);
+  });
 });
 
 describe("isPartialPromptOverwrite", () => {

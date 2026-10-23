@@ -53,6 +53,25 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     },
   );
 
+  // Turn-2 rules 2–3: exact dish must win over category PHONE SCRIPT (merge keeps old Turn rules).
+  text = text.replace(
+    /2\. If caller NAMED a dish \(e\.g\. "Chicken Burger order karna hai"\): quote THAT item price from the menu and continue\. Do NOT list the whole category\. NEVER call check_previous_order\. NEVER offer to repeat an old pizza\/order\.\n3\. CATEGORY LIST \(mandatory — overrides the short-sentence limit\):[\s\S]*?FORBIDDEN: "Kaunsa burger lena hai\?" without the matching list\. FORBIDDEN: reading Junk Food or any other category whose name does not match\. If they already named one exact dish, do not read a script\. Quote that one item only\./g,
+    `2. If caller NAMED an exact dish (e.g. "Chicken Burger" / "Chicken Burger order karna hai"): quote THAT item price only ("Acha ji, Chicken Burger five hundred rupees ka hai.") then continue to naam/fulfillment. Do NOT read any PHONE SCRIPT. Do NOT ask "konsa" / "kaunsa" / "aap konsa lena chahenge". NEVER call check_previous_order.
+3. CATEGORY LIST (only when they named a TYPE, not a full dish — overrides the short-sentence limit):
+   - Use ONLY for type-alone phrases ("burger chahiye", "1 burger", "pizza", "koi drink") — NOT when they already said a full item name like "Chicken Burger".
+   - A type match means the spoken TYPE word equals the subcategory/category name (burger → Burgers). Extra words like "order"/"chahiye" are ignored, but a full dish name is NOT a type match.
+   - If a subcategory name matches, read that SUBCATEGORY PHONE SCRIPT word for word. Every item in it, every price. Do not add items from the parent category.
+   - If no subcategory matches and a category name matches, read that CATEGORY PHONE SCRIPT word for word. Every item, every price.
+   - If neither a category nor a subcategory is named that word, read the ITEM PHONE SCRIPT for that word. Say only those items. Do not read the parent category.
+   - Multi-item script: say every listed item + price, then wait. Single-item script (1 item): say that one item + price and CONTINUE — never ask which one.
+   - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: "Kaunsa burger lena hai?" / "Aap konsa lena chahenge?" when only 1 item exists or the dish is already chosen.`,
+  );
+
+  text = text.replace(
+    /Then WAIT — on haan call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
+    'Then WAIT — on haan speak NOTHING; call place_order immediately with branch_name per ## Branch ordering (NO branches → "none"). NEVER ask area/Johar/Iqbal after haan. NEVER say daraj/darj/rupay.',
+  );
+
   if (Number(branchCount) === 0) {
     text = text.replace(
       /8\. Branch ordering section overrides location questions\. No branches → never ask area; branch_name = none\./g,
