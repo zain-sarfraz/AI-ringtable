@@ -143,13 +143,16 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
       "Always pass branch_name as exactly none.",
       "",
       'Confirm FAST: then WAIT — on haan call place_order immediately. NEVER say daraj/darj/rupay.',
-      "NEVER ask Johar Town / Iqbal Town / any area.",
+      "NEVER ask area/Johar/Iqbal after haan.",
+      "8. Branch ordering section overrides location questions. No branches → never ask area/city/branch and NEVER say city/area/branch or city/area/branch; branch_name = none.",
       "11. After haan: call place_order ONCE immediately with branch_name \"none\". Do NOT ask Johar Town / Iqbal Town / area after haan.",
       "Turn 1: Hello",
     ].join("\n");
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
-    assert.doesNotMatch(fixed, /Johar Town/i);
-    assert.doesNotMatch(fixed, /Iqbal Town/i);
+    assert.doesNotMatch(fixed, /Johar/i);
+    assert.doesNotMatch(fixed, /Iqbal/i);
+    assert.doesNotMatch(fixed, /city\/area\/branch or city\/area\/branch/i);
+    assert.match(fixed, /never invent town names/i);
     assert.match(fixed, /AFTER HAAN — NO BRANCH ASK/i);
     assert.match(fixed, /After place_order: if success\/speak\/order_number is present/i);
     assert.match(fixed, /Do NOT ask another question/i);

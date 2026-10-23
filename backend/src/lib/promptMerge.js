@@ -119,17 +119,33 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
 
   if (Number(branchCount) === 0) {
-    // Branchless only: strip ironic town priming (naming towns teaches the model to say them).
+    // Branchless only: remove ironic town priming without inventing garbled "city/area/branch or city/area/branch".
     // Never run this when the restaurant actually lists those areas under ## Branch ordering.
-    text = text.replace(/\bJohar Town\s*\/\s*Iqbal Town\b/gi, "city/area/branch");
-    text = text.replace(/\bJohar Town\b/gi, "city/area/branch");
-    text = text.replace(/\bIqbal Town\b/gi, "city/area/branch");
-    text = text.replace(/city\/area\/branch\s*\/\s*city\/area\/branch/gi, "city/area/branch");
-    text = text.replace(/city\/area\/branch\s*\/\s*any area/gi, "city/area/branch");
-    text = text.replace(/area\/city\/area\/branch/gi, "city/area/branch");
+    text = text.replace(/\bJohar Town\s*\/\s*Iqbal Town\b/gi, "any invented town");
+    text = text.replace(/\bJohar\s*\/\s*Iqbal\b/gi, "any invented town");
+    text = text.replace(/\bJohar Town\b/gi, "any invented town");
+    text = text.replace(/\bIqbal Town\b/gi, "any invented town");
+    text = text.replace(/\bJohar\b/gi, "any invented town");
+    text = text.replace(/\bIqbal\b/gi, "any invented town");
+    text = text.replace(/any invented town\s*\/\s*any invented town/gi, "any invented town");
+    text = text.replace(/any invented town\s+or\s+any invented town/gi, "any invented town");
+    text = text.replace(/area\/any invented town/gi, "city/area/branch");
+    text = text.replace(/NEVER ask area\/any invented town after haan/gi, "NEVER ask city/area/branch after haan");
+    text = text.replace(/NEVER ask any invented town after haan/gi, "NEVER ask city/area/branch after haan");
+    text = text.replace(/NEVER say any invented town/gi, "never invent town names");
+    text = text.replace(/and NEVER say any invented town/gi, "and never invent town names");
+    text = text.replace(/city\/area\/branch or city\/area\/branch/gi, "city/area/branch");
+    text = text.replace(
+      /No branches → never ask area\/city\/branch and NEVER say city\/area\/branch(?: or city\/area\/branch)?; branch_name = none\./gi,
+      "No branches → never ask area/city/branch; never invent town names; branch_name = none.",
+    );
 
     text = text.replace(
       /8\. Branch ordering section overrides location questions\. No branches → never ask area; branch_name = none\./g,
+      "8. Branch ordering section overrides location questions. No branches → never ask area/city/branch; never invent town names; branch_name = none.",
+    );
+    text = text.replace(
+      /8\. Branch ordering section overrides location questions\. No branches → never ask area\/city\/branch and NEVER say city\/area\/branch(?: or city\/area\/branch)?; branch_name = none\./g,
       "8. Branch ordering section overrides location questions. No branches → never ask area/city/branch; never invent town names; branch_name = none.",
     );
     text = text.replace(
