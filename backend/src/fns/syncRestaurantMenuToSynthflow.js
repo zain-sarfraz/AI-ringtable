@@ -138,6 +138,14 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
       },
     });
 
+    // Prevent multi-brand poisoning: unlink this synthflow_agent_id from any previous restaurant
+    if (r.synthflow_agent_id) {
+      await knex("restaurants")
+        .where({ synthflow_agent_id: r.synthflow_agent_id })
+        .whereNot({ id: restaurant_id })
+        .update({ synthflow_agent_id: null });
+    }
+
     await knex("restaurants").where({ id: restaurant_id }).update({
       agent_system_prompt: prompt,
       agent_first_message: greeting,

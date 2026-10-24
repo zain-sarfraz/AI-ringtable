@@ -325,6 +325,7 @@ async function resolveRestaurant(knex, payload) {
   if (modelId) {
     const row = await knex("restaurants")
       .where({ synthflow_agent_id: String(modelId) })
+      .orderBy("updated_at", "desc")
       .first();
     if (row) return row;
   }
@@ -851,16 +852,29 @@ export async function synthflowPostCallWebhook(req, res) {
       (looksLikePhoneNumber(callerPhone) ? normalizeE164(callerPhone) : null);
 
     const phoneDigits = String(phone || "").replace(/\D/g, "").slice(-10);
-    if (phoneDigits.length >= 8) {
+    const callerDigits = String(callerPhone || "").replace(/\D/g, "").slice(-10);
+    if (phoneDigits.length >= 8 || callerDigits.length >= 8) {
+      const familyIds = [restaurant.id, restaurant.parent_restaurant_id].filter(Boolean);
+      const digitsToMatch = phoneDigits.length >= 8 ? phoneDigits : callerDigits;
       const recent = await knex("orders")
-        .where({ restaurant_id: restaurant.id, source: "phone" })
+        .whereIn("restaurant_id", familyIds)
+        .where({ source: "phone" })
         .where("created_at", ">", new Date(Date.now() - 20 * 60 * 1000))
-        .whereRaw("right(regexp_replace(coalesce(customer_phone, ''), '\\D', '', 'g'), 10) = ?", [phoneDigits])
+        .andWhere(function () {
+          this.whereRaw("right(regexp_replace(coalesce(customer_phone, ''), '\\D', '', 'g'), 10) = ?", [digitsToMatch]);
+          if (callerDigits.length >= 8 && callerDigits !== digitsToMatch) {
+            this.orWhereRaw("right(regexp_replace(coalesce(customer_phone, ''), '\\D', '', 'g'), 10) = ?", [callerDigits]);
+          }
+          if (callerPhone && callerPhone !== "Unknown") {
+            this.orWhereRaw("ai_extracted_data->'raw'->>'caller_phone' = ?", [callerPhone]);
+          }
+        })
         .orderBy("created_at", "desc")
         .first();
       if (recent) {
         const currentAiData = recent.ai_extracted_data || {};
         await knex("orders").where({ id: recent.id }).update({
+          restaurant_id: restaurant.id,
           call_id: callRow?.id || recent.call_id,
           ai_extracted_data: {
             ...currentAiData,

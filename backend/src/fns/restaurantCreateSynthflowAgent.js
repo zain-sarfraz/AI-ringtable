@@ -688,6 +688,12 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       console.warn(extractorWarning);
     }
 
+    // Prevent multi-brand poisoning: unlink this synthflow_agent_id from any previous restaurant
+    await knex("restaurants")
+      .where({ synthflow_agent_id: modelId })
+      .whereNot({ id: restaurant_id })
+      .update({ synthflow_agent_id: null });
+
     await knex("restaurants").where({ id: restaurant_id }).update({
       synthflow_agent_id: modelId,
       // pg + knex can mis-bind JS arrays as PG arrays; store explicit JSON text for jsonb

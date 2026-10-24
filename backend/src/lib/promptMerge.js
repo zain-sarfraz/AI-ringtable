@@ -119,27 +119,33 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
 
   if (Number(branchCount) === 0) {
-    // Branchless only: remove ironic town priming without inventing garbled "city/area/branch or city/area/branch".
+    // Branchless only: strip specific town names that leaked into a branchless restaurant prompt.
+    // Single-pass replacement avoids the "any invented town" intermediate garbage text problem.
     // Never run this when the restaurant actually lists those areas under ## Branch ordering.
-    text = text.replace(/\bJohar Town\s*\/\s*Iqbal Town\b/gi, "any invented town");
-    text = text.replace(/\bJohar\s*\/\s*Iqbal\b/gi, "any invented town");
-    text = text.replace(/\bJohar Town\b/gi, "any invented town");
-    text = text.replace(/\bIqbal Town\b/gi, "any invented town");
-    text = text.replace(/\bJohar\b/gi, "any invented town");
-    text = text.replace(/\bIqbal\b/gi, "any invented town");
-    text = text.replace(/any invented town\s*\/\s*any invented town/gi, "any invented town");
-    text = text.replace(/any invented town\s+or\s+any invented town/gi, "any invented town");
-    text = text.replace(/area\/any invented town/gi, "city/area/branch");
-    text = text.replace(/NEVER ask area\/any invented town after haan/gi, "NEVER ask city/area/branch after haan");
-    text = text.replace(/NEVER ask any invented town after haan/gi, "NEVER ask city/area/branch after haan");
-    text = text.replace(/NEVER say any invented town/gi, "never invent town names");
-    text = text.replace(/and NEVER say any invented town/gi, "and never invent town names");
-    text = text.replace(/city\/area\/branch or city\/area\/branch/gi, "city/area/branch");
+
+    // Collapse composite variants first, then standalone towns.
+    text = text.replace(/\bJohar\s+Town\s*\/\s*Iqbal\s+Town\b/gi, "city/area/branch");
+    text = text.replace(/\bJohar\s*\/\s*Iqbal\b/gi, "city/area/branch");
+    text = text.replace(/\bJohar\s+Town\b/gi, "city/area/branch");
+    text = text.replace(/\bIqbal\s+Town\b/gi, "city/area/branch");
+    // De-duplicate consecutive separators left by multi-replace.
+    text = text.replace(/city\/area\/branch\s+or\s+city\/area\/branch/gi, "city/area/branch");
+    text = text.replace(/city\/area\/branch\s*\/\s*city\/area\/branch/gi, "city/area/branch");
+    // Clean up garbled "area/city/area/branch" (from "area/Johar/Iqbal" → "area/city/area/branch").
+    text = text.replace(/\barea\/city\/area\/branch\b/gi, "city/area/branch");
+    // Remove trailing "/ area" after a replacement (e.g. "city/area/branch / area after" → "city/area/branch after").
+    text = text.replace(/city\/area\/branch\s*\/\s*area\b/gi, "city/area/branch");
+
+
+    // Normalise stale branchless-specific phrase variants.
     text = text.replace(
       /No branches → never ask area\/city\/branch and NEVER say city\/area\/branch(?: or city\/area\/branch)?; branch_name = none\./gi,
       "No branches → never ask area/city/branch; never invent town names; branch_name = none.",
     );
-
+    text = text.replace(
+      /No branches → never ask area; branch_name = none\./gi,
+      "No branches → never ask area/city/branch; never invent town names; branch_name = none.",
+    );
     text = text.replace(
       /8\. Branch ordering section overrides location questions\. No branches → never ask area; branch_name = none\./g,
       "8. Branch ordering section overrides location questions. No branches → never ask area/city/branch; never invent town names; branch_name = none.",
@@ -152,8 +158,9 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
       /11\. After the caller says haan, call place_order once immediately\. Do not speak a waiting line\./g,
       '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask city/area/branch after haan.',
     );
+    // Consolidate all stale "Do NOT ask X after haan" variants into one canonical form.
     text = text.replace(
-      /11\. After haan: (?:speak NOTHING — )?call place_order ONCE immediately with branch_name "none"\. Do NOT ask (?:Johar Town \/ Iqbal Town \/ area|city\/area\/branch(?: \/ area)?) after haan\.(?: Do not speak a waiting line\.)?/g,
+      /11\. After haan: (?:speak NOTHING — )?call place_order ONCE immediately with branch_name "none"\. Do NOT ask (?:[^.\n]+?) after haan\.(?:\s*Do not speak a waiting line\.)?/g,
       '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask city/area/branch after haan.',
     );
     const guardBody = `

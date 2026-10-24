@@ -152,7 +152,9 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     assert.doesNotMatch(fixed, /Johar/i);
     assert.doesNotMatch(fixed, /Iqbal/i);
     assert.doesNotMatch(fixed, /city\/area\/branch or city\/area\/branch/i);
-    assert.match(fixed, /never invent town names/i);
+    // No garbled deduplication artefacts
+    assert.doesNotMatch(fixed, /area\/city\/area\/branch/i);
+    assert.doesNotMatch(fixed, /any invented town/i);
     assert.match(fixed, /AFTER HAAN — NO BRANCH ASK/i);
     assert.match(fixed, /After place_order: if success\/speak\/order_number is present/i);
     assert.match(fixed, /Do NOT ask another question/i);
@@ -346,3 +348,83 @@ describe("resolveVoiceBranchSelection", () => {
     assert.equal(d.chosenBranch?.id, "b1");
   });
 });
+
+describe("branch bug regression: branchless Pizza Go order scenarios", () => {
+  it("T1: branchless pickup with branch_name 'none' — ok, no area question", () => {
+    const d = resolveVoiceBranchSelection({
+      branches: [],
+      fulfillment_type: "pickup",
+      branch_name: "none",
+    });
+    assert.equal(d.ok, true);
+    assert.equal(d.skipAsk, true);
+    assert.equal(d.chosenBranch, null);
+    // shouldAskCaller must never be set for branchless restaurants
+    assert.equal(d.shouldAskCaller, undefined);
+  });
+
+  it("T2: branchless delivery with address — ok, no area question, no shouldAskCaller", () => {
+    const d = resolveVoiceBranchSelection({
+      branches: [],
+      fulfillment_type: "delivery",
+      branch_name: "none",
+      delivery_notes: "House 12, Gulberg III, Lahore",
+    });
+    assert.equal(d.ok, true);
+    assert.equal(d.skipAsk, true);
+    assert.equal(d.chosenBranch, null);
+    assert.equal(d.shouldAskCaller, undefined);
+  });
+
+  it("T3: branchless restaurant — even with invented town name, ok and no area question", () => {
+    // LLM sometimes invents area names even when backend says none; must still succeed silently.
+    const d = resolveVoiceBranchSelection({
+      branches: [],
+      fulfillment_type: "pickup",
+      branch_name: "Johar Town",
+    });
+    assert.equal(d.ok, true);
+    assert.equal(d.skipAsk, true);
+    assert.equal(d.shouldAskCaller, undefined);
+  });
+
+  it("T4: branchless prompt rewrite — 'Johar Town / Iqbal Town' replaced cleanly (no garbled text)", () => {
+    const stale = [
+      "## Branch ordering",
+      "This restaurant has NO branches and NO areas list.",
+      "NEVER ask Johar Town / Iqbal Town after haan.",
+      "Turn 1: Hello",
+    ].join("\n");
+    const fixed = rewriteStaleOrderSpeechRules(stale, 0);
+    assert.doesNotMatch(fixed, /Johar/i);
+    assert.doesNotMatch(fixed, /Iqbal/i);
+    // No double separators or garbled intermediate text
+    assert.doesNotMatch(fixed, /any invented town/i);
+    assert.doesNotMatch(fixed, /area\/city\/area\/branch/i);
+    assert.doesNotMatch(fixed, /city\/area\/branch or city\/area\/branch/i);
+    assert.match(fixed, /AFTER HAAN — NO BRANCH ASK/i);
+  });
+
+  it("T5: multi-branch restaurant — branch selection still works; Johar/Iqbal labels preserved", () => {
+    const d = resolveVoiceBranchSelection({
+      branches: [johar, iqbal],
+      fulfillment_type: "pickup",
+      branch_name: "Iqbal Town",
+    });
+    assert.equal(d.ok, true);
+    assert.equal(d.chosenBranch?.id, "b2");
+    // Multi-branch prompt rewrite must keep configured area labels
+    const prompt = [
+      "## Branch ordering",
+      'Ask: "Which area would you like: Johar Town or Iqbal Town?"',
+      '- Johar Town → branch_name "Royal - Johar Town"',
+      '- Iqbal Town → branch_name "Royal - Iqbal Town"',
+      "Turn 1: Hello",
+    ].join("\n");
+    const fixed = rewriteStaleOrderSpeechRules(prompt, 2);
+    assert.match(fixed, /Johar Town/);
+    assert.match(fixed, /Iqbal Town/);
+    assert.doesNotMatch(fixed, /AFTER HAAN — NO BRANCH ASK/i);
+  });
+});
+

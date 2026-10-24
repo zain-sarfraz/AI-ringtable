@@ -306,8 +306,13 @@ async function findRestaurantByDialedNumber(knex, dialed) {
 }
 
 export async function resolveRestaurantIdForVoiceTools(knex, b) {
-  // Dialed Telnyx/Twilio number first — shared Synthflow agents (local Royal + live Pizza Go)
-  // must not resolve by agent_id alone or pickup inherits the wrong brand's Johar/Iqbal branches.
+  if (b.restaurant_id) {
+    const row = await knex("restaurants").where({ id: String(b.restaurant_id) }).select("id").first();
+    if (row) return { id: row.id };
+  }
+
+  // Dialed Telnyx/Twilio number next — shared Synthflow agents
+  // must not resolve by agent_id alone if dialed number points to a specific brand.
   const dialed =
     b.twilio_to ||
     b.to_phone_number ||
@@ -320,15 +325,12 @@ export async function resolveRestaurantIdForVoiceTools(knex, b) {
   if (byDialed) return { id: byDialed.id };
 
   if (b.synthflow_agent_id) {
-    const rows = await knex("restaurants")
+    const row = await knex("restaurants")
       .where({ synthflow_agent_id: String(b.synthflow_agent_id) })
-      .select("id", "telnyx_phone_number", "twilio_phone_number", "name");
-    if (rows.length === 1) return { id: rows[0].id };
-    if (rows.length > 1) {
-      console.warn(
-        `⚠️ synthflow_agent_id shared by ${rows.length} restaurants: ${rows.map((r) => r.name).join(", ")} — need dialed number`,
-      );
-    }
+      .orderBy("updated_at", "desc")
+      .select("id")
+      .first();
+    if (row) return { id: row.id };
   }
 
   if (b.elevenlabs_agent_id) {
@@ -336,11 +338,6 @@ export async function resolveRestaurantIdForVoiceTools(knex, b) {
       .where({ elevenlabs_agent_id: String(b.elevenlabs_agent_id) })
       .select("id");
     if (rows.length === 1) return { id: rows[0].id };
-  }
-
-  if (b.restaurant_id) {
-    const row = await knex("restaurants").where({ id: String(b.restaurant_id) }).select("id").first();
-    if (row) return { id: row.id };
   }
 
   if (b.twilio_to) {
