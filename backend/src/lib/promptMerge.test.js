@@ -65,10 +65,12 @@ Turn 1: Speak exactly: "Assalamualaikum"
     assert.match(fixed, /Aapka order yeh hai/);
     assert.match(fixed, /ke naam par hai/);
     assert.match(fixed, /CASH ONLY/);
-    assert.match(fixed, /AFTER HAAN — NO BRANCH ASK/i);
     assert.match(fixed, /speak NOTHING/i);
-    assert.match(fixed, /branch_name "none"/);
     assert.doesNotMatch(fixed, /Aapka order: \[qty\] \[item\], \[naam\]/);
+    assert.doesNotMatch(fixed, /\b(branch|branch_name|area)\b/i);
+
+    const multi = rewriteStaleOrderSpeechRules(stale, 2);
+    assert.match(multi, /with branch_name per the Branch ordering section/);
   });
 
   it("rewrites single-item PHONE SCRIPT to explicit accept ask", () => {
@@ -159,9 +161,20 @@ describe("resolveSynthflowPromptUpdate", () => {
     });
     assert.match(merged, /CUSTOM OPERATOR RULE: Always thank Sir/);
     assert.match(merged, /New Pizza/);
-    assert.match(merged, /## Branch ordering/);
+    assert.doesNotMatch(merged, /## Branch ordering/);
     assert.match(merged, /## PLACE_ORDER TOOL CONTRACT/);
     assert.match(merged, /CASH ONLY/);
+
+    const multi = resolveSynthflowPromptUpdate({
+      incoming: "",
+      saved: SAVED,
+      replaceFull: false,
+      refreshKnowledge: true,
+      knowledge: FRESH_KNOWLEDGE,
+      branches: [{ name: "Johar Town" }, { name: "Iqbal Town" }],
+      language: "ur",
+    });
+    assert.match(multi, /## Branch ordering/);
   });
 
   it("section refresh keeps operator rules when only knowledge changes", () => {
@@ -271,8 +284,8 @@ describe("resolveSynthflowPromptUpdate", () => {
     });
     assert.match(merged, /thank the manager/);
     assert.match(merged, /New Pizza/);
-    assert.match(merged, /## Branch ordering/);
-    assert.match(merged, /branch_name as exactly none/i);
+    assert.doesNotMatch(merged, /## Branch ordering/);
+    assert.doesNotMatch(merged, /\b(branch|branch_name|area)\b/i);
     assert.match(merged, /Payment: CASH ONLY/);
     assert.match(merged, /## PLACE_ORDER TOOL CONTRACT/);
   });

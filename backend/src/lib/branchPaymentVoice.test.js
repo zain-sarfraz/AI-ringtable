@@ -8,7 +8,9 @@ import {
 import {
   cashOnlyPaymentProtocolLines,
   appendPlaceOrderToolContract,
+  applyBranchOrdering,
   buildRestaurantVoiceKnowledge,
+  defaultSynthflowPrompt,
 } from "./restaurantVoiceContext.js";
 import { rewriteStaleOrderSpeechRules } from "./promptMerge.js";
 
@@ -43,14 +45,18 @@ const single = {
 };
 
 describe("branchOrderingSection", () => {
-  it("no configured branches → never ask city/area/branch", () => {
-    const text = branchOrderingSection([]);
-    assert.match(text, /NO branches/i);
-    assert.match(text, /Never ask which city, which area, which branch/i);
-    assert.match(text, /branch_name as exactly none/i);
-    assert.doesNotMatch(text, /Which area would you like/i);
-    assert.doesNotMatch(text, /Johar Town/i);
-    assert.doesNotMatch(text, /Iqbal Town/i);
+  it("0 or 1 configured branch → absolute NEVER-ask-area block (no branch choice)", () => {
+    for (const text of [branchOrderingSection([]), branchOrderingSection([single])]) {
+      assert.match(text, /## Branch ordering/);
+      assert.match(text, /NO BRANCH CHOICE/i);
+      assert.match(text, /NEVER ask which branch, area, town, or city/i);
+      assert.match(text, /FORBIDDEN spoken words\/areas/i);
+      assert.match(text, /Johar Town/i);
+      assert.match(text, /Iqbal Town/i);
+      assert.match(text, /branch_name as exactly none/i);
+      assert.match(text, /NEVER ask area after haan/i);
+      assert.doesNotMatch(text, /Which area would you like/i);
+    }
   });
 
   it("multiple active branches → pickup asks listed areas only; delivery uses address + none", () => {
@@ -62,14 +68,6 @@ describe("branchOrderingSection", () => {
     assert.match(text, /Johar Town → branch_name "Royal - Johar Town"/);
     assert.match(text, /Iqbal Town → branch_name "Royal - Iqbal Town"/);
     assert.match(text, /Never invent areas that are not listed below/i);
-  });
-
-  it("one active branch → auto-use; do not ask city/area", () => {
-    const text = branchOrderingSection([single]);
-    assert.match(text, /one active location/i);
-    assert.match(text, /Do not ask for a city, an area, or which branch/i);
-    assert.match(text, /Pass branch_name as "Main Kitchen"/);
-    assert.doesNotMatch(text, /Which area would you like/i);
   });
 
   it("never invents Johar/Iqbal when those areas are not configured", () => {
@@ -88,13 +86,13 @@ describe("cashOnlyPaymentProtocolLines", () => {
     const ur = cashOnlyPaymentProtocolLines({ urdu: true }).join("\n");
     assert.match(ur, /CASH ONLY/i);
     assert.match(ur, /never ask the caller to choose a payment method/i);
-    assert.match(ur, /Payment delivery ke waqt cash mein kar dena/);
+    assert.match(ur, /payment delivery ke waqt cash mein kar dena/i);
     assert.doesNotMatch(ur, /card or cash/i);
   });
 
   it("pickup → cash-only explained without asking for a payment choice", () => {
     const ur = cashOnlyPaymentProtocolLines({ urdu: true }).join("\n");
-    assert.match(ur, /Pickup par payment cash mein hogi/);
+    assert.match(ur, /pickup par payment cash mein hogi/i);
     const en = cashOnlyPaymentProtocolLines({ urdu: false }).join("\n");
     assert.match(en, /cash only at pickup/i);
     assert.match(en, /do NOT ask the caller to choose a payment method/i);
@@ -102,7 +100,7 @@ describe("cashOnlyPaymentProtocolLines", () => {
 
   it("customer requests card → polite cash-only refusal copy is present", () => {
     const ur = cashOnlyPaymentProtocolLines({ urdu: true }).join("\n");
-    assert.match(ur, /Maazrat, filhal sirf cash payment available hai/);
+    assert.match(ur, /Maazrat ji, is waqt sirf cash payment available hai/);
     assert.match(ur, /If they ask for card/i);
     const en = cashOnlyPaymentProtocolLines({ urdu: false }).join("\n");
     assert.match(en, /politely explain only cash is accepted/i);
@@ -124,16 +122,19 @@ describe("normalizeVoicePaymentMethod", () => {
 });
 
 describe("place_order contract + knowledge preserve cash and branch rules", () => {
-  it("appends cash-only and branch_name none rules to the tool contract", () => {
-    const prompt = appendPlaceOrderToolContract("You are a test agent.", "ur");
-    assert.match(prompt, /CASH ONLY/i);
-    assert.match(prompt, /place_order always uses cash/i);
-    assert.match(prompt, /If NO branches → exactly "none"/);
-    assert.match(prompt, /Delivery with multiple branches → branch_name "none"/);
-    assert.match(prompt, /NEVER ask city\/area\/branch after the tool/i);
-    assert.match(prompt, /branch_required but ## Branch ordering says NO branches/i);
-    assert.doesNotMatch(prompt, /Johar Town/i);
-    assert.doesNotMatch(prompt, /Iqbal Town/i);
+  it("appends cash-only rules to the tool contract (conditional on branch count)", () => {
+    const multi = appendPlaceOrderToolContract("You are a test agent.", "ur", { branchCount: 2 });
+    assert.match(multi, /CASH ONLY/i);
+    assert.match(multi, /place_order always uses cash/i);
+    assert.match(multi, /Delivery with multiple branches → branch_name "none"/);
+    assert.match(multi, /branch_required: retry place_order/i);
+
+    const singleContract = appendPlaceOrderToolContract("You are a test agent.", "ur", { branchCount: 0 });
+    assert.match(singleContract, /CASH ONLY/i);
+    assert.match(singleContract, /place_order always uses cash/i);
+    assert.match(singleContract, /branch_name as exactly "none"/i);
+    assert.match(singleContract, /NEVER ask area\/branch\/town/i);
+    assert.doesNotMatch(singleContract, /Which area would you like/i);
   });
 
   it("branchless rewrite strips Johar/Iqbal priming and forbids post-success area ask", () => {
@@ -148,16 +149,15 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
       "11. After haan: call place_order ONCE immediately with branch_name \"none\". Do NOT ask Johar Town / Iqbal Town / area after haan.",
       "Turn 1: Hello",
     ].join("\n");
-    const fixed = rewriteStaleOrderSpeechRules(stale, 0);
-    assert.doesNotMatch(fixed, /Johar/i);
-    assert.doesNotMatch(fixed, /Iqbal/i);
+    const fixed = applyBranchOrdering(rewriteStaleOrderSpeechRules(stale, 0), []);
+    assert.doesNotMatch(fixed, /Which area would you like/i);
     assert.doesNotMatch(fixed, /city\/area\/branch or city\/area\/branch/i);
-    // No garbled deduplication artefacts
     assert.doesNotMatch(fixed, /area\/city\/area\/branch/i);
     assert.doesNotMatch(fixed, /any invented town/i);
-    assert.match(fixed, /AFTER HAAN — NO BRANCH ASK/i);
+    assert.match(fixed, /AFTER HAAN — CALL IMMEDIATELY/i);
+    assert.match(fixed, /NO BRANCH CHOICE/i);
+    assert.match(fixed, /NEVER ask which branch, area, town, or city/i);
     assert.match(fixed, /After place_order: if success\/speak\/order_number is present/i);
-    assert.match(fixed, /Do NOT ask another question/i);
   });
 
   it("multi-branch rewrite keeps configured Johar/Iqbal area labels", () => {
@@ -189,12 +189,19 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
       itemAddons: [],
       branches: [],
     });
-    assert.match(knowledge, /NO branches/i);
-    assert.match(knowledge, /Never ask which city, which area, which branch/i);
-    assert.match(knowledge, /CASH ONLY/i);
-    assert.match(knowledge, /Payment delivery ke waqt cash mein kar dena/);
-    assert.match(knowledge, /Pickup par payment cash mein hogi/);
+    assert.match(knowledge, /## Branch ordering/i);
+    assert.match(knowledge, /NO BRANCH CHOICE/i);
+    assert.match(knowledge, /NEVER ask which branch, area, town, or city/i);
     assert.doesNotMatch(knowledge, /Which area would you like/i);
+    assert.match(knowledge, /CASH ONLY/i);
+    assert.match(knowledge, /payment delivery ke waqt cash mein kar dena/i);
+    assert.match(knowledge, /pickup par payment cash mein hogi/i);
+    assert.match(knowledge, /Fulfillment: softly ask "Kya yeh order delivery ke liye hai ya pickup\?"/);
+    assert.match(knowledge, /softly ask street address/i);
+    assert.match(knowledge, /Pass branch_name none for both/);
+    assert.match(knowledge, /FORBIDDEN: Johar\/Iqbal\/kaunsa area/);
+    assert.match(knowledge, /TRACK ORDER: ask only the order number/i);
+    assert.match(knowledge, /TABLE: collect name/i);
   });
 
   it("knowledge with multiple branches asks pickup area from config only", () => {
@@ -243,17 +250,18 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
       itemAddons: [],
       branches: [],
     });
-    assert.match(knowledge, /EXACT DISH FIRST/i);
-    assert.match(knowledge, /TYPE-ALONE \/ SINGLE-ITEM/i);
+    assert.match(knowledge, /EXACT DISH/i);
     assert.match(
       knowledge,
       /SUBCATEGORY PHONE SCRIPT for "Burger" \(1 item — offer then ask; do NOT auto-add\): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hai\. Kya aap Chicken Burger order karna chahenge\?/i,
     );
-    assert.match(knowledge, /never re-ask the same dish/i);
-    assert.match(knowledge, /Kya aap \[Item\] order karna chahenge\?/i);
-    assert.match(knowledge, /NO branches/i);
+    assert.match(knowledge, /## Branch ordering/i);
+    assert.match(knowledge, /NO BRANCH CHOICE/i);
+    assert.match(knowledge, /NEVER ask which branch, area, town, or city/i);
+    assert.doesNotMatch(knowledge, /Which area would you like/i);
     assert.match(knowledge, /speak NOTHING/i);
-    assert.match(knowledge, /Delivery with no branches: street address only/i);
+    assert.match(knowledge, /softly ask street address/i);
+    assert.match(knowledge, /Pass branch_name none for both/i);
   });
 });
 
@@ -388,21 +396,21 @@ describe("branch bug regression: branchless Pizza Go order scenarios", () => {
     assert.equal(d.shouldAskCaller, undefined);
   });
 
-  it("T4: branchless prompt rewrite — 'Johar Town / Iqbal Town' replaced cleanly (no garbled text)", () => {
+  it("T4: branchless prompt rewrite — never asks Johar/Iqbal; absolute NO-BRANCH block injected", () => {
     const stale = [
       "## Branch ordering",
       "This restaurant has NO branches and NO areas list.",
-      "NEVER ask Johar Town / Iqbal Town after haan.",
+      'Ask: "Which area would you like: Johar Town or Iqbal Town?"',
       "Turn 1: Hello",
     ].join("\n");
-    const fixed = rewriteStaleOrderSpeechRules(stale, 0);
-    assert.doesNotMatch(fixed, /Johar/i);
-    assert.doesNotMatch(fixed, /Iqbal/i);
-    // No double separators or garbled intermediate text
+    const fixed = applyBranchOrdering(rewriteStaleOrderSpeechRules(stale, 0), []);
+    assert.doesNotMatch(fixed, /Which area would you like/i);
     assert.doesNotMatch(fixed, /any invented town/i);
     assert.doesNotMatch(fixed, /area\/city\/area\/branch/i);
     assert.doesNotMatch(fixed, /city\/area\/branch or city\/area\/branch/i);
-    assert.match(fixed, /AFTER HAAN — NO BRANCH ASK/i);
+    assert.match(fixed, /AFTER HAAN — CALL IMMEDIATELY/i);
+    assert.match(fixed, /NO BRANCH CHOICE/i);
+    assert.match(fixed, /FORBIDDEN spoken words\/areas/i);
   });
 
   it("T5: multi-branch restaurant — branch selection still works; Johar/Iqbal labels preserved", () => {
@@ -425,6 +433,102 @@ describe("branch bug regression: branchless Pizza Go order scenarios", () => {
     assert.match(fixed, /Johar Town/);
     assert.match(fixed, /Iqbal Town/);
     assert.doesNotMatch(fixed, /AFTER HAAN — NO BRANCH ASK/i);
+  });
+});
+
+describe("Step 6: single-location vs multi-branch prompt generation & order handling", () => {
+  it("generates prompt for single-location restaurant that NEVER asks which area/branch", () => {
+    // 0 branches (standalone restaurant)
+    const knowledge0 = buildRestaurantVoiceKnowledge({
+      restaurantName: "Pizza Go",
+      currency: "PKR",
+      preferUrduPrices: true,
+      settings: { currency: "PKR", tax_rate: 8.5 },
+      categories: [{ id: "c1", name: "Fast Food", is_active: true }],
+      subCategories: [{ id: "s1", name: "Burger", category_id: "c1", is_active: true }],
+      items: [{ id: "i1", name: "Chicken Burger", category_id: "c1", sub_category_id: "s1", price: 500, is_available: true }],
+      branches: [],
+    });
+    const prompt0 = defaultSynthflowPrompt("Pizza Go", knowledge0, "PKR", "ur", "female", { branchCount: 0 });
+    const full0 = appendPlaceOrderToolContract(prompt0, "ur", { branchCount: 0 });
+
+    assert.match(full0, /NO BRANCH CHOICE/i);
+    assert.match(full0, /NEVER ask which branch, area, town, or city/i);
+    assert.doesNotMatch(full0, /Which area would you like/i);
+
+    // 1 branch (single-location restaurant with 1 child branch record)
+    const knowledge1 = buildRestaurantVoiceKnowledge({
+      restaurantName: "Pizza Go",
+      currency: "PKR",
+      preferUrduPrices: true,
+      settings: { currency: "PKR", tax_rate: 8.5 },
+      categories: [{ id: "c1", name: "Fast Food", is_active: true }],
+      subCategories: [{ id: "s1", name: "Burger", category_id: "c1", is_active: true }],
+      items: [{ id: "i1", name: "Chicken Burger", category_id: "c1", sub_category_id: "s1", price: 500, is_available: true }],
+      branches: [single],
+    });
+    const prompt1 = defaultSynthflowPrompt("Pizza Go", knowledge1, "PKR", "ur", "female", { branchCount: 1 });
+    const full1 = appendPlaceOrderToolContract(prompt1, "ur", { branchCount: 1 });
+
+    assert.match(full1, /NO BRANCH CHOICE/i);
+    assert.doesNotMatch(full1, /Which area would you like/i);
+  });
+
+  it("generates prompt for multi-branch restaurant with branch section present", () => {
+    const knowledgeMulti = buildRestaurantVoiceKnowledge({
+      restaurantName: "Royal Restaurant",
+      currency: "PKR",
+      preferUrduPrices: true,
+      settings: { currency: "PKR", tax_rate: 8.5 },
+      categories: [{ id: "c1", name: "Fast Food", is_active: true }],
+      items: [{ id: "i1", name: "Chicken Burger", category_id: "c1", price: 500, is_available: true }],
+      branches: [johar, iqbal],
+    });
+    const promptMulti = defaultSynthflowPrompt("Royal Restaurant", knowledgeMulti, "PKR", "ur", "female", { branches: [johar, iqbal] });
+    const fullMulti = appendPlaceOrderToolContract(promptMulti, "ur", { branches: [johar, iqbal] });
+
+    assert.match(fullMulti, /## Branch ordering\b/i);
+    assert.match(fullMulti, /Johar Town/i);
+    assert.match(fullMulti, /Iqbal Town/i);
+    assert.match(fullMulti, /branch_name/i);
+  });
+
+  it("backend handler accepts a place_order call with no branch_name and defaults branch cleanly", () => {
+    // Single branch restaurant: with no branch_name, empty string, or "none", assigns the only branch
+    const dSingleNoBranch = resolveVoiceBranchSelection({
+      branches: [single],
+      fulfillment_type: "pickup",
+      branch_name: null,
+    });
+    assert.equal(dSingleNoBranch.ok, true);
+    assert.equal(dSingleNoBranch.chosenBranch?.id, "b3");
+    assert.equal(dSingleNoBranch.skipAsk, true);
+
+    const dSingleEmptyBranch = resolveVoiceBranchSelection({
+      branches: [single],
+      fulfillment_type: "pickup",
+      branch_name: "",
+    });
+    assert.equal(dSingleEmptyBranch.ok, true);
+    assert.equal(dSingleEmptyBranch.chosenBranch?.id, "b3");
+
+    const dSingleNoneBranch = resolveVoiceBranchSelection({
+      branches: [single],
+      fulfillment_type: "pickup",
+      branch_name: "none",
+    });
+    assert.equal(dSingleNoneBranch.ok, true);
+    assert.equal(dSingleNoneBranch.chosenBranch?.id, "b3");
+
+    // 0 branches restaurant: with no branch_name, resolves with chosenBranch: null and skipAsk: true
+    const dZeroBranch = resolveVoiceBranchSelection({
+      branches: [],
+      fulfillment_type: "pickup",
+      branch_name: null,
+    });
+    assert.equal(dZeroBranch.ok, true);
+    assert.equal(dZeroBranch.chosenBranch, null);
+    assert.equal(dZeroBranch.skipAsk, true);
   });
 });
 

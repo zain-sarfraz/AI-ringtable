@@ -100,7 +100,7 @@ export async function aiReserveTable(req, res) {
       return res.status(200).json({
         success: false,
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask the booking time once (example 7 PM). Do not switch languages.",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language, softly and politely. Ask the booking time once (example 7 PM). Do not ask area/branch unless ## Branch ordering lists areas. Do not switch languages.",
       });
     }
 
@@ -121,7 +121,7 @@ export async function aiReserveTable(req, res) {
         success: false,
         available: false,
         message:
-          `CRITICAL: Reply ONLY in the caller's LOCKED language. No table is free at ${isoTime} on ${isoDate}. Ask for a different time once. Do not switch languages.`,
+          `CRITICAL: Reply ONLY in the caller's LOCKED language, softly and politely (apologize first). No table is free at ${isoTime} on ${isoDate}. Gently ask for a different time once. Do not sound rude. Do not ask area/branch unless ## Branch ordering lists areas. Do not switch languages.`,
       });
     }
 
@@ -165,10 +165,10 @@ export async function aiReserveTable(req, res) {
     console.log(`✅ Reservation created: id=${reservation.id} table=${availableTable.table_number}`);
 
     const confirmMsg =
-      `CRITICAL: Reply ONLY in the caller's LOCKED language — do not switch. ` +
-      `If English locked: Your table is reserved for ${pSize} guest(s) on ${isoDate} at ${isoTime}. Thank you! ` +
-      `If Roman locked: ${pSize} logon ke liye ${isoDate} ko ${isoTime} baje table reserve ho chuki hai. Shukriya! ` +
-      `Never say order number or bill.`;
+      `CRITICAL: Reply ONLY in the caller's LOCKED language — soft, warm, polite human tone — do not switch. ` +
+      `If English locked: Your table is reserved for ${pSize} guest(s) on ${isoDate} at ${isoTime}. Thank you so much! ` +
+      `If Roman locked: Ji, ${pSize} logon ke liye ${isoDate} ko ${isoTime} baje table mehfooz ho chuki hai. Bohot shukriya! ` +
+      `Never say order number or bill. Never ask area after success.`;
 
     return res.json({
       success: true,

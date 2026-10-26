@@ -322,16 +322,25 @@ export async function resolveRestaurantIdForVoiceTools(knex, b) {
     b.destination_phone ||
     null;
   const byDialed = await findRestaurantByDialedNumber(knex, dialed);
-  if (byDialed) return { id: byDialed.id };
 
   if (b.synthflow_agent_id) {
-    const row = await knex("restaurants")
-      .where({ synthflow_agent_id: String(b.synthflow_agent_id) })
-      .orderBy("updated_at", "desc")
-      .select("id")
-      .first();
-    if (row) return { id: row.id };
+    const matching = await knex("restaurants")
+      .where({ synthflow_agent_id: String(b.synthflow_agent_id), is_active: true })
+      .select("id", "name");
+    if (matching.length === 1) {
+      // If dialed number didn't match, or dialed number matched a restaurant that has no synthflow agent configured,
+      // the dedicated owner of this agent takes priority.
+      if (!byDialed || byDialed.id === matching[0].id) {
+        return { id: matching[0].id };
+      }
+      const dialedRow = await knex("restaurants").where({ id: byDialed.id }).select("synthflow_agent_id").first();
+      if (!dialedRow?.synthflow_agent_id) {
+        return { id: matching[0].id };
+      }
+    }
   }
+
+  if (byDialed) return { id: byDialed.id };
 
   if (b.elevenlabs_agent_id) {
     const rows = await knex("restaurants")

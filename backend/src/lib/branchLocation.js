@@ -65,29 +65,19 @@ export function branchQuestionPlan(branches) {
 
 export function branchOrderingSection(branches) {
   const plan = branchQuestionPlan(branches);
-  if (!plan.rows.length) {
+  // 0 or 1 location = single restaurant. NEVER ask branch/area/city on the call.
+  if (plan.rows.length <= 1) {
     return [
       "## Branch ordering",
-      "This restaurant has NO branches and NO areas list.",
-      "ABSOLUTE: Never ask which city, which area, which branch, or which location.",
-      "Never invent an area name, \"branch 2\", \"Main Branch\", or any city. Never say \"just tell me the area\".",
-      "After delivery vs pickup: if delivery, ask only for the street address; if pickup, skip address and continue to email/phone.",
-      "Always pass branch_name as exactly none to place_order and reserve_table.",
-    ].join("\n");
-  }
-
-  if (plan.rows.length === 1) {
-    const only = plan.rows[0];
-    return [
-      "## Branch ordering",
-      "This section overrides any older line about when to ask for a branch or area.",
-      "Use this for DELIVERY orders, PICKUP orders, and TABLE RESERVATIONS.",
-      "Do not ask this when the caller only wants to track an order.",
-      `There is one active location: ${only.area}${only.city ? `, ${only.city}` : ""}.`,
-      "Do not ask for a city, an area, or which branch.",
-      `Pass branch_name as "${only.name}".`,
-      "DELIVERY: still collect the street address (server keeps this single branch).",
-      "PICKUP: do not ask for a street address.",
+      "ABSOLUTE — THIS RESTAURANT HAS NO BRANCH CHOICE (0 or 1 location only).",
+      "NEVER ask which branch, area, town, or city — for delivery, pickup, table reservation, OR order tracking.",
+      "FORBIDDEN spoken words/areas (ZERO EXCEPTIONS): Johar Town, Jhajhar Town, Iqbal Town, DHA, Gulberg, Model Town, Kashmir Road, or ANY area/town name.",
+      "NEVER say: \"kaunsa area\", \"which area\", \"which branch\", \"Johar ya Iqbal\", \"Jhajhar town ya Iqbal town\".",
+      "DELIVERY: ask only the complete street address (softly). Accept on first try. Pass branch_name as exactly none. NEVER ask city/area/branch after the address.",
+      "PICKUP: after delivery-vs-pickup, go straight to phone — do NOT ask area/branch. Pass branch_name as exactly none.",
+      "TABLE: collect name → guests → date → time → phone (ONE soft question per turn). Do NOT ask area/branch. Pass branch_name as exactly none on reserve_table.",
+      "TRACK ORDER: ask only the order number, then call get_order_status. NEVER ask area/branch/phone for tracking.",
+      "After customer says haan/yes to confirm: speak NOTHING — call place_order / reserve_table immediately with branch_name none. NEVER ask area after haan.",
     ].join("\n");
   }
 

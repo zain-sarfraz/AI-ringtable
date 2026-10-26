@@ -156,7 +156,7 @@ export async function aiOrderStatus(req, res) {
         found: false,
         order_number_required: true,
         message:
-          "Respond ONLY in the caller's LOCKED language: Ask for their order number first (example ORD-261013-03). Do NOT tell any kitchen/status guess. STOP and WAIT for the number, then call get_order_status again.",
+          "Respond ONLY in the caller's LOCKED language, softly and politely: Ask for their order number first (Urdu: \"Aapka order number bata dijiye?\" | EN: \"May I have your order number please?\"). Example ORD-261013-03. Do NOT tell any kitchen/status guess. Do NOT ask area/branch. STOP and WAIT for the number, then call get_order_status again.",
       });
     }
 
@@ -174,9 +174,9 @@ export async function aiOrderStatus(req, res) {
         found: false,
         tried: expandOrderNumberCandidates(code),
         message:
-          `Respond ONLY in the caller's LOCKED language: I could not find that order number. ` +
-          `Please say the full number slowly once more, like O R D, then the date digits, then the last two digits. ` +
-          `Ask only ONE more time. Do not keep looping.`,
+          `Respond ONLY in the caller's LOCKED language, softly and politely: I could not find that order number. ` +
+          `Gently ask them to say the full number slowly once more, like O R D, then the date digits, then the last two digits. ` +
+          `Ask only ONE more time. Do not sound rude. Do not ask area/branch. Do not keep looping.`,
       });
     }
 

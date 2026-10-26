@@ -572,6 +572,11 @@ export function resolveVoiceBranchSelection({
     return { ok: true, chosenBranch: null, skipAsk: true };
   }
 
+  // Single-location restaurant (exactly 1 branch) → always default to the only branch without asking.
+  if (list.length === 1) {
+    return { ok: true, chosenBranch: list[0], skipAsk: true };
+  }
+
   const spokenCandidates = [rawBranch, area, branch, branch_area, delivery_notes]
     .map((v) => String(v || "").trim())
     .filter(

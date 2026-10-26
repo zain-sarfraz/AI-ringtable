@@ -15,6 +15,7 @@ import {
   defaultSynthflowGreeting,
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
+  loadActiveChildBranches,
   isMaleVoice,
 } from "../lib/restaurantVoiceContext.js";
 import { PromptMergeError, resolveSynthflowPromptUpdate } from "../lib/promptMerge.js";
@@ -160,6 +161,60 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
   if (identity.synthflowAgentId) lookup.synthflow_agent_id = identity.synthflowAgentId;
   if (identity.phone) lookup.twilio_to = identity.phone;
 
+  const knex = getKnex();
+  const childBranches = restaurantId ? await loadActiveChildBranches(knex, restaurantId) : [];
+  const isMultiBranch = childBranches.length >= 2;
+  const singleBranchName = childBranches[0]?.name || "none";
+
+  const placeOrderVars = [
+    duringCallVar("customer_name", "Customer full name", "Ali Ahmed"),
+    duringCallVar(
+      "customer_phone",
+      'Contact phone. If caller says same/this/calling/dial/yahi/yehi/isi number, pass exactly "same" (never invent digits). Real digits only when they speak a new number.',
+      "same",
+    ),
+    duringCallVar("delivery_address", "Delivery address, or Pickup", "House 12, G-9, Islamabad"),
+    duringCallVar(
+      "order_items",
+      "Items with quantity, size, and flavor. Default quantity is 1 (e.g. 1 Chicken Burger). In Hindi/Urdu, '20' or 'bees' near burger/beef is STT error for 'Beef', NEVER pass quantity 20 unless caller explicitly ordered twenty.",
+      "1 Large Classic Pizza Chicken Fajita",
+    ),
+    duringCallVar("fulfillment_type", "delivery or pickup", "delivery"),
+    duringCallVar("customer_email", "Email or none", "none"),
+    duringCallVar("coupon_code", "Coupon code or none", "none"),
+  ];
+  if (isMultiBranch) {
+    placeOrderVars.push(
+      duringCallVar(
+        "branch_name",
+        'Pass the area or exact branch from ## Branch ordering.',
+        "none",
+      ),
+    );
+  }
+
+  const reserveVars = [
+    duringCallVar("customer_name", "Guest full name", "Ali Ahmed"),
+    duringCallVar(
+      "customer_phone",
+      'Guest phone. If they say same/this/calling/dial/yahi number, pass exactly "same".',
+      "same",
+    ),
+    duringCallVar("party_size", "Number of guests", "5"),
+    duringCallVar("reservation_date", "Date as YYYY-MM-DD or today/tomorrow", "today"),
+    duringCallVar("reservation_time", "Latest booking time as HH:MM 24-hour", "19:00"),
+    duringCallVar("slot_duration_hours", "Always 1", "1"),
+  ];
+  if (isMultiBranch) {
+    reserveVars.push(
+      duringCallVar(
+        "branch_name",
+        "Exact branch/area from Branch ordering, or none when there are no branches",
+        "none",
+      ),
+    );
+  }
+
   const specs = [
     {
       key: "place_order",
@@ -168,36 +223,16 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         url: placeUrl,
         run_action_before_call_start: false,
         name: "place_order",
-        description:
-          "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name EXACTLY from ## Branch ordering — if that section says NO branches, pass branch_name as none and NEVER ask city/area/town. After haan: call this tool immediately with no spoken filler. AFTER THE TOOL RETURNS: if success/speak/order_number is present, READ \"speak\" EXACTLY once in Roman Urdu — order IS saved. FORBIDDEN after this tool (success OR error): asking city, area, branch, or inventing any town name. If branch_required:true AND ## Branch ordering lists areas, READ speak once then retry with that exact listed area. If branch_required but ## Branch ordering says NO branches: silently retry once with branch_name none — do NOT ask the caller. If phone_required: READ \"speak\" (ask digits) then retry once. NEVER invent order digits. NEVER say daraj/darj.",
+        description: isMultiBranch
+          ? "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. Pass branch_name EXACTLY from ## Branch ordering. After haan: call this tool immediately with no spoken filler. AFTER THE TOOL RETURNS: if success/speak/order_number is present, READ \"speak\" EXACTLY once in Roman Urdu — order IS saved. FORBIDDEN after this tool: asking city, area, branch, or inventing any town name. If branch_required:true AND ## Branch ordering lists areas, READ speak once then retry with that exact listed area. If phone_required: READ \"speak\" (ask digits) then retry once. NEVER invent order digits. NEVER say daraj/darj."
+          : "FOOD ORDERS ONLY. Save caller's food order and return order number. FORBIDDEN until caller confirms the spoken summary. Default qty 1. After haan: call this tool immediately with no spoken filler. AFTER THE TOOL RETURNS: if success/speak/order_number is present, READ \"speak\" EXACTLY once in Roman Urdu — order IS saved. If phone_required: READ \"speak\" (ask digits) then retry once. NEVER invent order digits. NEVER say daraj/darj.",
         // Must be false — true lets the LLM invent area questions instead of reading "speak".
         agent_speak_naturally: false,
         // Fixed short filler — empty string lets the LLM invent long "please wait" loops
         speech_while_using_the_tool: "Ji.",
         failure_timeout: 25,
         headers: [{ key: "Content-Type", value: "application/json" }],
-        variables_during_the_call: [
-          duringCallVar("customer_name", "Customer full name", "Ali Ahmed"),
-          duringCallVar(
-            "customer_phone",
-            'Contact phone. If caller says same/this/calling/dial/yahi/yehi/isi number, pass exactly "same" (never invent digits). Real digits only when they speak a new number.',
-            "same",
-          ),
-          duringCallVar("delivery_address", "Delivery address, or Pickup", "House 12, G-9, Islamabad"),
-          duringCallVar(
-            "order_items",
-            "Items with quantity, size, and flavor. Default quantity is 1 (e.g. 1 Chicken Burger). In Hindi/Urdu, '20' or 'bees' near burger/beef is STT error for 'Beef', NEVER pass quantity 20 unless caller explicitly ordered twenty.",
-            "1 Large Classic Pizza Chicken Fajita",
-          ),
-          duringCallVar("fulfillment_type", "delivery or pickup", "delivery"),
-          duringCallVar("customer_email", "Email or none", "none"),
-          duringCallVar("coupon_code", "Coupon code or none", "none"),
-          duringCallVar(
-            "branch_name",
-            'Pass the area or exact branch from ## Branch ordering. If that section says NO branches, pass exactly "none". NEVER invent "branch 2", a city, or "Main Branch".',
-            "none",
-          ),
-        ],
+        variables_during_the_call: placeOrderVars,
         json_body_stringified: JSON.stringify({
           ...lookup,
           customer_name: "<customer_name>",
@@ -213,7 +248,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
           fulfillment_type: "<fulfillment_type>",
           customer_email: "<customer_email>",
           coupon_code: "<coupon_code>",
-          branch_name: "<branch_name>",
+          branch_name: isMultiBranch ? "<branch_name>" : singleBranchName,
           payment_method: "cash",
           source: "phone",
         }),
@@ -227,7 +262,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "get_order_status",
         description:
-          "TRACK ORDER ONLY after the caller spoke an order number in ANY language. REQUIRED: ask order number first in the LOCKED language, wait, then call with ORD-YYMMDD-NN. NEVER call with empty order_number. NEVER invent status from phone alone. Speak the result ONLY in the caller's LOCKED language — zero words in any other language.",
+          "TRACK ORDER ONLY after the caller spoke an order number in ANY language. REQUIRED: ask order number first softly in the LOCKED language (Urdu: \"Aapka order number bata dijiye?\"), wait, then call with ORD-YYMMDD-NN. NEVER call with empty order_number. NEVER invent status from phone alone. NEVER ask city/area/branch for tracking. Speak the result ONLY in the caller's LOCKED language — soft and polite, zero words in any other language.",
         speech_while_using_the_tool: "Ji.",
         failure_timeout: 15,
         headers: [{ key: "Content-Type", value: "application/json" }],
@@ -254,27 +289,11 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "reserve_table",
         description:
-          "TABLE RESERVATIONS ONLY. Call this tool ONLY AFTER you have collected all reservation details (name, party size, date, time, phone) AND the caller has confirmed the summary! FORBIDDEN to call at the beginning when caller first asks for a table. Collect each detail in caller's LOCKED language, confirm, and ONLY THEN call this tool once.",
+          "TABLE RESERVATIONS ONLY. Call this tool ONLY AFTER you have collected all reservation details (name, party size, date, time, phone) AND the caller has confirmed the summary! FORBIDDEN to call at the beginning when caller first asks for a table. Collect each detail softly one-by-one in caller's LOCKED language, confirm, and ONLY THEN call this tool once. If ## Branch ordering says NO BRANCH CHOICE: NEVER ask area/branch; pass branch_name none. If multiple branches: ask ONLY listed areas, then pass that branch_name. Never invent Johar/Iqbal or other towns.",
         speech_while_using_the_tool: "Ji.",
         failure_timeout: 20,
         headers: [{ key: "Content-Type", value: "application/json" }],
-        variables_during_the_call: [
-          duringCallVar("customer_name", "Guest full name", "Ali Ahmed"),
-          duringCallVar(
-            "customer_phone",
-            'Guest phone. If they say same/this/calling/dial/yahi number, pass exactly "same".',
-            "same",
-          ),
-          duringCallVar("party_size", "Number of guests", "5"),
-          duringCallVar("reservation_date", "Date as YYYY-MM-DD or today/tomorrow", "today"),
-          duringCallVar("reservation_time", "Latest booking time as HH:MM 24-hour", "19:00"),
-          duringCallVar("slot_duration_hours", "Always 1", "1"),
-          duringCallVar(
-            "branch_name",
-            "Exact branch/area from Branch ordering, or none when there are no branches",
-            "none",
-          ),
-        ],
+        variables_during_the_call: reserveVars,
         json_body_stringified: JSON.stringify({
           ...lookup,
           customer_name: "<customer_name>",
@@ -284,7 +303,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
           reservation_date: "<reservation_date>",
           reservation_time: "<reservation_time>",
           slot_duration_hours: "<slot_duration_hours>",
-          branch_name: "<branch_name>",
+          branch_name: isMultiBranch ? "<branch_name>" : singleBranchName,
           source: "phone",
         }),
       },

@@ -1,4 +1,8 @@
-import { applyBranchOrdering, appendPlaceOrderToolContract } from "./restaurantVoiceContext.js";
+import {
+  applyBranchOrdering,
+  appendPlaceOrderToolContract,
+  SOFT_TONE_MANNER_BLOCK,
+} from "./restaurantVoiceContext.js";
 
 export class PromptMergeError extends Error {
   constructor(message, code = "PROMPT_MERGE_ERROR") {
@@ -25,6 +29,43 @@ export function promptHasMenuKnowledge(text) {
  */
 export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   let text = String(prompt || "");
+
+  // Soft manners: inject or refresh so live agents stop sounding rude/aggressive.
+  if (/TONE & MANNERS \(CRITICAL/i.test(text)) {
+    text = text.replace(
+      /={3,}\s*\nTONE & MANNERS[\s\S]*?\n={3,}/i,
+      SOFT_TONE_MANNER_BLOCK.trim(),
+    );
+  } else {
+    const afterMission = text.search(/\nPRIMARY MISSION:[\s\S]*?\n\n/);
+    if (afterMission !== -1) {
+      const end = text.indexOf("\n\n", afterMission + 1);
+      const insertAt = end !== -1 ? end + 2 : afterMission;
+      text = `${text.slice(0, insertAt)}${SOFT_TONE_MANNER_BLOCK.trim()}\n\n${text.slice(insertAt)}`;
+    } else {
+      text = `${SOFT_TONE_MANNER_BLOCK.trim()}\n\n${text}`;
+    }
+  }
+  text = text.replace(
+    /You are the (?:friendly|polite, calm, direct, and concise) (?:phone ordering assistant|AI phone ordering assistant) for /gi,
+    "You are the soft, warm, and polite phone ordering assistant for ",
+  );
+  text = text.replace(
+    /a calm, confident Pakistani voice/gi,
+    "a calm, gentle Pakistani voice",
+  );
+  text = text.replace(
+    /DO NOT DRAG(?: the order)?(?: —|:)/gi,
+    "Keep the order moving politely — never rush or sound impatient —",
+  );
+  text = text.replace(
+    /CONFIRM THE ORDER FAST \(DO NOT DRAG\)/gi,
+    "CONFIRM THE ORDER CALMLY (POLITE — NEVER RUSH)",
+  );
+  text = text.replace(
+    /"Maazrat, filhal sirf cash payment available hai\."/g,
+    '"Maazrat ji, is waqt sirf cash payment available hai."',
+  );
 
   text = text.replace(
     /Confirm FAST \(do not drag\): "Aapka order: \[qty\] \[item\], \[naam\], \[delivery \/ pickup\], teks shamil karke kul raqam \[English AFTER-TAX total e\.g\. five hundred forty [^\"]+\] hai\. Kya main yeh order confirm kar doon\?" Then WAIT — on haan call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
@@ -103,9 +144,13 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
    - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: auto-selecting the only item in a category without the caller's yes.`,
   );
 
+  const waitReplacement =
+    Number(branchCount) <= 1
+      ? "Then WAIT — on haan speak NOTHING; call place_order immediately. NEVER say daraj/darj/rupay."
+      : 'Then WAIT — on haan speak NOTHING; call place_order immediately with branch_name per the Branch ordering section (NO branches → "none"). NEVER invent city/area names after haan. NEVER say daraj/darj/rupay.';
   text = text.replace(
     /Then WAIT — on haan call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
-    'Then WAIT — on haan speak NOTHING; call place_order immediately with branch_name per the Branch ordering section (NO branches → "none"). NEVER invent city/area names after haan. NEVER say daraj/darj/rupay.',
+    waitReplacement,
   );
 
   // Never teach the agent a failure script — it gets spoken even when the order later succeeds.
@@ -128,73 +173,57 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     "5. Email: Pickup = NEVER mention email or raseed at all (do NOT say 'email nahi chahiye' — complete silence on email), customer_email=none.",
   );
 
-  if (Number(branchCount) === 0) {
-    // Branchless only: strip specific town names that leaked into a branchless restaurant prompt.
-    // Single-pass replacement avoids the "any invented town" intermediate garbage text problem.
-    // Never run this when the restaurant actually lists those areas under ## Branch ordering.
+  if (Number(branchCount) <= 1) {
+    // 1. Strip any multi-branch "## Branch ordering" (applyBranchOrdering re-injects the absolute NO-BRANCH block).
+    text = text.replace(
+      /## Branch ordering[^\n]*(?:\n(?!(?:#{1,6}\s|={3,}|-{3,}|\n|Turn\s+\d+:)).*)*/gi,
+      "",
+    );
 
-    // Collapse composite variants first, then standalone towns.
-    text = text.replace(/\bJohar\s+Town\s*\/\s*Iqbal\s+Town\b/gi, "city/area/branch");
-    text = text.replace(/\bJohar\s*\/\s*Iqbal\b/gi, "city/area/branch");
-    text = text.replace(/\bJohar\s+Town\b/gi, "city/area/branch");
-    text = text.replace(/\bIqbal\s+Town\b/gi, "city/area/branch");
-    // De-duplicate consecutive separators left by multi-replace.
-    text = text.replace(/city\/area\/branch\s+or\s+city\/area\/branch/gi, "city/area/branch");
-    text = text.replace(/city\/area\/branch\s*\/\s*city\/area\/branch/gi, "city/area/branch");
-    // Clean up garbled "area/city/area/branch" (from "area/Johar/Iqbal" → "area/city/area/branch").
-    text = text.replace(/\barea\/city\/area\/branch\b/gi, "city/area/branch");
-    // Remove trailing "/ area" after a replacement (e.g. "city/area/branch / area after" → "city/area/branch after").
-    text = text.replace(/city\/area\/branch\s*\/\s*area\b/gi, "city/area/branch");
+    // 2. Replace Rule 8 and Rule 11 cleanly — never ask area when there is no branch choice.
+    text = text.replace(
+      /8\. Branch ordering section overrides location questions[^\n]*/gi,
+      '8. Fulfillment: ask "Kya yeh order delivery ke liye hai ya pickup?"\n   - Delivery: ask street address, then phone number. NEVER ask area/branch. Pass branch_name none.\n   - Pickup: Do NOT ask address, area, or branch (FORBIDDEN: Johar/Iqbal/any town). Go straight to phone. Pass branch_name none.',
+    );
+    text = text.replace(
+      /11\. After (?:the caller says )?haan[^\n]*/gi,
+      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name none. NEVER ask area/branch/town after haan.',
+    );
 
+    // 3. Remove stale multi-branch ask lines (not the absolute NO-BRANCH forbid list — that is re-added next).
+    text = text.replace(/^[ \t]*(?:Ask|Which area|PICKUP and TABLE)[^\n]*(?:Johar|Iqbal|Which area|branch_name ")[^\n]*\r?\n?/gim, "");
+    text = text.replace(
+      /Then WAIT — on haan speak NOTHING; call place_order immediately[^\n]*?\. NEVER say daraj\/darj\/rupay\./gi,
+      "Then WAIT — on haan speak NOTHING; call place_order immediately. NEVER say daraj/darj/rupay.",
+    );
+    text = text.replace(/Which area would you like:[^\n]*/gi, "");
+    text = text.replace(/\bJohar\s+Town\s*\/\s*Iqbal\s+Town\b/gi, "");
+    text = text.replace(/\bJhajhar\s+Town\b/gi, "");
+    text = text.replace(/with branch_name per the Branch ordering section \(NO branches → "none"\)/gi, "");
+    text = text.replace(/\(NO branches → branch_name "none"\)/gi, "");
+    text = text.replace(/\(NO branches → branch_name none\)/gi, "");
+    text = text.replace(/- NEVER invent "branch 2" or a city\/area[^\n]*\n?/gi, "");
 
-    // Normalise stale branchless-specific phrase variants.
-    text = text.replace(
-      /No branches → never ask area\/city\/branch and NEVER say city\/area\/branch(?: or city\/area\/branch)?; branch_name = none\./gi,
-      "No branches → never ask area/city/branch; never invent town names; branch_name = none.",
-    );
-    text = text.replace(
-      /No branches → never ask area; branch_name = none\./gi,
-      "No branches → never ask area/city/branch; never invent town names; branch_name = none.",
-    );
-    text = text.replace(
-      /8\. Branch ordering section overrides location questions\. No branches → never ask area; branch_name = none\./g,
-      "8. Branch ordering section overrides location questions. No branches → never ask area/city/branch; never invent town names; branch_name = none.",
-    );
-    text = text.replace(
-      /8\. Branch ordering section overrides location questions\. No branches → never ask area\/city\/branch and NEVER say city\/area\/branch(?: or city\/area\/branch)?; branch_name = none\./g,
-      "8. Branch ordering section overrides location questions. No branches → never ask area/city/branch; never invent town names; branch_name = none.",
-    );
-    text = text.replace(
-      /11\. After the caller says haan, call place_order once immediately\. Do not speak a waiting line\./g,
-      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask city/area/branch after haan.',
-    );
-    // Consolidate all stale "Do NOT ask X after haan" variants into one canonical form.
-    text = text.replace(
-      /11\. After haan: (?:speak NOTHING — )?call place_order ONCE immediately with branch_name "none"\. Do NOT ask (?:[^.\n]+?) after haan\.(?:\s*Do not speak a waiting line\.)?/g,
-      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name "none". Do NOT ask city/area/branch after haan.',
-    );
     const guardBody = `
 =======================================================
-AFTER HAAN — NO BRANCH ASK (CRITICAL):
-- ## Branch ordering says this restaurant has NO branches and NO areas list.
-- After haan/yes: speak NOTHING — call place_order immediately with branch_name exactly "none".
-- FORBIDDEN (before or after haan, and AFTER place_order returns): asking city, area, branch, or inventing any town name.
-- After place_order: if success/speak/order_number is present, READ speak EXACTLY once — order IS saved. Do NOT ask another question. Do NOT call the tool again.
-- If a tool message says silently retry with branch_name "none": call place_order once more with "none" — do NOT ask the caller anything.
+AFTER HAAN — CALL IMMEDIATELY (CRITICAL):
+- After haan/yes: speak NOTHING — call place_order immediately with branch_name none.
+- NEVER ask city, area, branch, Johar Town, Iqbal Town, or "kaunsa area" after haan.
+- After place_order: if success/speak/order_number is present, READ "speak" EXACTLY once — order IS saved.
 =======================================================
 `;
-    if (!/AFTER HAAN — NO BRANCH ASK/i.test(text)) {
-      const turn1 = text.search(/\nTurn 1:/);
-      if (turn1 !== -1) {
-        text = `${text.slice(0, turn1)}\n${guardBody}${text.slice(turn1)}`;
-      } else {
-        text = `${text.trim()}\n${guardBody}`;
-      }
-    } else {
+    if (/AFTER HAAN — /i.test(text)) {
       text = text.replace(
-        /={3,}\s*\nAFTER HAAN — NO BRANCH ASK \(CRITICAL\):[\s\S]*?\n={3,}/i,
+        /={3,}\s*\nAFTER HAAN[\s\S]*?\n={3,}/i,
         guardBody.trim(),
       );
+    } else {
+      const turn1 = text.search(/\nTurn 1:/);
+      if (turn1 !== -1) {
+        text = `${text.slice(0, turn1)}\n${guardBody.trim()}\n${text.slice(turn1)}`;
+      } else {
+        text = `${text.trim()}\n\n${guardBody.trim()}`;
+      }
     }
   }
 
@@ -213,9 +242,9 @@ export function stripPlaceOrderToolContract(prompt) {
 }
 
 /** Always end with the current place_order contract (replace if present, else append). */
-export function ensurePlaceOrderToolContract(prompt, lang = "ur") {
+export function ensurePlaceOrderToolContract(prompt, lang = "ur", options = {}) {
   const stripped = stripPlaceOrderToolContract(prompt);
-  return appendPlaceOrderToolContract(stripped, lang);
+  return appendPlaceOrderToolContract(stripped, lang, options);
 }
 
 /**
@@ -363,7 +392,7 @@ export function resolveSynthflowPromptUpdate({
   const branchList = branches || [];
   merged = rewriteStaleOrderSpeechRules(merged, branchList.length);
   merged = applyBranchOrdering(merged, branchList);
-  merged = ensurePlaceOrderToolContract(merged, language);
+  merged = ensurePlaceOrderToolContract(merged, language, { branchCount: branchList.length });
 
   if (!String(merged || "").trim()) {
     throw new PromptMergeError("Merged agent prompt is empty after applying sections.", "EMPTY_PROMPT");
@@ -379,7 +408,7 @@ export function resolveSynthflowPromptUpdate({
         "LOST_PAYMENT_RULES",
       );
     }
-    if (/## Branch ordering\b/i.test(savedTrim) && !/## Branch ordering\b/i.test(merged)) {
+    if (branchList.length >= 2 && /## Branch ordering\b/i.test(savedTrim) && !/## Branch ordering\b/i.test(merged)) {
       throw new PromptMergeError(
         "Merged prompt lost ## Branch ordering. Update aborted.",
         "LOST_BRANCH_SECTION",

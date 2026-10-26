@@ -120,6 +120,19 @@ export async function aiPlaceOrder(req, res) {
       body.branch = null;
       body.area = null;
       body.branch_area = null;
+    } else if (childBranchCount === 1) {
+      const singleBranch = await knex("restaurants")
+        .where({
+          parent_restaurant_id: restaurantId,
+          is_branch: true,
+          is_active: true,
+          is_accepting_orders: true,
+        })
+        .first();
+      if (!spokenBranch || inventedBranch) {
+        spokenBranch = singleBranch?.name || "none";
+        body.branch_name = spokenBranch;
+      }
     } else if (inventedBranch && /^branch\s*\d+$/i.test(String(spokenBranch || "").trim())) {
       // Named "branch 2" is almost never a real DB branch name — clear so matcher can fall back.
       console.log(`🏬 Branch label looks invented: "${spokenBranch}" — clearing for matcher`);
