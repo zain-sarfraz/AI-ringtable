@@ -82,12 +82,13 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
         : savedGreeting;
     let prompt;
     try {
-      // Keep saved conversation rules; refresh menu/branch/place_order only.
+      // Keep saved conversation rules and branches; refresh menu data only.
       prompt = resolveSynthflowPromptUpdate({
         incoming: null,
         saved: r.agent_system_prompt,
         replaceFull: false,
         refreshKnowledge: true,
+        refreshBranches: false,
         knowledge,
         branches: catalog.branches,
         language: agentLanguage,

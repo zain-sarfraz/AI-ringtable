@@ -204,7 +204,9 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     text = text.replace(/Which area would you like:[^\n]*/gi, "");
     text = text.replace(/\bJohar\s+Town\s*\/\s*Iqbal\s+Town\b/gi, "");
     text = text.replace(/\bJhajhar\s+Town\b/gi, "");
-    text = text.replace(/with branch_name per the Branch ordering section \(NO branches → "none"\)/gi, "");
+    text = text.replace(/with branch_name per the Branch ordering section(\s*\(NO branches → "none"\))?/gi, "with branch_name none");
+    text = text.replace(/with branch_name per\s*$/gim, "with branch_name none");
+    text = text.replace(/with branch_name per\s+(?=NEVER|[.\n])/gi, "with branch_name none. ");
     text = text.replace(/\(NO branches → branch_name "none"\)/gi, "");
     text = text.replace(/\(NO branches → branch_name none\)/gi, "");
     text = text.replace(/- NEVER invent "branch 2" or a city\/area[^\n]*\n?/gi, "");
@@ -329,6 +331,7 @@ export function resolveSynthflowPromptUpdate({
   saved,
   replaceFull = false,
   refreshKnowledge = true,
+  refreshBranches = true,
   knowledge = "",
   branches = [],
   language = "ur",
@@ -385,8 +388,12 @@ export function resolveSynthflowPromptUpdate({
   }
 
   let merged = base;
-  const knowledgeTrim = String(knowledge || "").trim();
+  let knowledgeTrim = String(knowledge || "").trim();
   if (refreshKnowledge && knowledgeTrim) {
+    if (!refreshBranches && /## Branch ordering\b/i.test(knowledgeTrim)) {
+      // In existing prompts, keep existing branches intact: do not inject branch block via menu knowledge
+      knowledgeTrim = knowledgeTrim.replace(/\n## Branch ordering[\s\S]*?(?=\n## |\n={3,}|\n\n#|$)/gi, "");
+    }
     if (promptHasMenuKnowledge(merged)) {
       merged = replaceMenuKnowledgeBlock(merged, knowledgeTrim);
     } else {
@@ -395,8 +402,10 @@ export function resolveSynthflowPromptUpdate({
   }
 
   const branchList = branches || [];
-  merged = rewriteStaleOrderSpeechRules(merged, branchList.length);
-  merged = applyBranchOrdering(merged, branchList);
+  if (refreshBranches) {
+    merged = rewriteStaleOrderSpeechRules(merged, branchList.length);
+    merged = applyBranchOrdering(merged, branchList);
+  }
   merged = ensurePlaceOrderToolContract(merged, language, { branchCount: branchList.length });
 
   if (!String(merged || "").trim()) {

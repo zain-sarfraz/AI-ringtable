@@ -179,17 +179,13 @@ export async function aiReserveTable(req, res) {
     return res.json({
       success: true,
       available: true,
-      reservation_id: reservation.id,
-      table_number: availableTable.table_number,
-      table_capacity: availableTable.capacity,
-      reservation_date: isoDate,
-      reservation_time: isoTime,
-      party_size: pSize,
-      slot_duration_hours: duration,
       speak: speakUr,
       speak_en: speakEn,
       speak_ur: speakUr,
-      message: confirmMsg,
+      message: speakUr,
+      _reservation_id: reservation.id,
+      _table_number: availableTable.table_number,
+      _party_size: pSize,
     });
   } catch (e) {
     console.error("❌ Reserve Table Error:", e);
