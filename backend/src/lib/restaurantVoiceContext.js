@@ -323,17 +323,17 @@ export function paisaToRomanUrduDigits(cents) {
 }
 
 /**
- * Phone-safe order number speech. TTS / LLM often mangle "ORD-261021-15" into a wrong suffix
- * (e.g. saying 04). Force every digit aloud so the agent cannot invent another number.
- * Example: ORD-261021-15 → "O R D, do chhe ek sifar do ek, ek paanch"
+ * Phone-safe order number speech. Reads every digit in English so TTS stays consistent.
+ * Example: ORD-261026-02 → "O R D dash two six one zero two six dash zero two"
  */
 export function speakOrderNumberForPhone(orderNumber) {
+  const EN_DIGIT = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
   const raw = String(orderNumber || "").trim().toUpperCase();
   if (!raw) return "";
   const chunks = [];
   for (const ch of raw) {
     if (ch >= "0" && ch <= "9") {
-      chunks.push(URDU_DIGIT[Number(ch)] || ch);
+      chunks.push(EN_DIGIT[Number(ch)]);
     } else if (ch >= "A" && ch <= "Z") {
       chunks.push(ch);
     } else if (ch === "-") {
@@ -775,7 +775,7 @@ export function buildRestaurantVoiceKnowledge({
     lines.push("3. Collect customer name (accept ANY name on first try). Acknowledge with a natural \"Ji\" / \"Acha ji\" — do not repeat the same filler every turn.");
     lines.push("4. MANDATORY fulfillment ask (every new order) — ENGLISH words only: \"Kya yeh order delivery ke liye hai ya pickup?\" NEVER skip. NEVER say pate/bhejwa/khud aakar. Then follow Branch ordering ONLY: NO branches → never ask city/area/branch (never invent town names); pass branch_name none. Delivery with no branches: street address only. Pickup with no branches: skip address. Multiple → delivery: address only + branch_name none; pickup: ask ONLY areas printed under ## Branch ordering.");
     lines.push(
-      "5. Email: Pickup = NEVER ask email / raseed — jump to raabta number, customer_email=none. Delivery only: optional once \"Raseed ke liye apna email bata sakte hain?\"",
+      "5. Email: Pickup = NEVER mention email or raseed at all (do NOT say 'email nahi chahiye' — complete silence on email), customer_email=none. Delivery only: optional once \"Raseed ke liye apna email bata sakte hain?\"",
     );
     lines.push(
       "6. Phone: \"Aapka raabta number bata dijiye?\" If they say yahi/yehi/yhi/isi/same/this number → say \"Theek hai ji\" ONCE, NEVER ask phone again, pass customer_phone as \"same\".",
@@ -891,7 +891,7 @@ PHONE — "YAHI NUMBER" (CRITICAL):
 LANGUAGE LOCK — PAKISTANI ROMAN URDU ONLY:
 - From Turn 1 to the end: 100% Conversational Roman Urdu (Lahore everyday speech). ZERO English sentences.
 - WHY Roman (not Nastaliq اردو): this phone pipeline's ASR/TTS is tuned for Roman Urdu + South-Asian speech — Nastaliq often mispronounces on the live voice path. Keep Roman spellings that sound correct when spoken aloud.
-- FORBIDDEN spoken words/phrases: "Phone number", "Anything else", "Order place kar dun", "Okay", "Sure", "Hello", "Hi I am calling", "email", "daraj", "darj", "pate par bhejwa", "khud aakar lenge".
+- FORBIDDEN spoken words/phrases: "Phone number", "Anything else", "Order place kar dun", "Okay", "Sure", "Hello", "Hi I am calling", "email", "daraj", "darj", "pate par bhejwa", "khud aakar lenge", "email nahi chahiye", "raseed", "receipt".
 - Fulfillment MUST be asked on EVERY new order (never skip) using ENGLISH words: "Kya yeh order delivery ke liye hai ya pickup?"
 - Name: "Aapka naam bata dijiye?" (accept ANY name on first try — even one word).
 - Phone: ask once only — "Aapka raabta number bata dijiye?"
@@ -905,9 +905,10 @@ LANGUAGE LOCK — PAKISTANI ROMAN URDU ONLY:
 =======================================================
 EMAIL (CRITICAL — ZERO EXCEPTIONS):
 - If fulfillment is pickup / self-collect:
-  * NEVER ask for email. NEVER say the word "email". NEVER say "raseed".
-  * Immediately ask raabta number next. Pass customer_email as exactly "none" to place_order.
-  * FORBIDDEN after pickup: "Raseed ke liye email?", "Email bata dein?", "Koi email?"
+  * NEVER ask for email. NEVER say the word "email", "raseed", or "receipt".
+  * NEVER say "Raseed ke liye email nahi chahiye", "email nahi chahiye", or explain that email is not needed. Say NOTHING at all about email or receipts (complete silence).
+  * Continue immediately to the next step. Pass customer_email as exactly "none" to place_order.
+  * FORBIDDEN after pickup: any mention of email or receipt whatsoever.
 - Delivery only: optional once — "Raseed ke liye apna email bata sakte hain?" If nahi/skip → "Theek hai ji" and continue.
 =======================================================
 ${

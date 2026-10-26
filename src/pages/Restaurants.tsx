@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
@@ -218,7 +218,7 @@ export default function Restaurants() {
     return j.url;
   }
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const token = getToken();
@@ -227,20 +227,22 @@ export default function Restaurants() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!resp.ok) {
-        const j = await resp.json().catch(() => ({}));
+        const j = (await resp.json().catch(() => ({}))) as { error?: string };
         toast({ variant: "destructive", title: "Failed to load", description: j.error || resp.statusText });
         return;
       }
-      const j = await resp.json();
-      setList((j.restaurants || []) as Restaurant[]);
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "Failed to load", description: e.message });
+      const j = (await resp.json()) as { restaurants?: Restaurant[] };
+      setList(j.restaurants || []);
+    } catch (e: unknown) {
+      toast({ variant: "destructive", title: "Failed to load", description: e instanceof Error ? e.message : String(e) });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   if (role !== "super_admin") {
     return (
@@ -337,10 +339,11 @@ export default function Restaurants() {
           body: { restaurant_id: restaurantId },
         });
         if (agentErr) throw new Error(`Agent: ${agentErr.message}`);
-        if (agentRes && (agentRes as any).success === false) {
-          throw new Error(`Agent: ${(agentRes as any).error}`);
+        const aRes = agentRes as { success?: boolean; error?: string; warning?: string } | null;
+        if (aRes && aRes.success === false) {
+          throw new Error(`Agent: ${aRes.error || "failed"}`);
         }
-        const w = (agentRes as { warning?: string } | null)?.warning;
+        const w = aRes?.warning;
         if (w) note = w;
       }
       if (form.auto_attach_twilio && form.twilio_phone_number?.trim()) {
@@ -348,8 +351,9 @@ export default function Restaurants() {
           body: { restaurant_id: restaurantId },
         });
         if (twErr) throw new Error(`Twilio: ${twErr.message}`);
-        if (twRes && (twRes as any).success === false) {
-          throw new Error(`Twilio: ${(twRes as any).error}`);
+        const tRes = twRes as { success?: boolean; error?: string } | null;
+        if (tRes && tRes.success === false) {
+          throw new Error(`Twilio: ${tRes.error || "failed"}`);
         }
       }
       return note;
@@ -397,7 +401,7 @@ export default function Restaurants() {
           ...telephonyPayload,
         }).select().single();
         if (error) throw error;
-        const restaurantId = (data as any).id as string;
+        const restaurantId = (data as { id: string }).id;
         createdRestaurantId = restaurantId;
         await syncRestaurantCuisines(restaurantId, cuisineNames);
 
@@ -418,7 +422,8 @@ export default function Restaurants() {
           },
         });
         if (userErr) throw userErr;
-        if ((userRes as any)?.error) throw new Error((userRes as any).error);
+        const uRes = userRes as { error?: string } | null;
+        if (uRes?.error) throw new Error(uRes.error);
 
         createdRestaurantId = null;
 
@@ -437,14 +442,14 @@ export default function Restaurants() {
         });
         closeDialog();
         load();
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (createdRestaurantId) {
           const { error: delErr } = await supabase.from("restaurants").delete().eq("id", createdRestaurantId);
           if (delErr) {
             console.error("Rollback: failed to delete partial restaurant", createdRestaurantId, delErr);
           }
         }
-        const errMsg = e?.message ?? String(e);
+        const errMsg = e instanceof Error ? e.message : String(e);
         const description = errMsg.includes("restaurants_slug_key")
           ? `A restaurant with the slug "${slug}" already exists. Please customize the slug.`
           : errMsg;
@@ -527,7 +532,8 @@ export default function Restaurants() {
           body: ownerBody,
         });
         if (userErr) throw userErr;
-        if ((userRes as any)?.error) throw new Error((userRes as any).error);
+        const editUserRes = userRes as { error?: string } | null;
+        if (editUserRes?.error) throw new Error(editUserRes.error);
 
         let setupNote = "";
         try {
@@ -542,8 +548,8 @@ export default function Restaurants() {
         });
         closeDialog();
         load();
-      } catch (e: any) {
-        const errMsg = e?.message ?? String(e);
+      } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e);
         const description = errMsg.includes("restaurants_slug_key")
           ? `Another restaurant is already using the slug "${slug}". Please choose a different slug.`
           : errMsg;
@@ -562,7 +568,7 @@ export default function Restaurants() {
   const removeRestaurant = async (r: Restaurant) => {
     if (!confirm(`Delete "${r.name}"? This cannot be undone and will remove all associated data.`)) return;
     const { error } = await supabase.from("restaurants").delete().eq("id", r.id);
-    if (error) return toast({ variant: "destructive", title: "Delete failed", description: (error as any).message });
+    if (error) return toast({ variant: "destructive", title: "Delete failed", description: error.message });
     toast({ title: "Restaurant deleted" });
     load();
   };

@@ -118,6 +118,16 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     'If phone_required: READ speak once, take digits, retry place_order ONCE — NEVER say order failed. If success/speak present, READ speak EXACTLY.',
   );
 
+  // Forbid agent from explaining that email is not needed on pickup
+  text = text.replace(
+    /\*\s*FORBIDDEN after pickup:\s*"Raseed ke liye email\?",\s*"Email bata dein\?",\s*"Koi email\?"/g,
+    '* NEVER say "Raseed ke liye email nahi chahiye", "email nahi chahiye", or explain that email is not needed. Say NOTHING at all about email or receipts (complete silence).\n  * FORBIDDEN after pickup: any mention of email or receipt whatsoever.',
+  );
+  text = text.replace(
+    /5\. Email: Pickup = NEVER ask email \/ raseed — jump to raabta number, customer_email=none\./g,
+    "5. Email: Pickup = NEVER mention email or raseed at all (do NOT say 'email nahi chahiye' — complete silence on email), customer_email=none.",
+  );
+
   if (Number(branchCount) === 0) {
     // Branchless only: strip specific town names that leaked into a branchless restaurant prompt.
     // Single-pass replacement avoids the "any invented town" intermediate garbage text problem.
