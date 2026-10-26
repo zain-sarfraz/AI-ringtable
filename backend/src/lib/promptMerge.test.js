@@ -64,10 +64,11 @@ Turn 1: Speak exactly: "Assalamualaikum"
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
     assert.match(fixed, /Aapka order yeh hai/);
     assert.match(fixed, /ke naam par hai/);
+    assert.match(fixed, /Tax include kar ke kul bill/);
     assert.match(fixed, /CASH ONLY/);
     assert.match(fixed, /speak NOTHING/i);
     assert.doesNotMatch(fixed, /Aapka order: \[qty\] \[item\], \[naam\]/);
-    assert.doesNotMatch(fixed, /\b(branch|branch_name|area)\b/i);
+    assert.match(fixed, /branch_name none/i);
 
     const multi = rewriteStaleOrderSpeechRules(stale, 2);
     assert.match(multi, /with branch_name per the Branch ordering section/);
@@ -161,7 +162,7 @@ describe("resolveSynthflowPromptUpdate", () => {
     });
     assert.match(merged, /CUSTOM OPERATOR RULE: Always thank Sir/);
     assert.match(merged, /New Pizza/);
-    assert.doesNotMatch(merged, /## Branch ordering/);
+    assert.match(merged, /THIS RESTAURANT HAS NO BRANCH CHOICE/);
     assert.match(merged, /## PLACE_ORDER TOOL CONTRACT/);
     assert.match(merged, /CASH ONLY/);
 
@@ -284,8 +285,7 @@ describe("resolveSynthflowPromptUpdate", () => {
     });
     assert.match(merged, /thank the manager/);
     assert.match(merged, /New Pizza/);
-    assert.doesNotMatch(merged, /## Branch ordering/);
-    assert.doesNotMatch(merged, /\b(branch|branch_name|area)\b/i);
+    assert.match(merged, /THIS RESTAURANT HAS NO BRANCH CHOICE/);
     assert.match(merged, /Payment: CASH ONLY/);
     assert.match(merged, /## PLACE_ORDER TOOL CONTRACT/);
   });

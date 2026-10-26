@@ -225,7 +225,7 @@ export async function aiPlaceOrder(req, res) {
         const orderSpeak = speakOrderNumberForPhone(existingOrder.order_number);
         const spokenScript =
           `Ji, aapka order confirm ho gaya. Order number ${orderSpeak} hai — mehfooz kar lijiye. ` +
-          `Teks shamil karke kul raqam ${totalHints.urduSpeak} hai. Bohot shukriya, Allah hafiz!`;
+          `Tax include kar ke kul bill ${totalHints.urduSpeak} hai. Bohot shukriya, Allah hafiz!`;
         return res.json({
           success: true,
           already_created: true,
@@ -384,7 +384,7 @@ export async function aiPlaceOrder(req, res) {
     // Soft, natural Lahori close — still digit-safe for the order number.
     const spokenScript =
       `Ji, aapka order confirm ho gaya. Order number ${orderSpeak} hai — mehfooz kar lijiye. ` +
-      `Teks shamil karke kul raqam ${spokenTotal} hai. Bohot shukriya, Allah hafiz!` +
+      `Tax include kar ke kul bill ${spokenTotal} hai. Bohot shukriya, Allah hafiz!` +
       (branchNote ? ` ${branchNote.trim()}` : "") +
       (couponNote ? ` ${couponNote.trim()}` : "");
 

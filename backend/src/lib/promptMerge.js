@@ -68,13 +68,18 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
 
   text = text.replace(
-    /Confirm FAST \(do not drag\): "Aapka order: \[qty\] \[item\], \[naam\], \[delivery \/ pickup\], teks shamil karke kul raqam \[English AFTER-TAX total e\.g\. five hundred forty [^\"]+\] hai\. Kya main yeh order confirm kar doon\?" Then WAIT — on haan call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
-    'Confirm FAST in natural sentences (NOT keyword lists): "Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX total] rupees bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately. NEVER say daraj/darj/rupay.',
+    /Confirm FAST \(do not drag\): "Aapka order: \[qty\] \[item\], \[naam\], \[delivery \/ pickup\], (?:teks shamil karke|tax include kar ke|tax include kar k) (?:kul raqam|kul bill) \[English AFTER-TAX total e\.g\. five hundred forty [^\"]+\] hai\. Kya main yeh order confirm kar doon\?" Then WAIT — on haan call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
+    'Confirm FAST in natural sentences (NOT keyword lists): "Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX total] rupees bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately. NEVER say daraj/darj/rupay.',
   );
 
   text = text.replace(
-    /"Aapka order: \[quantity\] \[item name\], \[naam\], \[delivery ya pickup\], \[pata\], teks shamil karke kul raqam \[e\.g\. five hundred forty\] ([^"]+) hai\. Kya main yeh order confirm kar doon\?"/gi,
-    '"Aapka order yeh hai: [quantity] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye. Teks shamil karke kul bill [e.g. five hundred forty three] $1 bana hai. Kya main yeh order confirm kar doon?"',
+    /"Aapka order: \[quantity\] \[item name\], \[naam\], \[delivery ya pickup\], \[pata\], (?:teks shamil karke|tax include kar ke|tax include kar k) (?:kul raqam|kul bill) \[e\.g\. five hundred forty\] ([^"]+) hai\. Kya main yeh order confirm kar doon\?"/gi,
+    '"Aapka order yeh hai: [quantity] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye. Tax include kar ke kul bill [e.g. five hundred forty three] $1 bana hai. Kya main yeh order confirm kar doon?"',
+  );
+
+  text = text.replace(
+    /teks shamil karke kul (?:bill|raqam)/gi,
+    "tax include kar ke kul bill",
   );
 
   text = text.replace(

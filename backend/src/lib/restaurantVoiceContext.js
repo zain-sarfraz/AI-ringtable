@@ -600,7 +600,7 @@ export function buildRestaurantVoiceKnowledge({
       `7. AMOUNTS: speak ONLY English number words + "${currInfo.englishUnit}" (e.g. "five hundred forty ${currInfo.englishUnit}"). NEVER say "rupay". NEVER Urdu numbers. NEVER decimals.`,
     );
     lines.push(
-      `   Example wording: "Items [X], teks shamil karke kul raqam five hundred forty ${currInfo.englishUnit} hai."`,
+      `   Example wording: "Items [X], tax include kar ke kul bill five hundred forty ${currInfo.englishUnit} bana hai."`,
     );
     lines.push("");
   }
@@ -916,11 +916,11 @@ export function buildRestaurantVoiceKnowledge({
     lines.push(...cashOnlyPaymentProtocolLines({ urdu: true }));
     if (isMultiBranch) {
       lines.push(
-        "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan — then speak NOTHING; call place_order immediately (branch_name per Branch ordering). NEVER say daraj/darj.",
+        "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan — then speak NOTHING; call place_order immediately (branch_name per Branch ordering). NEVER say daraj/darj.",
       );
     } else {
       lines.push(
-        "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan — then speak NOTHING; call place_order immediately. NEVER say daraj/darj.",
+        "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan — then speak NOTHING; call place_order immediately. NEVER say daraj/darj.",
       );
     }
   } else {
@@ -1000,7 +1000,7 @@ SPEECH — NATURAL LAHORI URDU (CRITICAL — SMOOTH, SOFT, NO LAG):
 - Max 1–2 short soft sentences per turn, then WAIT. Ask ONE gentle question only. EXCEPTION: a category PHONE SCRIPT must be spoken in full, every item and price, even if it is longer.
 - When the caller starts speaking, STOP immediately and listen patiently.
 - Soft acknowledgments, then the next sentence with no gap: "Ji bilkul", "Acha ji", "Theek hai ji", "Zaroor ji". Do not repeat the same one every turn.
-- Prefer TTS-friendly spellings: "raabta", "confirm", "shukriya", "mehfooz", "rupees", "teks", "Assalamualaikum", "delivery", "pickup".
+- Prefer TTS-friendly spellings: "raabta", "confirm", "shukriya", "mehfooz", "rupees", "tax", "Assalamualaikum", "delivery", "pickup".
 - FORBIDDEN words: "daraj", "darj", "rupay", "rupiya", "pate par bhejwa", "khud aakar lenge" (use confirm / delivery / pickup / rupees instead).
 - FORBIDDEN: Hindi, Devanagari, bookish Urdu, long paragraphs, repeating a phrase, English fillers (okay / sure / check / please hold).
 - FORBIDDEN tone: rude, aggressive, impatient, sharp, bossy, or commanding phrasing.
@@ -1035,8 +1035,8 @@ ${currInfo.code === "PKR" || currInfo.code === "INR" ? `- STRICTLY FORBIDDEN: do
   Example: Chicken Burger AFTER-TAX ×1 = "five hundred forty ${currInfo.englishUnit}" (Rs540). NEVER invent another dish's total.
 - Do NOT recalculate tax in your head. Prefer the printed AFTER-TAX MUST SPEAK for that exact item.
 - ALWAYS speak AFTER-TAX kul raqam. NEVER confirm with only the pre-tax item sum.
-- Bill, say it exactly like this: "Teks shamil karke kul raqam [exact AFTER-TAX MUST SPEAK for THIS order] hai."
-- SPOKEN WORD: NEVER say English "tax" / "taks" / "teks percent". Always say "teks" like "teeks" (ٹیکس). Bill line ONLY: "Teks shamil karke kul raqam [AFTER-TAX MUST SPEAK] hai." Never say "8.5 percent tax".
+- Bill, say it exactly like this: "Tax include kar ke kul bill [exact AFTER-TAX MUST SPEAK for THIS order] bana hai."
+- SPOKEN WORD: Say "Tax include kar ke kul bill [AFTER-TAX MUST SPEAK] bana hai." Never say individual tax percentage like "8.5 percent tax".
 =======================================================
 
 =======================================================
@@ -1058,7 +1058,7 @@ LANGUAGE LOCK — PAKISTANI ROMAN URDU ONLY:
 - Name: "Aapka naam bata dijiye?" (accept ANY name on first try — even one word).
 - Phone: ask once only — "Aapka raabta number bata dijiye?"
 - More items: "Kya aapko aur kuch chahiye?" or "Aur kuch?"
-- Confirm FAST in natural sentences (NOT keyword lists like "item, name, pickup"): "Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks shamil karke kul bill [English AFTER-TAX total e.g. five hundred forty three ${currInfo.englishUnit}] bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately${isMultiBranch ? " with branch_name per the Branch ordering section" : " (branch_name none)"}. NEVER say daraj/darj/rupay.
+- Confirm FAST in natural sentences (NOT keyword lists like "item, name, pickup"): "Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX total e.g. five hundred forty three ${currInfo.englishUnit}] bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately${isMultiBranch ? " with branch_name per the Branch ordering section" : " (branch_name none)"}. NEVER say daraj/darj/rupay.
 - Success: speak EXACTLY the place_order tool's "speak" text (digits already expanded). If success/speak is present, the order IS saved — NEVER say order fail / save nahi hua. NEVER invent ORD numbers. NEVER mention SMS.${isMultiBranch ? " NEVER ask branch/area after place_order returns." : " NEVER ask area/branch after haan or after place_order."}
 - Sizes: ALWAYS English — Small / Medium / Large (NEVER Chota / Darmiyana / Bara).
 ${isMultiBranch ? "- Follow the Branch ordering section only. NEVER speak any area/town name not listed there." : "- NO BRANCH CHOICE: NEVER ask city/area/branch/town. FORBIDDEN: Johar Town, Jhajhar Town, Iqbal Town, \"kaunsa area\", or any area name. Pass branch_name none. Read ## Branch ordering."}
@@ -1345,7 +1345,7 @@ ${
 7. CONFIRM THE ORDER CALMLY (POLITE — NEVER RUSH), THEN SAY THE ORDER NUMBER:
    - REQUIRED BEFORE CALLING place_order (NEVER CALL place_order SILENTLY OR EARLY):
      * Speak ONE short summary ASAP: item quantity, item name, customer name, pickup/delivery, address if delivery, and AFTER-TAX TOTAL as ENGLISH number words (whole amount only, no decimals):
-       - [Urdu]: "Aapka order yeh hai: [quantity] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye[delivery only: , pata: …]. Teks shamil karke kul bill [e.g. five hundred forty three] ${currInfo.englishUnit} bana hai. Kya main yeh order confirm kar doon?"
+       - [Urdu]: "Aapka order yeh hai: [quantity] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye[delivery only: , pata: …]. Tax include kar ke kul bill [e.g. five hundred forty three] ${currInfo.englishUnit} bana hai. Kya main yeh order confirm kar doon?"
        - [EN]: "Your order is [quantity] [item name]. This order is under [exact customer name] for [pickup or delivery][delivery only: to …]. After tax the bill is [e.g. five hundred forty three] ${currInfo.englishUnit}. Shall I place this order?"
      * NEVER speak only the pre-tax item sum as the final bill. NEVER use Urdu numbers for money. NEVER speak decimals. NEVER say daraj/darj — always confirm.
      * STOP AND WAIT in silence for the customer to reply ("haan" / "yes" / "theek hai" / "confirm").
