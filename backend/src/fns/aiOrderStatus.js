@@ -2,6 +2,7 @@ import { getKnex } from "../db.js";
 import {
   canonicalOrderNumber,
   expandOrderNumberCandidates,
+  orderDateStamp,
   orderNumberDigits,
 } from "../lib/orderNumbers.js";
 import { resolveRestaurantFamilyIds } from "../lib/tableSessions.js";
@@ -23,6 +24,21 @@ function statusLabel(status, fulfillmentType) {
     out_for_delivery: dineIn ? "served to the table" : "out for delivery",
     delivered: dineIn ? "complete and paid" : "delivered",
     cancelled: "cancelled",
+  };
+  return m[status] || status;
+}
+
+function statusLabelUrdu(status, fulfillmentType) {
+  const dineIn = String(fulfillmentType || "").toLowerCase() === "dine_in";
+  const m = {
+    pending: "receive ho chuka hai aur restaurant ki confirmation ke intezar mein hai",
+    confirmed: "restaurant se confirm ho chuka hai",
+    preparing: "kitchen mein tayyar ho raha hai",
+    ready: dineIn ? "table par serve hone ke liye tayyar hai" : "pickup ya rider ke liye tayyar hai",
+    assigned: "rider ke hawale ho chuka hai",
+    out_for_delivery: dineIn ? "table par serve ho chuka hai" : "delivery ke liye nikal chuka hai",
+    delivered: dineIn ? "mukammal ho chuka hai" : "deliver ho chuka hai",
+    cancelled: "mansookh ho chuka hai",
   };
   return m[status] || status;
 }
@@ -106,10 +122,9 @@ async function findOrder(knex, { code, restaurantId, phone }) {
     }
   }
 
-  // 3) Optional help: if caller gave SOME order digits, match among their recent orders.
-  // NEVER return "latest order by phone" alone — agent must ask for an order number first.
+  // 3) Phone match: if caller gave ANY digits (e.g. "02", "2", "14"), match among recent orders
   const phoneVariants = phoneMatchVariants(phone);
-  if (phoneVariants.length && digitKey && digitKey.length >= 4) {
+  if (phoneVariants.length && digitKey && digitKey.length >= 1) {
     let q = knex("orders")
       .whereNotIn("status", ["cancelled"])
       .andWhere(function () {
@@ -117,9 +132,22 @@ async function findOrder(knex, { code, restaurantId, phone }) {
       });
     q = scope(q);
     const recent = await q.select(ORDER_LOOKUP_COLUMNS).orderBy("created_at", "desc").limit(5);
-    const seq = digitKey.slice(-2);
-    const bySeq = recent.find((row) => String(row.order_number || "").replace(/\D/g, "").endsWith(seq));
+    const seq = digitKey.padStart(2, "0");
+    const bySeq = recent.find((row) => {
+      const rowDigits = String(row.order_number || "").replace(/\D/g, "");
+      return rowDigits.endsWith(seq) || rowDigits.endsWith(digitKey);
+    });
     if (bySeq) return bySeq;
+  }
+
+  // 4) Restaurant recent sequence match (e.g. caller said "02" or "2" or "5")
+  if (digitKey && digitKey.length >= 1 && digitKey.length <= 4) {
+    const stamp = orderDateStamp();
+    const padded = digitKey.padStart(2, "0");
+    const targetOrderNumber = `ORD-${stamp}-${padded}`;
+    let q = scope(knex("orders").where({ order_number: targetOrderNumber }));
+    const matchToday = await q.select(ORDER_LOOKUP_COLUMNS).first();
+    if (matchToday) return matchToday;
   }
 
   return null;
@@ -150,11 +178,12 @@ export async function aiOrderStatus(req, res) {
     console.log("📍 Candidates:", expandOrderNumberCandidates(code).join(", ") || "none");
     console.log("-".repeat(40) + "\n");
 
-    const hasOrderNumber = Boolean(code) && orderNumberDigits(code).length >= 2;
+    const hasOrderNumber = Boolean(code) && orderNumberDigits(code).length >= 1;
     if (!hasOrderNumber) {
       return res.json({
         found: false,
         order_number_required: true,
+        speak: "Ji zaroor, aapka order number bata dijiye taake main check kar sakoon?",
         message:
           "Respond ONLY in the caller's LOCKED language, softly and politely: Ask for their order number first (Urdu: \"Aapka order number bata dijiye?\" | EN: \"May I have your order number please?\"). Example ORD-261013-03. Do NOT tell any kitchen/status guess. Do NOT ask area/branch. STOP and WAIT for the number, then call get_order_status again.",
       });
@@ -173,6 +202,7 @@ export async function aiOrderStatus(req, res) {
       return res.json({
         found: false,
         tried: expandOrderNumberCandidates(code),
+        speak: "Maazrat ji, yeh order number nahi mil saka. Meharbani karke apna mukammal order number aahista se bata dijiye?",
         message:
           `Respond ONLY in the caller's LOCKED language, softly and politely: I could not find that order number. ` +
           `Gently ask them to say the full number slowly once more, like O R D, then the date digits, then the last two digits. ` +
@@ -192,7 +222,10 @@ export async function aiOrderStatus(req, res) {
     const enTotal = `${currInfo.symbol}${Number(order.total_amount).toFixed(2)}`;
 
     const tableBit = order.table_number ? ` for table ${order.table_number}` : "";
-    const message = `Respond ONLY in the caller's LOCKED language: Order ${order.order_number} for ${order.customer_name}${tableBit} is ${statusLabel(order.status, order.fulfillment_type)}.${
+    const statusUr = statusLabelUrdu(order.status, order.fulfillment_type);
+    const statusEn = statusLabel(order.status, order.fulfillment_type);
+    const spokenScript = `Ji, aapka order ${order.order_number} is waqt ${statusUr} hai.${eta ? ` Taqreeban ${eta} tak deliver ho jayega.` : ""} Bohot shukriya.`;
+    const message = `Respond ONLY in the caller's LOCKED language: Order ${order.order_number} for ${order.customer_name}${tableBit} is ${statusEn}.${
       eta ? ` Estimated time around ${eta}.` : ""
     } Total: ${enTotal} (Urdu: ${urduTotal}).`;
 
@@ -202,10 +235,12 @@ export async function aiOrderStatus(req, res) {
       tracking_code: order.tracking_code,
       status: order.status,
       currency: currInfo.code,
-      status_label: statusLabel(order.status, order.fulfillment_type),
+      status_label: statusEn,
+      status_label_urdu: statusUr,
       fulfillment_type: order.fulfillment_type,
       estimated_delivery_at: order.estimated_delivery_at,
       total: order.total_amount,
+      speak: spokenScript,
       message,
     });
   } catch (e) {

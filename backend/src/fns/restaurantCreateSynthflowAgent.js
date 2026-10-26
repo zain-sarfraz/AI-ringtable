@@ -262,14 +262,15 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "get_order_status",
         description:
-          "TRACK ORDER ONLY after the caller spoke an order number in ANY language. REQUIRED: ask order number first softly in the LOCKED language (Urdu: \"Aapka order number bata dijiye?\"), wait, then call with ORD-YYMMDD-NN. NEVER call with empty order_number. NEVER invent status from phone alone. NEVER ask city/area/branch for tracking. Speak the result ONLY in the caller's LOCKED language — soft and polite, zero words in any other language.",
+          "TRACK ORDER ONLY. As soon as the caller wants to track an order, check status, or speaks their order number in ANY form (e.g. ORD-261026-01, 26102601, 'two six one...', 'chhabees das...', or '01'). Focus completely on the order number. NEVER ask city/area/branch/address or sell food. Immediately call this tool with whatever order number or digits they provided. AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in the caller's locked language.",
+        agent_speak_naturally: false,
         speech_while_using_the_tool: "Ji.",
         failure_timeout: 15,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
           duringCallVar(
             "order_number",
-            "REQUIRED. Exact ORD-YYMMDD-NN the caller just said. Never leave empty. Never invent.",
+            "Order number, digits, or tracking code spoken by caller. Capture whatever they said, e.g. ORD-261026-02, 26102602, 02, two six one zero..., chhabees das... Never leave empty.",
             "ORD-261008-02",
           ),
         ],
@@ -278,6 +279,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
           order_number: "<order_number>",
           customer_phone: "<user_phone_number>",
           caller_phone: "<user_phone_number>",
+          synthflow_call_id: "<call_id>",
         }),
       },
     },
@@ -289,7 +291,8 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "reserve_table",
         description:
-          "TABLE RESERVATIONS ONLY. Call this tool ONLY AFTER you have collected all reservation details (name, party size, date, time, phone) AND the caller has confirmed the summary! FORBIDDEN to call at the beginning when caller first asks for a table. Collect each detail softly one-by-one in caller's LOCKED language, confirm, and ONLY THEN call this tool once. If ## Branch ordering says NO BRANCH CHOICE: NEVER ask area/branch; pass branch_name none. If multiple branches: ask ONLY listed areas, then pass that branch_name. Never invent Johar/Iqbal or other towns.",
+          "TABLE RESERVATIONS ONLY. FORBIDDEN to call before caller confirms summary! Collect softly: name, party size, date, time, phone. Speak summary: '[guests] afraad ke liye [date] ko [time] baje [name] ke naam par table pakki kar doon?'. WAIT for haan. ONLY on haan: call this tool with branch_name (none if no branches). AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in Roman Urdu. NEVER speak English phrases like 'One moment while I reserve'. NEVER read reservation IDs or UUIDs.",
+        agent_speak_naturally: false,
         speech_while_using_the_tool: "Ji.",
         failure_timeout: 20,
         headers: [{ key: "Content-Type", value: "application/json" }],
@@ -304,6 +307,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
           reservation_time: "<reservation_time>",
           slot_duration_hours: "<slot_duration_hours>",
           branch_name: isMultiBranch ? "<branch_name>" : singleBranchName,
+          synthflow_call_id: "<call_id>",
           source: "phone",
         }),
       },
@@ -564,6 +568,7 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       ...(catalog.items || []).slice(0, 30).map((i) => i.name),
       "order", "burger", "pizza", "rupees", "rupee", "small", "medium", "large",
       "delivery", "pickup", "confirm", "raabta", "rabta", "shukriya",
+      "ORD", "track", "tracking", "status", "soorat-e-haal", "order number",
     ].filter(Boolean);
 
     // Synthflow → ElevenLabs path: only fields Synthflow documents are sent.

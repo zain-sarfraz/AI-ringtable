@@ -67,6 +67,7 @@ export async function aiReserveTable(req, res) {
     if (!customer_name || !reservation_date || !reservation_time || !party_size) {
       return res.status(200).json({
         success: false,
+        speak: "Ji, table ke liye aapka naam, afraad ki tadaad, tareekh aur waqt bata dijiye?",
         message:
           "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask for any missing details: name, date, time, and guest count. Do not switch languages.",
       });
@@ -79,6 +80,7 @@ export async function aiReserveTable(req, res) {
     if (!restaurantId) {
       return res.status(200).json({
         success: false,
+        speak: "Maazrat ji, restaurant verify nahi ho saka.",
         message: `CRITICAL: Reply ONLY in the caller's LOCKED language. ${resolved.error || "Could not identify the restaurant."}`,
       });
     }
@@ -99,6 +101,7 @@ export async function aiReserveTable(req, res) {
     if (!isoTime) {
       return res.status(200).json({
         success: false,
+        speak: "Ji, kis waqt aana chahenge?",
         message:
           "CRITICAL: Reply ONLY in the caller's LOCKED language, softly and politely. Ask the booking time once (example 7 PM). Do not ask area/branch unless ## Branch ordering lists areas. Do not switch languages.",
       });
@@ -120,6 +123,7 @@ export async function aiReserveTable(req, res) {
       return res.status(200).json({
         success: false,
         available: false,
+        speak: "Maazrat ji, is waqt koi table khali nahi hai. Kya aap kisi aur waqt aana chahenge?",
         message:
           `CRITICAL: Reply ONLY in the caller's LOCKED language, softly and politely (apologize first). No table is free at ${isoTime} on ${isoDate}. Gently ask for a different time once. Do not sound rude. Do not ask area/branch unless ## Branch ordering lists areas. Do not switch languages.`,
       });
@@ -164,11 +168,13 @@ export async function aiReserveTable(req, res) {
 
     console.log(`✅ Reservation created: id=${reservation.id} table=${availableTable.table_number}`);
 
+    const speakUr = `Ji, aapki table confirm ho chuki hai, ${pSize} logon ke liye table mehfooz hai. Bohot shukriya!`;
+    const speakEn = `Your table is confirmed for ${pSize} guest(s). Thank you so much!`;
+
     const confirmMsg =
       `CRITICAL: Reply ONLY in the caller's LOCKED language — soft, warm, polite human tone — do not switch. ` +
-      `If English locked: Your table is reserved for ${pSize} guest(s) on ${isoDate} at ${isoTime}. Thank you so much! ` +
-      `If Roman locked: Ji, ${pSize} logon ke liye ${isoDate} ko ${isoTime} baje table mehfooz ho chuki hai. Bohot shukriya! ` +
-      `Never say order number or bill. Never ask area after success.`;
+      `READ THIS EXACTLY: ${speakUr} ` +
+      `Never say order number or bill. Never ask area after success. FORBIDDEN: spelling out reservation UUIDs or reading Table numbers in English.`;
 
     return res.json({
       success: true,
@@ -180,6 +186,9 @@ export async function aiReserveTable(req, res) {
       reservation_time: isoTime,
       party_size: pSize,
       slot_duration_hours: duration,
+      speak: speakUr,
+      speak_en: speakEn,
+      speak_ur: speakUr,
       message: confirmMsg,
     });
   } catch (e) {

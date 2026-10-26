@@ -21,10 +21,11 @@ const WORD_TO_DIGIT = {
   eight: "8",
   ate: "8",
   nine: "9",
-  // Roman Hindi / Urdu — do NOT map single-letter "o" (breaks "O R D")
+  // Roman Hindi / Urdu single digits — do NOT map single-letter "o" (breaks "O R D")
   shunya: "0",
   sifar: "0",
   sifir: "0",
+  sifr: "0",
   ek: "1",
   ik: "1",
   do: "2",
@@ -44,9 +45,96 @@ const WORD_TO_DIGIT = {
   ath: "8",
   aat: "8",
   nau: "9",
+  // English teens & tens
+  ten: "10",
+  eleven: "11",
+  twelve: "12",
+  thirteen: "13",
+  fourteen: "14",
+  fifteen: "15",
+  sixteen: "16",
+  seventeen: "17",
+  eighteen: "18",
+  nineteen: "19",
+  twenty: "20",
+  thirty: "30",
+  forty: "40",
+  fifty: "50",
+  sixty: "60",
+  seventy: "70",
+  eighty: "80",
+  ninety: "90",
+  // Roman Hindi / Urdu teens & 20-31 (dates 1-31 and year 26)
+  das: "10",
+  duss: "10",
+  gyarah: "11",
+  gyara: "11",
+  barah: "12",
+  bara: "12",
+  terah: "13",
+  tera: "13",
+  chaudah: "14",
+  chauda: "14",
+  choudah: "14",
+  pandrah: "15",
+  pandra: "15",
+  solah: "16",
+  sola: "16",
+  satrah: "17",
+  satra: "17",
+  atharah: "18",
+  athara: "18",
+  unnees: "19",
+  unis: "19",
+  bees: "20",
+  bis: "20",
+  ikkees: "21",
+  ikiss: "21",
+  baees: "22",
+  bais: "22",
+  teis: "23",
+  tayees: "23",
+  chaubees: "24",
+  chaubis: "24",
+  pachees: "25",
+  pachis: "25",
+  chhabees: "26",
+  chhabis: "26",
+  chhabes: "26",
+  sattaees: "27",
+  sattais: "27",
+  athaaees: "28",
+  athais: "28",
+  untees: "29",
+  untis: "29",
+  tees: "30",
+  tis: "30",
+  iktees: "31",
+  iktis: "31",
 };
 
-/** Turn "two six one..." / "do chhe ek..." / Devanagari digits into digits before canonicalizing. */
+const COMPOUND_NUMBER_PATTERNS = [
+  { re: /\btwenty[\s-]*one\b/gi, val: "21" },
+  { re: /\btwenty[\s-]*two\b/gi, val: "22" },
+  { re: /\btwenty[\s-]*three\b/gi, val: "23" },
+  { re: /\btwenty[\s-]*four\b/gi, val: "24" },
+  { re: /\btwenty[\s-]*five\b/gi, val: "25" },
+  { re: /\btwenty[\s-]*six\b/gi, val: "26" },
+  { re: /\btwenty[\s-]*seven\b/gi, val: "27" },
+  { re: /\btwenty[\s-]*eight\b/gi, val: "28" },
+  { re: /\btwenty[\s-]*nine\b/gi, val: "29" },
+  { re: /\bthirty[\s-]*one\b/gi, val: "31" },
+  { re: /\bthirty[\s-]*two\b/gi, val: "32" },
+  { re: /\bthirty[\s-]*three\b/gi, val: "33" },
+  { re: /\bthirty[\s-]*four\b/gi, val: "34" },
+  { re: /\bthirty[\s-]*five\b/gi, val: "35" },
+  { re: /\bthirty[\s-]*six\b/gi, val: "36" },
+  { re: /\bthirty[\s-]*seven\b/gi, val: "37" },
+  { re: /\bthirty[\s-]*eight\b/gi, val: "38" },
+  { re: /\bthirty[\s-]*nine\b/gi, val: "39" },
+];
+
+/** Turn "two six one..." / "chhabees das..." / Devanagari digits into digits before canonicalizing. */
 export function replaceSpokenDigits(raw) {
   let text = String(raw || "")
     .toLowerCase()
@@ -63,11 +151,18 @@ export function replaceSpokenDigits(raw) {
     .replace(/८/g, "8")
     .replace(/९/g, "9");
 
-  // Normalize spelled "O R D" / "oh are dee" / "ओ आर डी" style before digit word replacement
+  // Normalize spelled "O R D" / "oh are dee" / "audi" / "audit" / "all day" / "allday"
   text = text
-    .replace(/\b(o|oh|zero)\s*[-\s]*\b(r|are)\s*[-\s]*\b(d|dee|the)\b/g, "ord")
-    .replace(/\border\s*(number|no|num|#)?\b/g, "ord")
-    .replace(/\bord\s*[-–]?\s*/g, "ord ");
+    .replace(/\b(o|oh|zero)\s*[-\s]*\b(r|are)\s*[-\s]*\b(d|dee|the)\b/gi, "ord")
+    .replace(/\b(audi|audit|all\s*day|allday|od)\b(?=\s*\d)/gi, "ord")
+    .replace(/او\s*آر\s*ڈی/g, "ord")
+    .replace(/\border\s*(number|no|num|#)?\b/gi, "ord")
+    .replace(/\bord\s*[-–]?\s*/gi, "ord ");
+
+  // Multi-word English compounds: "twenty six" -> 26
+  for (const compound of COMPOUND_NUMBER_PATTERNS) {
+    text = text.replace(compound.re, compound.val);
+  }
 
   // "double six" → 66, "triple zero" → 000
   text = text.replace(/\b(double|triple)\s+([a-z]+)\b/g, (_, mult, word) => {
@@ -98,7 +193,8 @@ export function canonicalOrderNumber(raw) {
 
 /**
  * Build several plausible ORD-YYMMDD-NN values from messy spoken / STT text.
- * Handles missing dashes, missing ORD, spoken digits, and a dropped zero in the date.
+ * Handles missing dashes, missing ORD, spoken digits, short sequences (e.g. "02", "5"),
+ * and a dropped zero in the date.
  */
 export function expandOrderNumberCandidates(raw) {
   const spoken = replaceSpokenDigits(raw);
@@ -114,6 +210,17 @@ export function expandOrderNumberCandidates(raw) {
   addCanonical(upper.replace(/\s+/g, ""));
 
   const digitsOnly = upper.replace(/\D/g, "");
+  const todayStamp = orderDateStamp();
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const yesterdayStamp = orderDateStamp(yesterday);
+
+  // Short sequence (1 to 4 digits), e.g. caller said "02", "2", "14", "ORD 5"
+  if (digitsOnly.length >= 1 && digitsOnly.length <= 4) {
+    const padded = digitsOnly.padStart(2, "0");
+    addCanonical(`ORD${todayStamp}${padded}`);
+    addCanonical(`ORD${yesterdayStamp}${padded}`);
+  }
+
   // Prefer clean YYMMDD + NN (8 digits) or YYMMDD + N (7 digits)
   if (digitsOnly.length === 8) {
     addCanonical(`ORD${digitsOnly.slice(0, 6)}${digitsOnly.slice(6)}`);
@@ -125,14 +232,20 @@ export function expandOrderNumberCandidates(raw) {
     addCanonical(`ORD${date5.slice(0, 4)}0${date5.slice(4)}${seq}`);
   } else if (digitsOnly.length === 9 && digitsOnly.startsWith("20")) {
     addCanonical(`ORD${digitsOnly.slice(2, 8)}${digitsOnly.slice(8)}`);
-  } else if (digitsOnly.length >= 6 && digitsOnly.length <= 10) {
+  } else if (digitsOnly.length >= 5 && digitsOnly.length <= 10) {
     // Today's stamp + trailing seq (helps when STT drops ORD or muddles dashes)
-    const stamp = orderDateStamp();
-    if (digitsOnly.startsWith(stamp) || digitsOnly.includes(stamp)) {
-      const after = digitsOnly.startsWith(stamp)
-        ? digitsOnly.slice(stamp.length)
-        : digitsOnly.slice(digitsOnly.indexOf(stamp) + stamp.length);
-      if (after) addCanonical(`ORD${stamp}${after}`);
+    if (digitsOnly.startsWith(todayStamp) || digitsOnly.includes(todayStamp)) {
+      const after = digitsOnly.startsWith(todayStamp)
+        ? digitsOnly.slice(todayStamp.length)
+        : digitsOnly.slice(digitsOnly.indexOf(todayStamp) + todayStamp.length);
+      if (after) addCanonical(`ORD${todayStamp}${after}`);
+    }
+    // Yesterday's stamp + trailing seq
+    if (digitsOnly.startsWith(yesterdayStamp) || digitsOnly.includes(yesterdayStamp)) {
+      const after = digitsOnly.startsWith(yesterdayStamp)
+        ? digitsOnly.slice(yesterdayStamp.length)
+        : digitsOnly.slice(digitsOnly.indexOf(yesterdayStamp) + yesterdayStamp.length);
+      if (after) addCanonical(`ORD${yesterdayStamp}${after}`);
     }
     // Last 8 digits as YYMMDD+NN
     if (digitsOnly.length > 8) {
