@@ -17,6 +17,7 @@ import {
   loadRestaurantVoiceCatalog,
   loadActiveChildBranches,
   isMaleVoice,
+  PAKISTANI_NAME_KEYWORDS,
 } from "../lib/restaurantVoiceContext.js";
 import { PromptMergeError, resolveSynthflowPromptUpdate } from "../lib/promptMerge.js";
 import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
@@ -569,6 +570,7 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       "order", "burger", "pizza", "rupees", "rupee", "small", "medium", "large",
       "delivery", "pickup", "confirm", "raabta", "rabta", "shukriya",
       "ORD", "track", "tracking", "status", "soorat-e-haal", "order number",
+      ...(Array.isArray(PAKISTANI_NAME_KEYWORDS) ? PAKISTANI_NAME_KEYWORDS : []),
     ].filter(Boolean);
 
     // Synthflow → ElevenLabs path: only fields Synthflow documents are sent.

@@ -4,6 +4,7 @@ import {
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
   isMaleVoice,
+  PAKISTANI_NAME_KEYWORDS,
 } from "./restaurantVoiceContext.js";
 import { PromptMergeError, resolveSynthflowPromptUpdate } from "./promptMerge.js";
 import { refreshSynthflowPlaceOrderTool } from "../fns/restaurantCreateSynthflowAgent.js";
@@ -63,8 +64,20 @@ export async function pushBranchListToAgent(knex, parentRestaurantId) {
     throw mergeErr;
   }
 
+  const menuKeywords = [
+    restaurant.name,
+    ...(catalog.items || []).slice(0, 30).map((i) => i.name),
+    "order", "burger", "pizza", "rupees", "rupee", "small", "medium", "large",
+    "delivery", "pickup", "confirm", "raabta", "rabta", "shukriya",
+    "ORD", "track", "tracking", "status", "soorat-e-haal", "order number",
+    ...(Array.isArray(PAKISTANI_NAME_KEYWORDS) ? PAKISTANI_NAME_KEYWORDS : []),
+  ].filter(Boolean);
+
   await updateAgent(restaurant.synthflow_agent_id, {
-    agent: { prompt },
+    agent: {
+      prompt,
+      transcriber_keywords: menuKeywords,
+    },
   });
 
   const patch = {

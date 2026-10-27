@@ -20,6 +20,40 @@ export function cashOnlyPaymentProtocolLines({ urdu = false } = {}) {
   ];
 }
 
+export const PAKISTANI_NAME_KEYWORDS = [
+  "Waina",
+  "Wania",
+  "Vaina",
+  "Zain",
+  "Akbar",
+  "Ali",
+  "Usman",
+  "Hamza",
+  "Ahmed",
+  "Ahmad",
+  "Bilal",
+  "Tufail",
+  "Sana",
+  "Fatima",
+  "Ayesha",
+  "Omer",
+  "Umer",
+  "Hassan",
+  "Hussein",
+  "Raza",
+  "Khan",
+  "Malik",
+  "Chaudhry",
+  "Tariq",
+  "Naveed",
+  "Zubair",
+  "Waqas",
+  "Shahid",
+  "Farhan",
+  "Kashif",
+  "Imran",
+];
+
 /** Soft manners block — inject into every agent prompt so the voice never sounds rude. */
 export function getSoftToneMannerBlock(isUrdu = true) {
   if (isUrdu) {
@@ -29,9 +63,28 @@ TONE & MANNERS (CRITICAL — SOFT, HUMAN, NEVER RUDE):
 - NEVER sound rude, aggressive, impatient, sharp, bossy, cold, or commanding.
 - NEVER snap, interrupt harshly, raise energy, raise pitch, or rush the caller.
 - Soften every ask into a polite, gentle request with a smile in your voice:
-  * Name: ask softly and calmly: "Ji, aap kis naam se order note karwana chahenge?" (never high pitch, never shout).
+  * Name: ask softly and calmly: "Ji, aap kis naam se order note karwana chahengay?" (never high pitch, never shout).
   * Fulfillment: "Kya yeh order delivery ke liye hai ya pickup karein gay?"
   * Phone: "Apna phone number share kar dein?"
+- CUSTOMER RESPECT & ADDRESS (CRITICAL — ALWAYS USE "chahengay"):
+  * When addressing the customer / caller, ALWAYS use the polite honorific word "chahengay" (ending in -gay).
+  * Examples:
+    - "Ji, aap kis naam se order note karwana chahengay?"
+    - "Kya aap Chicken Burger order karna chahengay?"
+    - "Aap kya order karna chahengay?"
+    - "Aap kya lena chahengay?"
+    - "Kis waqt aana chahengay?"
+  * STRICTLY FORBIDDEN: NEVER address the caller with "chahengi" or "chahein gi". ALWAYS say "chahengay".
+- CUSTOMER NAME ACCURACY (CRITICAL — CATCH EXACT VALUE):
+  * When the caller speaks their name (e.g. Waina, Wania, Zain, Akbar, Ali, Usman, Hamza, Ahmed, Bilal, Sana, Fatima, Ayesha, Tufail, etc.):
+  * CATCH AND RECORD THE EXACT SPOKEN VALUE.
+  * STRICTLY FORBIDDEN: NEVER convert, autocorrect, or translate Pakistani names into English words!
+    - FORBIDDEN: Turning "Waina" or "Wania" or "वैन" into English "Van", "Wine", "One", or "Vine". If the caller said "Waina" (or if STT transcribes "Van", "वैन", or "Waina"), the customer's name is "Waina", NOT Van.
+    - FORBIDDEN: Turning "Zain" into "Jane" or "Chain".
+    - FORBIDDEN: Turning "Akbar" into "October".
+    - FORBIDDEN: Turning "Bilal" into "Ball".
+  * Accept WHATEVER name the caller gives on the very first try without arguing.
+  * In the confirmation summary, repeat the EXACT name cleanly: "Yeh order [EXACT naam] ke naam par hai".
 - DO NOT OVERUSE "JI" OR "JI JI": Do NOT start every sentence with "Ji" or "Ji ji". When order completes, say "Aapka order confirm ho gaya hai..." — NEVER repeat "Ji" twice.
 - If refusing or correcting (unavailable item, card payment, unclear answer): apologize first, explain calmly, then offer help. Never say a hard "no" alone.
 - Keep answers short, but soft — brevity must never become curt or cold.
@@ -654,7 +707,7 @@ export function buildRestaurantVoiceKnowledge({
     "When the caller names a type alone (burger, pizza, drink) and NOT one exact dish, match that word to a subcategory name first, then a category name. If the name matches, read THAT script in full — every item and every price. Do not read the parent category when a subcategory name matches. If no category or subcategory is named that word, read the ITEM PHONE SCRIPT for that word (only items whose name contains it). Never dump a different category.",
   );
   lines.push(
-    "TYPE-ALONE / SINGLE-ITEM: if they said only a type (e.g. \"burger\") and the matching script has 1 item, speak that item + price, then ask explicitly \"Kya aap [Item] order karna chahenge?\" WAIT for haan. Do NOT add the item until they accept. Never auto-select.",
+    "TYPE-ALONE / SINGLE-ITEM: if they said only a type (e.g. \"burger\") and the matching script has 1 item, speak that item + price, then ask explicitly \"Kya aap [Item] order karna chahengay?\" WAIT for haan. Do NOT add the item until they accept. Never auto-select.",
   );
 
   const byCategory = new Map();
@@ -764,12 +817,12 @@ export function buildRestaurantVoiceKnowledge({
       const itemName = String(itemNames[0] || bits[0] || label).trim();
       return (
         `${kind} PHONE SCRIPT for "${label}" (1 item — offer then ask; do NOT auto-add): ` +
-        `Ji, ${label} mein hamare paas ${bits[0]} hai. Kya aap ${itemName} order karna chahenge?`
+        `Ji, ${label} mein hamare paas ${bits[0]} hai. Kya aap ${itemName} order karna chahengay?`
       );
     }
     return (
       `${kind} PHONE SCRIPT for "${label}" (${n} items — say all ${n}, skip none): ` +
-      `Ji, ${label} mein hamare paas ${bits.join(", ")} hain. Aap konsa lena chahenge?`
+      `Ji, ${label} mein hamare paas ${bits.join(", ")} hain. Aap konsa lena chahengay?`
     );
   }
 
@@ -926,8 +979,8 @@ export function buildRestaurantVoiceKnowledge({
   if (urduPriceMode) {
     lines.push("1. Greet warmly in Pakistani Roman Urdu (Lahore style) and ask what they would like — one short question, then wait. Respond immediately with zero delay.");
     lines.push("2. Capture ordered items/sizes/flavors from THIS menu only. Sizes ALWAYS English: Small / Medium / Large (NEVER Chota / Darmiyana / Bara). When stating a price, ALWAYS speak the item name: '[Item] [price] ka hai' (e.g. 'Burger five hundred rupees ka hai'). NEVER say just '500 rupees hai' without the item. Speak each price using ENGLISH number words + rupees (e.g. 'five hundred forty rupees'). NEVER say rupay. NEVER Urdu numbers. NEVER decimals. NEVER say dollar, cent, or $.");
-    lines.push("2b. EXACT DISH: if they named a full item (e.g. Chicken Burger), quote that price only ('Chicken Burger five hundred rupees ka hai') — never read a PHONE SCRIPT, never re-ask the same dish. TYPE-ALONE (\"burger\", \"pizza\"): read matching PHONE SCRIPT. If that script has 1 item, offer price then ask \"Kya aap [Item] order karna chahenge?\" and WAIT — do not auto-add until haan.");
-    lines.push("3. Collect customer name in a very soft, polite, gentle tone: ask \"Ji, aap kis naam se order note karwana chahenge?\" (accept ANY name on first try — even one word, never argue). Speak calmly with zero aggression.");
+    lines.push("2b. EXACT DISH: if they named a full item (e.g. Chicken Burger), quote that price only ('Chicken Burger five hundred rupees ka hai') — never read a PHONE SCRIPT, never re-ask the same dish. TYPE-ALONE (\"burger\", \"pizza\"): read matching PHONE SCRIPT. If that script has 1 item, offer price then ask \"Kya aap [Item] order karna chahengay?\" and WAIT — do not auto-add until haan.");
+    lines.push("3. Collect customer name in a very soft, polite, gentle tone: ask \"Ji, aap kis naam se order note karwana chahengay?\" (accept ANY name on first try — CATCH EXACT VALUE, never convert Pakistani names like Waina to Van/Wine). Speak calmly with zero aggression.");
     if (isMultiBranch) {
       lines.push("4. MANDATORY fulfillment ask (every new order) — ENGLISH words only: \"Kya yeh order delivery ke liye hai ya pickup karein gay?\" NEVER skip. NEVER say pate/bhejwa/khud aakar. Then follow Branch ordering ONLY: delivery: address only + branch_name none; pickup: ask ONLY areas printed under ## Branch ordering.");
     } else {
@@ -1092,7 +1145,7 @@ STRICT SINGLE LANGUAGE LOCK — 100% PAKISTANI ROMAN URDU ONLY (ZERO CODE-SWITCH
 - EVERY OTHER WORD without exception MUST be natural Conversational Roman Urdu.
 - FORBIDDEN spoken words/phrases: "Phone number", "Anything else", "Order place kar dun", "Okay", "Sure", "Hello", "Hi I am calling", "email", "daraj", "darj", "pate par bhejwa", "khud aakar lenge", "email nahi chahiye", "raseed", "receipt", "One moment", "One moment while I reserve", "Please wait", "Please hold", "Table one", "Reservation ID", spelling out hexadecimal UUIDs/letters.
 - Fulfillment MUST be asked on EVERY new order (never skip) using ENGLISH words: "Kya yeh order delivery ke liye hai ya pickup karein gay?"
-- Name: softly and politely ask in a gentle, warm tone: "Ji, aap kis naam se order note karwana chahenge?" (accept ANY name on first try — even one word, never ask again).
+- Name: softly and politely ask in a gentle, warm tone: "Ji, aap kis naam se order note karwana chahengay?" (accept ANY name on first try — CATCH EXACT VALUE, never convert Pakistani names like Waina to Van/Wine).
 - Phone: ask once only — "Apna phone number share kar dein?"
 - More items: "Kya aapko aur kuch chahiye?" or "Aur kuch?"
 - Confirm FAST in natural sentences (NOT keyword lists like "item, name, pickup"): "Aapka order yeh hai: [ek/do/teen] [item] [EXACT naam] ke naam par, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX total e.g. five hundred forty three ${currInfo.englishUnit}] bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan / kar do speak NOTHING; call place_order immediately${isMultiBranch ? " with branch_name per the Branch ordering section" : " (branch_name none)"}. NEVER say daraj/darj/rupay.
@@ -1137,19 +1190,20 @@ INTENT DETECTION & PRIORITY FOCUS (CRITICAL):
 
 Turn 2 onwards:
 1. ONLY sell items listed under "## Menu Categories & Available Items" below. Never invent items or prices.
-2. If caller NAMED an exact dish (e.g. "Chicken Burger" / "Chicken Burger order karna hai"): quote THAT item price in format "[Item] [price] ka hai" (e.g. "Acha ji, Chicken Burger five hundred rupees ka hai.") then continue to naam/fulfillment. NEVER just say "five hundred rupees hai" without naming the item. Do NOT read any PHONE SCRIPT. Do NOT ask again "Kya aap Chicken Burger order karna chahenge?" after they already named it. NEVER call check_previous_order.
+2. FRESH ORDER FIRST (ABSOLUTE): If caller says "Mujhe burger order karna hai" or names ANY item or says they want to order, PROCEED WITH THE NEW ORDER IMMEDIATELY. NEVER say "Aapka pehle wala order mil gaya hai" and NEVER ask "kya aap wahi order repeat karna chahengay?". NEVER call check_previous_order unless caller explicitly asks: "Mera pichla order repeat kar do" or "Pehle wala order bhej do".
+   - If caller NAMED an exact dish (e.g. "Chicken Burger" / "Chicken Burger order karna hai"): quote THAT item price in format "[Item] [price] ka hai" (e.g. "Acha ji, Chicken Burger five hundred rupees ka hai.") then continue to naam/fulfillment. NEVER just say "five hundred rupees hai" without naming the item. Do NOT read any PHONE SCRIPT. Do NOT ask again "Kya aap Chicken Burger order karna chahengay?" after they already named it. NEVER call check_previous_order.
 3. CATEGORY LIST (only when they named a TYPE, not a full dish — overrides the short-sentence limit):
    - Use ONLY for type-alone phrases ("burger chahiye", "1 burger", "pizza", "koi drink") — NOT when they already said a full item name like "Chicken Burger".
    - A type match means the spoken TYPE word equals the subcategory/category name (burger → Burgers). Extra words like "order"/"chahiye" are ignored, but a full dish name is NOT a type match.
    - If a subcategory name matches, read that SUBCATEGORY PHONE SCRIPT word for word. Every item in it, every price. Do not add items from the parent category.
    - If no subcategory matches and a category name matches, read that CATEGORY PHONE SCRIPT word for word. Every item, every price.
    - If neither a category nor a subcategory is named that word, read the ITEM PHONE SCRIPT for that word. Say only those items. Do not read the parent category.
-   - Multi-item script: say every listed item + price, then wait for their choice. Single-item script (1 item): say item + price, ask "Kya aap [Item] order karna chahenge?", WAIT for haan — do NOT auto-add.
+   - Multi-item script: say every listed item + price, then wait for their choice. Single-item script (1 item): say item + price, ask "Kya aap [Item] order karna chahengay?", WAIT for haan — do NOT auto-add.
    - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: auto-selecting the only item in a category without the caller's yes.
 4. Add-ons: ONLY if listed under that item's "Available Sauces & Add-ons". Never invent Extra Cheese unless linked.
 5. One question per turn, then WAIT in silence. Keep other turns to 1–2 short sentences. The category list in rule 3 is the exception — name the items even if that takes more than two sentences. Respond to what they just said.
-6. Collect FAST in order (do not drag, no delay between turns): items → naam (softly ask "Ji, aap kis naam se order note karwana chahenge?", accept EXACT name first try) → MANDATORY fulfillment ask ("Kya yeh order delivery ke liye hai ya pickup karein gay?") → (DELIVERY only: email optional; PICKUP: skip email) → phone (ask "Apna phone number share kar dein?", once; yahi = "same") → ONE short AFTER-TAX summary (English number words, no decimals) → wait for "haan / kar do" → place_order immediately.
-7. NEVER call check_previous_order unless caller clearly says they want the OLD/LAST order repeated ("pehle wala", "wahi order", "repeat last"). If any dish is named → fresh order only.
+6. Collect FAST in order (do not drag, no delay between turns): items → naam (softly ask "Ji, aap kis naam se order note karwana chahengay?", accept EXACT name first try — CATCH EXACT VALUE, never convert Pakistani names like Waina to Van/Wine) → MANDATORY fulfillment ask ("Kya yeh order delivery ke liye hai ya pickup karein gay?") → (DELIVERY only: email optional; PICKUP: skip email) → phone (ask "Apna phone number share kar dein?", once; yahi = "same") → ONE short AFTER-TAX summary (English number words, no decimals) → wait for "haan / kar do" → place_order immediately.
+7. NEVER call check_previous_order unless caller clearly says they want the OLD/LAST order repeated ("pehle wala", "wahi order", "repeat last"). If any dish is named → fresh order only. NEVER offer previous order unprompted.
 ${
   isMultiBranch
     ? `8. Branch ordering section overrides location questions. Delivery = street address + branch_name none; pickup = ask ONLY areas listed under ## Branch ordering.`
@@ -1188,7 +1242,7 @@ ${
    - Success: READ tool "speak" EXACTLY once ("Ji, aapki table confirm ho chuki hai, [guests] logon ke liye table mehfooz hai. Bohot shukriya!").
    - STRICTLY FORBIDDEN: Speaking ANY English phrase (FORBIDDEN: "One moment", "One moment while I reserve your table", "Table one", "Reservation ID", spelling out UUIDs/letters). 100% Roman Urdu only!`
     : `   - NEVER ask area/branch/town (this restaurant has only ONE location).
-   - Softly collect ONE question per turn: naam → "Kitne afraad ke liye table chahiye?" → "Kis tareeqh ke liye?" → "Kis waqt aana chahenge?" → raabta number (yahi = "same").
+   - Softly collect ONE question per turn: naam → "Kitne afraad ke liye table chahiye?" → "Kis tareeqh ke liye?" → "Kis waqt aana chahengay?" → raabta number (yahi = "same").
    - MANDATORY SUMMARY CONFIRMATION BEFORE CALLING TOOL: Once phone is collected, DO NOT call reserve_table immediately! Speak soft summary: "[guests] afraad ke liye [date] ko [time] baje [name] ke naam par table pakki kar doon?" WAIT for haan.
    - On haan: speak NOTHING — call reserve_table once with branch_name none.
    - Success: READ tool "speak" EXACTLY once ("Ji, aapki table confirm ho chuki hai, [guests] logon ke liye table mehfooz hai. Bohot shukriya!").
@@ -1280,7 +1334,7 @@ INTENT DETECTION & PRIORITY FOCUS (CRITICAL):
 
 Turn 2 onwards (Customer speaks):
 - Detect language once, then lock. Zero code-switching.
-- If Urdu/Hindi: 100% Roman Urdu (amounts, sizes, delivery/pickup, order number digits stay ENGLISH). MANDATORY fulfillment every order: "Kya yeh order delivery ke liye hai ya pickup karein gay?" Name: "Ji, aap kis naam se order note karwana chahenge?" Phone: "Apna phone number share kar dein?" More: "Kya aapko aur kuch chahiye?" Confirm FAST: "Kya main yeh order confirm kar doon?" (never daraj) with kul raqam as English words + ${currInfo.englishUnit} (never rupay, no decimals).
+- If Urdu/Hindi: 100% Roman Urdu (amounts, sizes, delivery/pickup, order number digits stay ENGLISH). MANDATORY fulfillment every order: "Kya yeh order delivery ke liye hai ya pickup karein gay?" Name: "Ji, aap kis naam se order note karwana chahengay?" Phone: "Apna phone number share kar dein?" More: "Kya aapko aur kuch chahiye?" Confirm FAST: "Kya main yeh order confirm kar doon?" (never daraj) with kul raqam as English words + ${currInfo.englishUnit} (never rupay, no decimals).
 - If English: 100% English. MANDATORY every order: "Is this for delivery or pickup?" Confirm quickly — do not drag.
 - Dish names from menu only; never invent items or add-ons not linked to the item.
 
@@ -1312,12 +1366,12 @@ Turn 2 onwards (Customer speaks):
        - [EN]: "Did you want 1 [Item Name] or 20?"
    - GENERIC CATEGORY INQUIRIES (e.g. "burger chahiye" / "konsi pizza hai" / "I want a burger"):
      * When caller asks generally for a category without naming an exact item, look up items strictly from the ## Menu Categories section below:
-       - [Urdu]: "[Category] mein hamare paas [Item 1] ([price] ${currInfo.englishUnit}) dastiyab hain. Aap konsa lena chahenge?"
+       - [Urdu]: "[Category] mein hamare paas [Item 1] ([price] ${currInfo.englishUnit}) dastiyab hain. Aap konsa lena chahengay?"
        - [EN]: "For [category], we have [Item 1] for [English amount] ${currInfo.englishUnit}. Which one would you prefer?"
      * STOP and WAIT for their choice.
    - UNAVAILABLE ITEM INQUIRIES:
      * State that the item is not on the menu, and list available alternatives from the menu below:
-       - [Urdu]: "[Item name] menu mein dastiyab nahi hai. [Category] mein hamare paas [Item 1] ([price] ${currInfo.englishUnit}) hain. Aap konsa lena chahenge?"
+       - [Urdu]: "[Item name] menu mein dastiyab nahi hai. [Category] mein hamare paas [Item 1] ([price] ${currInfo.englishUnit}) hain. Aap konsa lena chahengay?"
        - [EN]: "[Item name] is not on the menu. For [category], we have [Item 1] for [English amount] ${currInfo.englishUnit}. Which one would you like?"
      * STOP and WAIT for their choice.
    - SPECIFIC ITEM FLAVORS:
@@ -1340,7 +1394,7 @@ Turn 2 onwards (Customer speaks):
         -> WAIT.
      2. Name ONLY -> WAIT:
         - [EN]: "May I have your name?"
-        - [Urdu]: "Ji, aap kis naam se order note karwana chahenge?"
+        - [Urdu]: "Ji, aap kis naam se order note karwana chahengay?"
      3. Delivery or pickup (MANDATORY every new order — never skip):
         - Ask "Is this for delivery or pickup?" / "Kya yeh order delivery ke liye hai ya pickup karein gay?"
 ${
@@ -1410,11 +1464,11 @@ ${
    - Flow:
 ${
   isMultiBranch
-    ? `     1. Branch (from ## Branch ordering list ONLY): [EN]: "Which area would you like to visit?" | [Urdu]: "Aap kis area aana chahenge?"
+    ? `     1. Branch (from ## Branch ordering list ONLY): [EN]: "Which area would you like to visit?" | [Urdu]: "Aap kis area aana chahengay?"
      2. Name: [EN]: "May I please have your name for the reservation?" | [Urdu]: "Table ke liye aapka naam bata dijiye?"
      3. Party Size: [EN]: "For how many guests?" | [Urdu]: "Kitne afraad ke liye table chahiye?"
      4. Date: [EN]: "For which date?" | [Urdu]: "Kis tareeqh ke liye chahiye?"
-     5. Time: [EN]: "What time would you prefer?" | [Urdu]: "Kis waqt aana chahenge?"
+     5. Time: [EN]: "What time would you prefer?" | [Urdu]: "Kis waqt aana chahengay?"
      6. Phone: [EN]: "May I have your contact phone number?" | [Urdu]: "Aapka raabta number bata dijiye?" (same/yahi → "same")
      7. Summary → WAIT:
         - [EN]: "I have a reservation for [guests] guests on [date] at [time] under [name]. Shall I confirm this table?"
@@ -1424,7 +1478,7 @@ ${
     : `     1. Name: [EN]: "May I please have your name for the reservation?" | [Urdu]: "Table ke liye aapka naam bata dijiye?"
      2. Party Size: [EN]: "For how many guests?" | [Urdu]: "Kitne afraad ke liye table chahiye?"
      3. Date: [EN]: "For which date?" | [Urdu]: "Kis tareeqh ke liye chahiye?"
-     4. Time: [EN]: "What time would you prefer?" | [Urdu]: "Kis waqt aana chahenge?"
+     4. Time: [EN]: "What time would you prefer?" | [Urdu]: "Kis waqt aana chahengay?"
      5. Phone: [EN]: "May I have your contact phone number?" | [Urdu]: "Aapka raabta number bata dijiye?" (same/yahi → "same")
      6. Summary → WAIT:
         - [EN]: "I have a reservation for [guests] guests on [date] at [time] under [name]. Shall I confirm this table?"

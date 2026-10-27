@@ -253,7 +253,7 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     assert.match(knowledge, /EXACT DISH/i);
     assert.match(
       knowledge,
-      /SUBCATEGORY PHONE SCRIPT for "Burger" \(1 item — offer then ask; do NOT auto-add\): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hai\. Kya aap Chicken Burger order karna chahenge\?/i,
+      /SUBCATEGORY PHONE SCRIPT for "Burger" \(1 item — offer then ask; do NOT auto-add\): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hai\. Kya aap Chicken Burger order karna chahengay\?/i,
     );
     assert.match(knowledge, /## Branch ordering/i);
     assert.match(knowledge, /NO BRANCH CHOICE/i);

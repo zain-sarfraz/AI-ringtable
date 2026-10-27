@@ -119,7 +119,7 @@ export async function aiCheckPreviousOrder(req, res) {
           `Fulfillment: ${order.fulfillment_type || "delivery"}. ` +
           `Branch/area: ${branchAreaLabel || branchName || "unknown"}. ` +
           `Address: ${order.delivery_address || "n/a"}. ` +
-          `Ask in their LOCKED language if they want to REPEAT this same order. ` +
+          `IMPORTANT: If the caller ALREADY named a new item (e.g. burger, pizza) or requested to place a new order, IGNORE THIS PREVIOUS ORDER and proceed with their new request. ONLY ask if they want to repeat if the caller explicitly requested their previous/old order ("kya aap wahi order repeat karna chahengay?"). ` +
           `If YES: do NOT re-collect name/phone/branch from scratch. Tell them these saved details and ask if they want to CHANGE anything (name, phone, branch/area, or delivery/pickup). ` +
           `If they say no changes, reuse everything and go to order summary + place_order with branch_name "${branchName || "none"}". ` +
           `If they change only one field, update that field only and keep the rest.`,

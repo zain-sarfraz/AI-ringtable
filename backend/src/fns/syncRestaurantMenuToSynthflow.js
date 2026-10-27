@@ -6,6 +6,7 @@ import {
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
   isMaleVoice,
+  PAKISTANI_NAME_KEYWORDS,
 } from "../lib/restaurantVoiceContext.js";
 import { PromptMergeError, resolveSynthflowPromptUpdate } from "../lib/promptMerge.js";
 import { refreshSynthflowPlaceOrderTool } from "./restaurantCreateSynthflowAgent.js";
@@ -112,6 +113,7 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
       ...(catalog.items || []).slice(0, 30).map((i) => i.name),
       "order", "burger", "pizza", "rupees", "rupee", "small", "medium", "large",
       "delivery", "pickup", "confirm", "shukriya",
+      ...(Array.isArray(PAKISTANI_NAME_KEYWORDS) ? PAKISTANI_NAME_KEYWORDS : []),
     ].filter(Boolean);
 
     await updateAgent(r.synthflow_agent_id, {

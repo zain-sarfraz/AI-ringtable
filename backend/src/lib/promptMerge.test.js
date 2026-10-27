@@ -79,9 +79,9 @@ Turn 1: Speak exactly: "Assalamualaikum"
 SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hain. Aap konsa lena chahenge?
 `.trim();
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
-    assert.match(fixed, /Kya aap Chicken Burger order karna chahenge\?/i);
+    assert.match(fixed, /Kya aap Chicken Burger order karna chahengay\?/i);
     assert.match(fixed, /offer then ask; do NOT auto-add/i);
-    assert.doesNotMatch(fixed, /Aap konsa lena chahenge/i);
+    assert.doesNotMatch(fixed, /Aap konsa lena chaheng/i);
     assert.doesNotMatch(fixed, /Main yeh note kar leti hoon/i);
   });
 
@@ -90,7 +90,7 @@ SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Ji, Bu
 SUBCATEGORY PHONE SCRIPT for "Burger" (1 item — say it once, then continue): Acha ji, Chicken Burger five hundred rupees ka hai. Main yeh note kar leti hoon.
 `.trim();
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
-    assert.match(fixed, /Kya aap Chicken Burger order karna chahenge\?/i);
+    assert.match(fixed, /Kya aap Chicken Burger order karna chahengay\?/i);
     assert.doesNotMatch(fixed, /Main yeh note kar leti hoon/i);
   });
 
