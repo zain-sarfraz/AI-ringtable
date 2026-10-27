@@ -716,7 +716,6 @@ function polishRomanTranscript(text) {
     .replace(/\$\s*(\d+)/g, "Rs$1")
     .replace(/\bDelivery\s+ya\s+pickup\b/gi, "Kya yeh order delivery ke liye hai ya pickup")
     .replace(/\bdelivery\s+or\s+pickup\b/gi, "delivery ya pickup")
-    .replace(/\bPhone number\??\b/gi, "Aapka rabta number")
     .replace(/\bOrder place kar dun\??\b/gi, "Kya main yeh order confirm kar doon")
     .replace(/\border daraj kar doon\??\b/gi, "order confirm kar doon")
     .replace(/\border darj kar doon\??\b/gi, "order confirm kar doon")

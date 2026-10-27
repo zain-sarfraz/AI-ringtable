@@ -1,22 +1,27 @@
 import { assertVoiceSyncAllowed } from "./voiceSyncGuard.js";
 
-const SYNTHFLOW_API = (
-  process.env.SYNTHFLOW_API_BASE ||
-  process.env.SYNTHFLOW_API_BASE_URL ||
-  "https://api.synthflow.ai/v2"
-).replace(/\/$/, "");
+function synthflowApiBase() {
+  return (
+    process.env.SYNTHFLOW_API_BASE ||
+    process.env.SYNTHFLOW_API_BASE_URL ||
+    "https://api.us.synthflow.ai/v2"
+  ).replace(/\/$/, "");
+}
 
 /**
  * Prefer US before global/EU: a US workspace API key gets 200 on api.us but
  * "Unauthorized: Invalid or expired token" on api.synthflow.ai / api.eu — that is a
  * wrong-region response, not a dead key. getAssistant must keep trying other bases.
  */
-const SYNTHFLOW_REGION_BASES = [
-  SYNTHFLOW_API,
-  "https://api.us.synthflow.ai/v2",
-  "https://api.synthflow.ai/v2",
-  "https://api.eu.synthflow.ai/v2",
-].filter((v, i, arr) => v && arr.indexOf(v) === i);
+function synthflowRegionBases() {
+  const base = synthflowApiBase();
+  return [
+    base,
+    "https://api.us.synthflow.ai/v2",
+    "https://api.synthflow.ai/v2",
+    "https://api.eu.synthflow.ai/v2",
+  ].filter((v, i, arr) => v && arr.indexOf(v) === i);
+}
 
 const FETCH_TIMEOUT_MS = Number(process.env.SYNTHFLOW_FETCH_TIMEOUT_MS || 45000);
 const FETCH_RETRIES = Number(process.env.SYNTHFLOW_FETCH_RETRIES || 2);
@@ -57,7 +62,7 @@ function formatFetchError(err, url) {
  */
 export async function synthflowRequest(path, opts = {}) {
   assertVoiceSyncAllowed();
-  const url = path.startsWith("http") ? path : `${SYNTHFLOW_API}${path}`;
+  const url = path.startsWith("http") ? path : `${synthflowApiBase()}${path}`;
   const retries = opts.retries ?? FETCH_RETRIES;
   let lastErr = null;
 
@@ -236,13 +241,13 @@ export async function startOutboundCall({ modelId, phone, name }) {
     name: name || "Test call",
   };
 
-  let preferredBases = [...SYNTHFLOW_REGION_BASES];
+  let preferredBases = [...synthflowRegionBases()];
   try {
     const found = await getAssistant(id);
     if (found?.api_base) {
       preferredBases = [
         found.api_base,
-        ...SYNTHFLOW_REGION_BASES.filter((b) => b !== found.api_base),
+        ...synthflowRegionBases().filter((b) => b !== found.api_base),
       ];
     }
   } catch {
@@ -311,13 +316,13 @@ export async function updateAgent(modelId, payload) {
   };
 
   // Resolve the region that owns this agent (US keys 401 on global/EU).
-  let preferredBases = [...SYNTHFLOW_REGION_BASES];
+  let preferredBases = [...synthflowRegionBases()];
   try {
     const found = await getAssistant(id);
     if (found?.api_base) {
       preferredBases = [
         found.api_base,
-        ...SYNTHFLOW_REGION_BASES.filter((b) => b !== found.api_base),
+        ...synthflowRegionBases().filter((b) => b !== found.api_base),
       ];
     }
   } catch (err) {
@@ -392,7 +397,7 @@ export async function getAssistant(modelId) {
   let sawAuthFailure = false;
   let sawSuccess = false;
 
-  for (const base of SYNTHFLOW_REGION_BASES) {
+  for (const base of synthflowRegionBases()) {
     try {
       const json = await synthflowRequest(`${base}/assistants/${encodeURIComponent(id)}`, {
         method: "GET",
@@ -423,7 +428,7 @@ export async function getAssistant(modelId) {
   }
 
   // List assistants in each region and match model_id (handles odd GET payloads)
-  for (const base of SYNTHFLOW_REGION_BASES) {
+  for (const base of synthflowRegionBases()) {
     try {
       for (let page = 0; page < 8; page++) {
         const q = new URLSearchParams({ limit: "50", offset: String(page * 50) });
@@ -468,7 +473,7 @@ export async function getAssistant(modelId) {
 export async function listAssistantsBrief({ limit = 20 } = {}) {
   const out = [];
   const seen = new Set();
-  for (const base of SYNTHFLOW_REGION_BASES) {
+  for (const base of synthflowRegionBases()) {
     try {
       const q = new URLSearchParams({ limit: String(Math.min(limit, 50)), offset: "0" });
       const json = await synthflowRequest(`${base}/assistants?${q}`, { method: "GET" });

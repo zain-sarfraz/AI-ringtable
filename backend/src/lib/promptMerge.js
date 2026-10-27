@@ -200,7 +200,13 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   // Turn-2 rules 2–3: exact dish must win over category PHONE SCRIPT (merge keeps old Turn rules).
   text = text.replace(
     /2\. If caller NAMED a dish \(e\.g\. "Chicken Burger order karna hai"\): quote THAT item price from the menu and continue\. Do NOT list the whole category\. NEVER call check_previous_order\. NEVER offer to repeat an old pizza\/order\.\n3\. CATEGORY LIST \(mandatory — overrides the short-sentence limit\):[\s\S]*?FORBIDDEN: "Kaunsa burger lena hai\?" without the matching list\. FORBIDDEN: reading Junk Food or any other category whose name does not match\. If they already named one exact dish, do not read a script\. Quote that one item only\./g,
-    `2. If caller NAMED an exact dish (e.g. "Chicken Burger" / "Chicken Burger order karna hai"): quote THAT item price only ("Acha ji, Chicken Burger five hundred rupees ka hai.") then continue to naam/fulfillment. Do NOT read any PHONE SCRIPT. Do NOT ask again "Kya aap Chicken Burger order karna chahengay?" after they already named it. NEVER call check_previous_order.
+    `2. FRESH ORDER FIRST (ABSOLUTE): If caller says they want to order or names any item/type (e.g. "Mujhe burger order karna hai"), PROCEED WITH THE NEW ORDER IMMEDIATELY. NEVER say "Aapka pehle wala order mil gaya hai" and NEVER ask "kya aap wahi order repeat karna chahengay?". NEVER call check_previous_order unless caller explicitly asks: "Mera pichla order repeat kar do" or "Pehle wala order bhej do".
+   - CATEGORY OR GENERIC TYPE ("burger", "1 burger", "ek burger", "mujhe 1 burger order karna hai", "pizza", "koi drink"): Caller named a category or generic food type, NOT an exact menu item. You MUST read the matching PHONE SCRIPT from rule 3 ("Ji, Burger mein hamare paas Chicken Burger five hundred rupees ka hai. Kya aap Chicken Burger order karna chahengay?") and STOP and WAIT for their answer.
+     * STRICTLY FORBIDDEN: NEVER ask for customer name in the same turn!
+     * STRICTLY FORBIDDEN: NEVER merge price and name into one sentence!
+     * STRICTLY FORBIDDEN: NEVER call place_order when caller says haan to this question!
+     * Only after caller answers "Haan" or "Ji", in the NEXT turn ask: "Ji, aap kis naam se order note karwana chahengay?"
+   - EXACT FULL DISH NAMED BY CALLER (caller literally speaks the exact words "Chicken Burger" / "1 Chicken Burger"): Softly confirm price and ask name: "Ji bilkul, Chicken Burger five hundred rupees ka hai. Ji, aap kis naam se order note karwana chahengay?" Do NOT read any PHONE SCRIPT. Do NOT ask again "Kya aap Chicken Burger order karna chahengay?" after they already named Chicken Burger. NEVER call check_previous_order.
 3. CATEGORY LIST (only when they named a TYPE, not a full dish — overrides the short-sentence limit):
    - Use ONLY for type-alone phrases ("burger chahiye", "1 burger", "pizza", "koi drink") — NOT when they already said a full item name like "Chicken Burger".
    - A type match means the spoken TYPE word equals the subcategory/category name (burger → Burgers). Extra words like "order"/"chahiye" are ignored, but a full dish name is NOT a type match.
@@ -218,6 +224,15 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   text = text.replace(
     /7\. NEVER call check_previous_order unless caller clearly says they want the OLD\/LAST order repeated \("pehle wala", "wahi order", "repeat last"\)\. If any dish is named → fresh order only\./g,
     '7. FRESH ORDER FIRST: If caller says "Mujhe burger order karna hai" or names ANY item, proceed with fresh order immediately — NEVER say "Aapka pehle wala order mil gaya hai" and NEVER ask to repeat previous order. NEVER call check_previous_order unless caller clearly says they want the OLD/LAST order repeated ("pehle wala", "wahi order", "repeat last"). If any dish or type is named → fresh order only.',
+  );
+
+  text = text.replace(
+    /Acha ji, Chicken Burger five hundred rupees ka hai\.\s*["']?\s*then continue to naam\/fulfillment\./gi,
+    'Ji bilkul, Chicken Burger five hundred rupees ka hai. Ji, aap kis naam se order note karwana chahengay?" then continue to fulfillment.',
+  );
+  text = text.replace(
+    /Call place_order ONLY after the caller confirms \(haan \/ theek hai \/ yes \/ kar do \/ confirm\) — then call IMMEDIATELY/gi,
+    'Call place_order ONLY after caller confirms the FINAL ORDER SUMMARY ("Kya main yeh order confirm kar doon?" -> haan / kar do). STRICTLY FORBIDDEN to call on menu item accept questions',
   );
 
   const waitReplacement =
