@@ -188,21 +188,23 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     // 2. Replace Rule 8 and Rule 11 cleanly — never ask area when there is no branch choice.
     text = text.replace(
       /8\. Branch ordering section overrides location questions[^\n]*/gi,
-      '8. Fulfillment: ask "Kya yeh order delivery ke liye hai ya pickup?"\n   - Delivery: ask street address, then phone number. NEVER ask area/branch. Pass branch_name none.\n   - Pickup: Do NOT ask address, area, or branch (FORBIDDEN: Johar/Iqbal/any town). Go straight to phone. Pass branch_name none.',
+      '8. Fulfillment: ask "Kya yeh order delivery ke liye hai ya pickup?"\n   - Delivery: ask street address ("Apna mukammal address bata dein?"), then phone number. Pass branch_name none.\n   - Pickup: customer collects directly from the restaurant. Go straight to phone. Pass branch_name none.',
     );
     text = text.replace(
       /11\. After (?:the caller says )?haan[^\n]*/gi,
-      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name none. NEVER ask area/branch/town after haan.',
+      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name none.',
     );
 
-    // 3. Remove stale multi-branch ask lines (not the absolute NO-BRANCH forbid list — that is re-added next).
+    // 3. Remove stale multi-branch ask lines and any town/area names completely.
     text = text.replace(/^[ \t]*(?:Ask|Which area|PICKUP and TABLE)[^\n]*(?:Johar|Iqbal|Which area|branch_name ")[^\n]*\r?\n?/gim, "");
     text = text.replace(
       /Then WAIT — on haan speak NOTHING; call place_order immediately[^\n]*?\. NEVER say daraj\/darj\/rupay\./gi,
       "Then WAIT — on haan speak NOTHING; call place_order immediately. NEVER say daraj/darj/rupay.",
     );
     text = text.replace(/Which area would you like:[^\n]*/gi, "");
-    text = text.replace(/\bJohar\s+Town\s*\/\s*Iqbal\s+Town\b/gi, "");
+    text = text.replace(/\b(?:Johar|Iqbal)(?:\s+Town)?\b/gi, "");
+    text = text.replace(/\(FORBIDDEN:[^)]*(?:Johar|Iqbal)[^)]*\)/gi, "");
+    text = text.replace(/\(no Johar[^)]*\)/gi, "");
     text = text.replace(/\bJhajhar\s+Town\b/gi, "");
     text = text.replace(/with branch_name per the Branch ordering section(\s*\(NO branches → "none"\))?/gi, "with branch_name none");
     text = text.replace(/with branch_name per\s*$/gim, "with branch_name none");
@@ -215,7 +217,6 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
 =======================================================
 AFTER HAAN — CALL IMMEDIATELY (CRITICAL):
 - After haan/yes: speak NOTHING — call place_order immediately with branch_name none.
-- NEVER ask city, area, branch, Johar Town, Iqbal Town, or "kaunsa area" after haan.
 - After place_order: if success/speak/order_number is present, READ "speak" EXACTLY once — order IS saved.
 =======================================================
 `;
