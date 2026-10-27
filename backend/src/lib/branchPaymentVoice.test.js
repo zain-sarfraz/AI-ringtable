@@ -196,7 +196,7 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     assert.match(knowledge, /CASH ONLY/i);
     assert.match(knowledge, /payment delivery ke waqt cash mein kar dena/i);
     assert.match(knowledge, /pickup par payment cash mein hogi/i);
-    assert.match(knowledge, /Fulfillment: softly ask "Kya yeh order delivery ke liye hai ya pickup\?"/);
+    assert.match(knowledge, /Fulfillment: softly ask "Kya yeh order delivery ke liye hai ya pickup karein gay\?"/);
     assert.match(knowledge, /softly ask street address/i);
     assert.match(knowledge, /Do NOT ask address, area, or branch/);
     assert.doesNotMatch(knowledge, /Johar\/Iqbal/);

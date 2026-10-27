@@ -88,32 +88,32 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
 
   text = text.replace(
-    /Name:\s*"Aapka naam bata (?:dijiye|dein)\?"/gi,
-    'Name: ask "Aap kis naam pe order karna chahenge?"',
+    /Name:\s*"Aap(?:ka naam bata (?:dijiye|dein)| kis naam pe order karna chahenge)\?"/gi,
+    'Name: softly and calmly ask: "Ji, aap kis naam se order note karwana chahenge?"',
   );
   text = text.replace(
-    /Phone:\s*ask once only\s*—\s*"Aapka raabta number bata (?:dijiye|dein)\?"/gi,
-    'Phone: ask once only — "Apna raabta number bata dein?"',
+    /Phone:\s*ask once only\s*—\s*"Aapka (?:raabta|phone) number bata (?:dijiye|dein)\?"/gi,
+    'Phone: ask once only — "Apna phone number share kar dein?"',
   );
   text = text.replace(
-    /Ask once(?:,\s*naturally and warmly)?:\s*"Aapka raabta number bata (?:dijiye|dein)\?"/gi,
-    'Ask once, naturally and warmly: "Apna raabta number bata dein?"',
+    /Ask once(?:,\s*naturally and warmly)?:\s*"Aapka (?:raabta|phone) number bata (?:dijiye|dein)\?"/gi,
+    'Ask once, naturally and warmly: "Apna phone number share kar dein?"',
   );
   text = text.replace(
-    /naam \(EXACT name\)/g,
-    'naam (ask "Aap kis naam pe order karna chahenge?", accept EXACT name first try)',
+    /naam \(ask "Aap kis naam pe order karna chahenge\?", accept EXACT name first try\)/g,
+    'naam (softly ask "Ji, aap kis naam se order note karwana chahenge?", accept EXACT name first try)',
   );
   text = text.replace(
-    /raabta number \(ask "Apna raabta number bata (?:dein|dijiye)\?", once; yahi = "same"\)/g,
-    'raabta number (ask "Apna raabta number bata dein?", once; yahi = "same")',
+    /(?:raabta|phone) number \(ask "Apna (?:raabta|phone) number (?:bata|share) (?:dein|dijiye|kar dein)\?", once; yahi = "same"\)/g,
+    'phone (ask "Apna phone number share kar dein?", once; yahi = "same")',
   );
   text = text.replace(
     /Delivery:\s*softly ask "Apna mukammal address bata (?:dein|dijiye)\?", accept on first try, then phone\./gi,
     'Delivery: softly ask "Apna mukammal address bata dein?", accept on first try, then phone.',
   );
   text = text.replace(
-    /Apna raabta number bata dijiye\?/gi,
-    'Apna raabta number bata dein?',
+    /Apna (?:raabta|phone) number (?:bata|share) (?:dijiye|dein)\?/gi,
+    'Apna phone number share kar dein?',
   );
   text = text.replace(
     /Apna mukammal address bata dijiye\?/gi,
@@ -126,6 +126,14 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   text = text.replace(
     /teks shamil karke/gi,
     'Tax include kar ke',
+  );
+  text = text.replace(
+    /Kya yeh order delivery ke liye hai ya pickup\?/gi,
+    'Kya yeh order delivery ke liye hai ya pickup karein gay?',
+  );
+  text = text.replace(
+    /Ji,\s*aapka order confirm ho gaya hai/gi,
+    'Aapka order confirm ho gaya hai',
   );
 
   // Stale single-item scripts that auto-continued → require explicit accept.
@@ -229,7 +237,7 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     // 2. Replace Rule 8 and Rule 11 cleanly — never ask area when there is no branch choice.
     text = text.replace(
       /8\. Branch ordering section overrides location questions[^\n]*/gi,
-      '8. Fulfillment: ask "Kya yeh order delivery ke liye hai ya pickup?"\n   - Delivery: ask street address ("Apna mukammal address bata dein?"), then phone number. Pass branch_name none.\n   - Pickup: customer collects directly from the restaurant. Go straight to phone. Pass branch_name none.',
+      '8. Fulfillment: ask "Kya yeh order delivery ke liye hai ya pickup karein gay?"\n   - Delivery: ask street address ("Apna mukammal address bata dein?"), then phone number. Pass branch_name none.\n   - Pickup: customer collects directly from the restaurant. Say: "Theek hai ji, pickup ke liye note kar liya. Apna phone number share kar dein?" Go straight to phone. Pass branch_name none.',
     );
     text = text.replace(
       /11\. After (?:the caller says )?haan[^\n]*/gi,

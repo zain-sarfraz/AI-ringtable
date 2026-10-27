@@ -187,7 +187,7 @@ export async function aiPlaceOrder(req, res) {
     if (!phoneToUse) {
       // Soft fail — NEVER tell the agent "order failed". Ask digits ONCE; never loop phone questions.
       const speakUr =
-        "Ji, raabta number digits mein bata dijiye?";
+        "Ji, phone number digits mein share kar dein?";
       return res.status(200).json({
         success: false,
         phone_required: true,
@@ -224,7 +224,7 @@ export async function aiPlaceOrder(req, res) {
         const totalHints = spokenPriceHints(Number(existingOrder.total_amount ?? existingOrder.total ?? 0), currInfo);
         const orderSpeak = speakOrderNumberForPhone(existingOrder.order_number);
         const spokenScript =
-          `Ji, aapka order confirm ho gaya hai. Aapka order number ${orderSpeak} hai, isay mehfooz kar lijiye. ` +
+          `Aapka order confirm ho gaya hai. Aapka order number ${orderSpeak} hai, isay mehfooz kar lijiye. ` +
           `Tax include kar ke kul bill ${totalHints.urduSpeak} bana hai. Bohot shukriya, Allah hafiz!`;
         return res.json({
           success: true,
@@ -383,7 +383,7 @@ export async function aiPlaceOrder(req, res) {
     // Locked script only — no English debug in `message` (LLM paraphrases and invents wrong ORD suffixes).
     // Soft, natural Lahori close — still digit-safe for the order number.
     const spokenScript =
-      `Ji, aapka order confirm ho gaya hai. Aapka order number ${orderSpeak} hai, isay mehfooz kar lijiye. ` +
+      `Aapka order confirm ho gaya hai. Aapka order number ${orderSpeak} hai, isay mehfooz kar lijiye. ` +
       `Tax include kar ke kul bill ${spokenTotal} bana hai. Bohot shukriya, Allah hafiz!` +
       (branchNote ? ` ${branchNote.trim()}` : "") +
       (couponNote ? ` ${couponNote.trim()}` : "");
