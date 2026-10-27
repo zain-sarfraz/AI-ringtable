@@ -72,7 +72,7 @@ export function branchOrderingSection(branches) {
       "ABSOLUTE — THIS RESTAURANT HAS NO BRANCH CHOICE (0 or 1 location only).",
       "This restaurant operates from a single location. There are no other branches, areas, or outlets.",
       "NEVER ask which branch, area, town, or city — for delivery, pickup, table reservation, OR order tracking.",
-      "FORBIDDEN spoken words/areas: NEVER ask Johar Town, Iqbal Town, or any area name.",
+      "FORBIDDEN spoken words/areas: NEVER ask which branch, area, or town. This restaurant has only ONE location.",
       "DELIVERY: ask only the complete street address (softly). Accept on first try. Pass branch_name as exactly none. NEVER ask city/area/branch after the address.",
       "PICKUP: Customer collects directly from this restaurant. Say: \"Theek hai ji, pickup ke liye note kar liya. Apna raabta number bata dein?\" Go straight to phone — do NOT ask area/branch. Pass branch_name as exactly none.",
       "TABLE: collect name → guests → date → time → phone (ONE soft question per turn). Do NOT ask area/branch. Pass branch_name as exactly none on reserve_table.",

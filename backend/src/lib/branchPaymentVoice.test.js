@@ -51,8 +51,8 @@ describe("branchOrderingSection", () => {
       assert.match(text, /NO BRANCH CHOICE/i);
       assert.match(text, /NEVER ask which branch, area, town, or city/i);
       assert.match(text, /FORBIDDEN spoken words\/areas/i);
-      assert.match(text, /Johar Town/i);
-      assert.match(text, /Iqbal Town/i);
+      assert.doesNotMatch(text, /Johar Town/i);
+      assert.doesNotMatch(text, /Iqbal Town/i);
       assert.match(text, /branch_name as exactly none/i);
       assert.match(text, /NEVER ask area after haan/i);
       assert.doesNotMatch(text, /Which area would you like/i);
@@ -198,8 +198,8 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     assert.match(knowledge, /pickup par payment cash mein hogi/i);
     assert.match(knowledge, /Fulfillment: softly ask "Kya yeh order delivery ke liye hai ya pickup\?"/);
     assert.match(knowledge, /softly ask street address/i);
-    assert.match(knowledge, /Pass branch_name none for both/);
-    assert.match(knowledge, /FORBIDDEN: Johar\/Iqbal\/kaunsa area/);
+    assert.match(knowledge, /Do NOT ask address, area, or branch/);
+    assert.doesNotMatch(knowledge, /Johar\/Iqbal/);
     assert.match(knowledge, /TRACK ORDER: ask only the order number/i);
     assert.match(knowledge, /TABLE: collect name/i);
   });

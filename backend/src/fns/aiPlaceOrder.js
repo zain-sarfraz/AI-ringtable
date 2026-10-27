@@ -224,8 +224,8 @@ export async function aiPlaceOrder(req, res) {
         const totalHints = spokenPriceHints(Number(existingOrder.total_amount ?? existingOrder.total ?? 0), currInfo);
         const orderSpeak = speakOrderNumberForPhone(existingOrder.order_number);
         const spokenScript =
-          `Ji, aapka order confirm ho gaya. Order number ${orderSpeak} hai — mehfooz kar lijiye. ` +
-          `Tax include kar ke kul bill ${totalHints.urduSpeak} hai. Bohot shukriya, Allah hafiz!`;
+          `Ji, aapka order confirm ho gaya hai. Aapka order number ${orderSpeak} hai, isay mehfooz kar lijiye. ` +
+          `Tax include kar ke kul bill ${totalHints.urduSpeak} bana hai. Bohot shukriya, Allah hafiz!`;
         return res.json({
           success: true,
           already_created: true,
@@ -383,8 +383,8 @@ export async function aiPlaceOrder(req, res) {
     // Locked script only — no English debug in `message` (LLM paraphrases and invents wrong ORD suffixes).
     // Soft, natural Lahori close — still digit-safe for the order number.
     const spokenScript =
-      `Ji, aapka order confirm ho gaya. Order number ${orderSpeak} hai — mehfooz kar lijiye. ` +
-      `Tax include kar ke kul bill ${spokenTotal} hai. Bohot shukriya, Allah hafiz!` +
+      `Ji, aapka order confirm ho gaya hai. Aapka order number ${orderSpeak} hai, isay mehfooz kar lijiye. ` +
+      `Tax include kar ke kul bill ${spokenTotal} bana hai. Bohot shukriya, Allah hafiz!` +
       (branchNote ? ` ${branchNote.trim()}` : "") +
       (couponNote ? ` ${couponNote.trim()}` : "");
 

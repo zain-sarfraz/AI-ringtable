@@ -68,18 +68,18 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
 
   text = text.replace(
-    /Confirm FAST \(do not drag\): "Aapka order: \[qty\] \[item\], \[naam\], \[delivery \/ pickup\], (?:teks shamil karke|tax include kar ke|tax include kar k) (?:kul raqam|kul bill) \[English AFTER-TAX total e\.g\. five hundred forty [^\"]+\] hai\. Kya main yeh order confirm kar doon\?" Then WAIT — on haan call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
-    'Confirm FAST in natural sentences (NOT keyword lists): "Aapka order yeh hai: [qty] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX total] rupees bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan call place_order immediately. NEVER say daraj/darj/rupay.',
+    /Confirm FAST \(do not drag\): "Aapka order: \[qty\] \[item\], \[naam\], \[delivery \/ pickup\], (?:teks shamil karke|tax include kar ke|tax include kar k|tax shamil kar ke) (?:kul raqam|kul bill) \[English AFTER-TAX total e\.g\. five hundred forty [^\"]+\] hai\. Kya main yeh order confirm kar doon\?" Then WAIT — on haan(?: \/ kar do)? call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
+    'Confirm FAST in natural sentences (NOT keyword lists): "Aapka order yeh hai: [ek/do/teen] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX total] rupees bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan / kar do call place_order immediately. NEVER say daraj/darj/rupay.',
   );
 
   text = text.replace(
-    /"Aapka order: \[quantity\] \[item name\], \[naam\], \[delivery ya pickup\], \[pata\], (?:teks shamil karke|tax include kar ke|tax include kar k) (?:kul raqam|kul bill) \[e\.g\. five hundred forty\] ([^"]+) hai\. Kya main yeh order confirm kar doon\?"/gi,
-    '"Aapka order yeh hai: [quantity] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye. Tax include kar ke kul bill [e.g. five hundred forty three] $1 bana hai. Kya main yeh order confirm kar doon?"',
+    /"Aapka order: \[quantity\] \[item name\], \[naam\], \[delivery ya pickup\], \[pata\], (?:teks shamil karke|tax include kar ke|tax include kar k|tax shamil kar ke) (?:kul raqam|kul bill) \[e\.g\. five hundred forty\] ([^"]+) hai\. Kya main yeh order confirm kar doon\?"/gi,
+    '"Aapka order yeh hai: [ek/do/teen] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye. Tax include kar ke kul bill [e.g. five hundred forty three] $1 bana hai. Kya main yeh order confirm kar doon?"',
   );
 
   text = text.replace(
-    /teks shamil karke kul (?:bill|raqam)/gi,
-    "tax include kar ke kul bill",
+    /(?:teks shamil karke|tax include kar ke|tax include kar k|tax shamil kar ke)\s+kul\s+(?:bill|raqam)/gi,
+    "Tax include kar ke kul bill",
   );
 
   text = text.replace(
@@ -88,15 +88,15 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
 
   text = text.replace(
-    /Name:\s*"Aapka naam bata dijiye\?"/gi,
+    /Name:\s*"Aapka naam bata (?:dijiye|dein)\?"/gi,
     'Name: ask "Aap kis naam pe order karna chahenge?"',
   );
   text = text.replace(
-    /Phone:\s*ask once only\s*—\s*"Aapka raabta number bata dijiye\?"/gi,
+    /Phone:\s*ask once only\s*—\s*"Aapka raabta number bata (?:dijiye|dein)\?"/gi,
     'Phone: ask once only — "Apna raabta number bata dein?"',
   );
   text = text.replace(
-    /Ask once:\s*"Aapka raabta number bata dijiye\?"/gi,
+    /Ask once(?:,\s*naturally and warmly)?:\s*"Aapka raabta number bata (?:dijiye|dein)\?"/gi,
     'Ask once, naturally and warmly: "Apna raabta number bata dein?"',
   );
   text = text.replace(
@@ -104,12 +104,28 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     'naam (ask "Aap kis naam pe order karna chahenge?", accept EXACT name first try)',
   );
   text = text.replace(
-    /raabta number \(once; yahi = "same"\)/g,
+    /raabta number \(ask "Apna raabta number bata (?:dein|dijiye)\?", once; yahi = "same"\)/g,
     'raabta number (ask "Apna raabta number bata dein?", once; yahi = "same")',
   );
   text = text.replace(
-    /Delivery:\s*ask street address, then phone number\./gi,
+    /Delivery:\s*softly ask "Apna mukammal address bata (?:dein|dijiye)\?", accept on first try, then phone\./gi,
     'Delivery: softly ask "Apna mukammal address bata dein?", accept on first try, then phone.',
+  );
+  text = text.replace(
+    /Apna raabta number bata dijiye\?/gi,
+    'Apna raabta number bata dein?',
+  );
+  text = text.replace(
+    /Apna mukammal address bata dijiye\?/gi,
+    'Apna mukammal address bata dein?',
+  );
+  text = text.replace(
+    /tax shamil kar ke/gi,
+    'Tax include kar ke',
+  );
+  text = text.replace(
+    /teks shamil karke/gi,
+    'Tax include kar ke',
   );
 
   // Stale single-item scripts that auto-continued → require explicit accept.
@@ -176,10 +192,10 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
 
   const waitReplacement =
     Number(branchCount) <= 1
-      ? "Then WAIT — on haan speak NOTHING; call place_order immediately. NEVER say daraj/darj/rupay."
-      : 'Then WAIT — on haan speak NOTHING; call place_order immediately with branch_name per the Branch ordering section (NO branches → "none"). NEVER invent city/area names after haan. NEVER say daraj/darj/rupay.';
+      ? "Then WAIT — on haan / kar do speak NOTHING; call place_order immediately. NEVER say daraj/darj/rupay."
+      : 'Then WAIT — on haan / kar do speak NOTHING; call place_order immediately with branch_name per the Branch ordering section (NO branches → "none"). NEVER invent city/area names after haan. NEVER say daraj/darj/rupay.';
   text = text.replace(
-    /Then WAIT — on haan call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
+    /Then WAIT — on haan(?:\s*\/\s*kar do)? call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
     waitReplacement,
   );
 
@@ -217,7 +233,7 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     );
     text = text.replace(
       /11\. After (?:the caller says )?haan[^\n]*/gi,
-      '11. After haan: speak NOTHING — call place_order ONCE immediately with branch_name none.',
+      '11. After haan / kar do: speak NOTHING — call place_order ONCE immediately with branch_name none.',
     );
 
     // 3. Remove stale multi-branch ask lines and any town/area names completely.
@@ -227,9 +243,12 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
       "Then WAIT — on haan speak NOTHING; call place_order immediately. NEVER say daraj/darj/rupay.",
     );
     text = text.replace(/Which area would you like:[^\n]*/gi, "");
-    text = text.replace(/\b(?:Johar|Iqbal)(?:\s+Town)?\b/gi, "");
-    text = text.replace(/\(FORBIDDEN:[^)]*(?:Johar|Iqbal)[^)]*\)/gi, "");
     text = text.replace(/\(no Johar[^)]*\)/gi, "");
+    text = text.replace(/\(FORBIDDEN:[^)]*(?:Johar|Iqbal)[^)]*\)/gi, "");
+    text = text.replace(/\(FORBIDDEN:\s*\/\/any town\)/gi, "");
+    text = text.replace(/\b(?:Johar|Iqbal)(?:\s+Town)?\b/gi, "");
+    text = text.replace(/Johar\s*\/\s*Iqbal/gi, "");
+    text = text.replace(/FORBIDDEN:\s*Johar Town,\s*Iqbal Town[^\n]*/gi, "This restaurant has only ONE location and NO branches.");
     text = text.replace(/\bJhajhar\s+Town\b/gi, "");
     text = text.replace(/with branch_name per the Branch ordering section(\s*\(NO branches → "none"\))?/gi, "with branch_name none");
     text = text.replace(/with branch_name per\s*$/gim, "with branch_name none");
@@ -241,7 +260,8 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     const guardBody = `
 =======================================================
 AFTER HAAN — CALL IMMEDIATELY (CRITICAL):
-- After haan/yes: speak NOTHING — call place_order immediately with branch_name none.
+- When caller confirms (haan / kar do / yes / theek hai / confirm): speak NOTHING — call place_order immediately with branch_name none.
+- NEVER ask which branch/area and NEVER say "branch area chahiye" after confirmation!
 - After place_order: if success/speak/order_number is present, READ "speak" EXACTLY once — order IS saved.
 =======================================================
 `;
