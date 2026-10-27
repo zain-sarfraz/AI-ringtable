@@ -87,6 +87,31 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     '10. Payment is CASH ONLY — never ask how they will pay. Delivery: cash at delivery. Pickup: cash at pickup.',
   );
 
+  text = text.replace(
+    /Name:\s*"Aapka naam bata dijiye\?"/gi,
+    'Name: ask "Aap kis naam pe order karna chahenge?"',
+  );
+  text = text.replace(
+    /Phone:\s*ask once only\s*—\s*"Aapka raabta number bata dijiye\?"/gi,
+    'Phone: ask once only — "Apna raabta number bata dein?"',
+  );
+  text = text.replace(
+    /Ask once:\s*"Aapka raabta number bata dijiye\?"/gi,
+    'Ask once, naturally and warmly: "Apna raabta number bata dein?"',
+  );
+  text = text.replace(
+    /naam \(EXACT name\)/g,
+    'naam (ask "Aap kis naam pe order karna chahenge?", accept EXACT name first try)',
+  );
+  text = text.replace(
+    /raabta number \(once; yahi = "same"\)/g,
+    'raabta number (ask "Apna raabta number bata dein?", once; yahi = "same")',
+  );
+  text = text.replace(
+    /Delivery:\s*ask street address, then phone number\./gi,
+    'Delivery: softly ask "Apna mukammal address bata dein?", accept on first try, then phone.',
+  );
+
   // Stale single-item scripts that auto-continued → require explicit accept.
   text = text.replace(
     /(\w+ PHONE SCRIPT for "[^"]+" \(1 item — say it once, then continue\): )Acha ji, (.+?) ka hai\. Main yeh note kar leti hoon\./gi,
