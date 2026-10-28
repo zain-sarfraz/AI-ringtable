@@ -148,12 +148,12 @@ describe("aiOrderStatus user-friendly phone tracking & kitchen notes", () => {
       assert.equal(result.customer_name, testCustName);
       assert.equal(result.instruction_updated, true);
 
-      // Verify spoken text contains: customer name, ordered items, bill amount, status, and instruction acknowledgement
+      // Speak order: status → name → items → bill
+      assert.match(result.speak, /^Ji, is waqt aapka order kitchen mein tayyar ho raha hai/i);
       assert.match(result.speak, new RegExp(testCustName, "i"), "Must mention customer name");
       assert.match(result.speak, /Chicken Fajita Pizza Large/i, "Must mention ordered items");
       assert.match(result.speak, /Cold Drink/i, "Must mention all items");
-      assert.match(result.speak, /2150/, "Must mention bill amount");
-      assert.match(result.speak, /kitchen mein tayyar ho raha hai/i, "Must state preparing status");
+      assert.match(result.speak, /two thousand one hundred fifty/i, "Must mention bill amount");
       assert.match(result.speak, /kitchen notes mein darj/i, "Must confirm instruction added to kitchen notes");
 
       // Verify DB was updated with the instruction

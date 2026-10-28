@@ -157,7 +157,7 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     assert.match(fixed, /AFTER HAAN — CALL IMMEDIATELY/i);
     assert.match(fixed, /NO BRANCH CHOICE/i);
     assert.match(fixed, /NEVER ask which branch, area, town, or city/i);
-    assert.match(fixed, /After place_order: if success\/speak\/order_number is present/i);
+    assert.match(fixed, /After place_order: if success\s*\/\s*speak\s*\/\s*order_number is present/i);
   });
 
   it("multi-branch rewrite keeps configured Johar/Iqbal area labels", () => {
@@ -200,7 +200,7 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     assert.match(knowledge, /softly ask street address/i);
     assert.match(knowledge, /Do NOT ask address, area, or branch/);
     assert.doesNotMatch(knowledge, /Johar\/Iqbal/);
-    assert.match(knowledge, /TRACK ORDER: ask only the order number/i);
+    assert.match(knowledge, /TRACK ORDER: ask "Ji zaroor, aapka order kis phone number se place hua tha\?"/i);
     assert.match(knowledge, /TABLE: collect name/i);
   });
 

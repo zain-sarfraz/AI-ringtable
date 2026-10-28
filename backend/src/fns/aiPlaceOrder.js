@@ -187,7 +187,7 @@ export async function aiPlaceOrder(req, res) {
     if (!phoneToUse) {
       // Soft fail — NEVER tell the agent "order failed". Ask digits ONCE; never loop phone questions.
       const speakUr =
-        "Ji, phone number digits mein share kar dein?";
+        "Apna phone number share kar dein?";
       return res.status(200).json({
         success: false,
         phone_required: true,
@@ -426,10 +426,10 @@ export async function aiPlaceOrder(req, res) {
         success: false,
         branch_required: false,
         order_failed: false,
-        speak: "Ji, ek second, main order confirm karti hoon.",
+        speak: "",
         message:
-          "Do NOT ask for city, area, or branch. Do NOT say order failed / save nahi hua. " +
-          "Call place_order ONCE more with branch_name exactly \"none\". Do NOT invent an order number.",
+          "Stay SILENT. Do NOT ask city/area/branch. Do NOT say masla / dobara koshish / line par rahen / order failed. " +
+          "Call place_order ONCE more with branch_name exactly \"none\". If success/speak returns, READ speak EXACTLY.",
       });
     }
     if (/no order items/i.test(String(e.message || ""))) {
@@ -444,9 +444,9 @@ export async function aiPlaceOrder(req, res) {
     return res.status(200).json({
       success: false,
       order_failed: false,
-      speak: "Ji, ek second, main order confirm karti hoon.",
+      speak: "",
       message:
-        "Temporary issue — NOT a final failure. Do NOT say Order save nahi ho saka. " +
+        "Temporary issue — NOT a final failure. Stay SILENT. FORBIDDEN: thora sa masla, masla aa gaya, dobara koshish, dobara try, line par rahen, Order save nahi ho saka. " +
         "Call place_order ONCE more with the same fields (branch_name none if NO branches). " +
         "If the next response has success/speak, READ speak EXACTLY. Do NOT invent an order number.",
     });

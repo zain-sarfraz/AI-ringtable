@@ -74,6 +74,31 @@ Turn 1: Speak exactly: "Assalamualaikum"
     assert.match(multi, /with branch_name per the Branch ordering section/);
   });
 
+  it("locks canonical Urdu lines, phone tracking, and forbids fake failure after haan", () => {
+    const stale = `
+Ask once, naturally and warmly: "Aapka raabta number bata dijiye?"
+Phone: ask once only — "Apna Aapka rabta number share kar dein?"
+9. Track order: ask "Aapka order number kya hai?" then call get_order_status.
+SOLE FOCUS: Catch the order number and get the status.
+Kya yeh order delivery ke liye hai ya pickup?
+Aapka naam bata dijiye?
+Teks shamil karke kul bill five hundred rupees
+with branch_name per
+Turn 1: Speak exactly: "Assalamualaikum"
+`.trim();
+    const fixed = rewriteStaleOrderSpeechRules(stale, 0);
+    assert.match(fixed, /Apna phone number share kar dein\?/);
+    assert.doesNotMatch(fixed, /Aapka raabta number bata dijiye/);
+    assert.doesNotMatch(fixed, /Apna Aapka/);
+    assert.match(fixed, /kis phone number se place hua tha/);
+    assert.match(fixed, /thora sa masla/);
+    assert.match(fixed, /Ji, aap kis naam se order note karwana chahengay\?/);
+    assert.match(fixed, /Kya yeh order delivery ke liye hai ya pickup karein gay\?/);
+    assert.match(fixed, /Tax include kar ke kul bill/);
+    assert.match(fixed, /with branch_name none/);
+    assert.doesNotMatch(fixed, /with branch_name per$/m);
+  });
+
   it("rewrites single-item PHONE SCRIPT to explicit accept ask", () => {
     const stale = `
 SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hain. Aap konsa lena chahenge?

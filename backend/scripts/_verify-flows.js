@@ -30,7 +30,7 @@ try {
       noBranch: /NO BRANCH CHOICE/i.test(t),
       deliveryNoArea: /NEVER ask city\/area\/branch after the address/i.test(t),
       trackFlow: /TRACK ORDER[\s\S]{0,200}order number/i.test(t) && /get_order_status/i.test(t),
-      trackNoArea: /TRACK ORDER: ask only the order number/i.test(t) || /NEVER ask area\/branch for tracking/i.test(t),
+      trackNoArea: /kis phone number se place hua tha/i.test(t) || /NEVER ask area\/branch/i.test(t),
       tableFlow: /TABLE RESERVATION/i.test(t) && /reserve_table/i.test(t),
       tableNoArea: /TABLE:[\s\S]{0,120}Do NOT ask area\/branch/i.test(t) || /NEVER ask area\/branch\/town[\s\S]{0,80}table/i.test(t),
       whichAreaAsk: /Which area would you like/i.test(t),

@@ -14,7 +14,7 @@ import {
   resolveRestaurantIdForVoiceTools,
   resolveSpokenCustomerPhone,
 } from "../lib/voiceWebhookUtils.js";
-import { getCurrencyDetails } from "../lib/restaurantVoiceContext.js";
+import { getCurrencyDetails, spokenPriceHints } from "../lib/restaurantVoiceContext.js";
 
 function statusLabel(status, fulfillmentType) {
   const dineIn = String(fulfillmentType || "").toLowerCase() === "dine_in";
@@ -394,17 +394,18 @@ export async function aiOrderStatus(req, res) {
     const restSettings = await knex("restaurant_settings").where({ restaurant_id: order.restaurant_id }).select("currency").first();
     const currCode = restSettings?.currency || targetRest?.currency || "USD";
     const currInfo = getCurrencyDetails(currCode);
-    const urduTotal = `${Number(order.total_amount).toFixed(0)} ${currInfo.urduUnit}`;
+    const totalHints = spokenPriceHints(Number(order.total_amount || 0), currInfo);
+    const urduTotal = totalHints.urduSpeak;
     const enTotal = `${currInfo.symbol}${Number(order.total_amount).toFixed(2)}`;
 
     const tableBit = order.table_number ? ` for table ${order.table_number}` : "";
     const statusUr = statusLabelUrdu(order.status, order.fulfillment_type);
     const statusEn = statusLabel(order.status, order.fulfillment_type);
 
-    const itemsPhraseUrdu = itemsUrdu ? ` Aapke order mein ${itemsUrdu} shamil hain,` : "";
-    const itemsPhraseEn = itemsEn ? ` Your order includes ${itemsEn},` : "";
+    const itemsPhraseUrdu = itemsUrdu ? ` Aapke order mein ${itemsUrdu} hain.` : "";
+    const itemsPhraseEn = itemsEn ? ` Your order includes ${itemsEn}.` : "";
 
-    const spokenScript = `Ji, aapka order ${order.customer_name} ke naam par hai.${itemsPhraseUrdu} kul bill ${urduTotal} bana hai, aur is waqt aapka order ${statusUr} hai.${eta ? ` Taqreeban ${eta} tak deliver ho jayega.` : ""}${instructionMsgUr} Bohot shukriya.`;
+    const spokenScript = `Ji, is waqt aapka order ${statusUr}. Yeh order ${order.customer_name} ke naam par hai.${itemsPhraseUrdu} Kul bill ${urduTotal} bana hai.${eta ? ` Taqreeban ${eta} tak deliver ho jayega.` : ""}${instructionMsgUr} Bohot shukriya.`;
 
     const message = `Respond ONLY in the caller's LOCKED language: Order ${order.order_number} for ${order.customer_name}${tableBit}.${itemsPhraseEn} Total: ${enTotal} (Urdu: ${urduTotal}). Status: ${statusEn}.${eta ? ` Estimated delivery around ${eta}.` : ""}${instructionMsgEn}`;
 

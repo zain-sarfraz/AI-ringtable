@@ -1,14 +1,14 @@
 import { getKnex } from "../db.js";
 import { resolveSpokenBranchId } from "../lib/branchLocation.js";
-import { normalizeElevenLabsToolBody, resolveRestaurantIdForVoiceTools } from "../lib/voiceWebhookUtils.js";
 import {
-  findAvailableTable,
   createReservation,
+  findAvailableTable,
+  lastSpokenReservationTime,
+  parsePartySize,
   parseReservationDate,
   parseReservationTime,
-  parsePartySize,
-  lastSpokenReservationTime,
 } from "../lib/tableReservationService.js";
+import { normalizeElevenLabsToolBody, resolveRestaurantIdForVoiceTools } from "../lib/voiceWebhookUtils.js";
 
 function phoneDigitCount(value) {
   return String(value || "").replace(/\D/g, "").length;
@@ -119,8 +119,8 @@ export async function aiReserveTable(req, res) {
     const isoDate = rawDate ? parseReservationDate(rawDate) : null;
     const isoTime = rawTime
       ? parseReservationTime(rawTime) ||
-        parseReservationTime(String(rawTime).replace(/[^\d:apm.\s]/gi, "")) ||
-        lastSpokenReservationTime(String(rawTime))
+      parseReservationTime(String(rawTime).replace(/[^\d:apm.\s]/gi, "")) ||
+      lastSpokenReservationTime(String(rawTime))
       : null;
 
     // Conversational flow questions if details are missing:
@@ -174,9 +174,9 @@ export async function aiReserveTable(req, res) {
       return res.status(200).json({
         success: false,
         phone_required: true,
-        speak: "Ji, apna phone number share kar dein?",
+        speak: "Apna phone number share kar dein?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, apna phone number share kar dein?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Apna phone number share kar dein?",
       });
     }
 
