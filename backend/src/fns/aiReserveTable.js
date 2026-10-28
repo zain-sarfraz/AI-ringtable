@@ -1,7 +1,14 @@
 import { getKnex } from "../db.js";
 import { resolveSpokenBranchId } from "../lib/branchLocation.js";
 import { normalizeElevenLabsToolBody, resolveRestaurantIdForVoiceTools } from "../lib/voiceWebhookUtils.js";
-import { findAvailableTable, createReservation, parseReservationDate, parseReservationTime, lastSpokenReservationTime } from "../lib/tableReservationService.js";
+import {
+  findAvailableTable,
+  createReservation,
+  parseReservationDate,
+  parseReservationTime,
+  parsePartySize,
+  lastSpokenReservationTime,
+} from "../lib/tableReservationService.js";
 
 function phoneDigitCount(value) {
   return String(value || "").replace(/\D/g, "").length;
@@ -53,23 +60,123 @@ export async function aiReserveTable(req, res) {
       body.elevenlabs_agent_id = String(process.env.ELEVENLABS_AGENT_ID).trim();
     }
 
-    const {
-      customer_name,
-      customer_phone,
-      customer_email,
-      party_size,
-      reservation_date,
-      reservation_time, // HH:MM
-      slot_duration_hours = 1,
-      notes,
-    } = body;
+    // Direct and alias support:
+    // tareekh -> date / reservation_date
+    // waqt -> time / reservation_time
+    // afraad -> person / party_size
+    // raabta number -> phone number / customer_phone
+    const customer_name =
+      body.customer_name ||
+      body.name ||
+      body.guest_name ||
+      body.caller_name ||
+      null;
 
-    if (!customer_name || !reservation_date || !reservation_time || !party_size) {
+    const customer_phone =
+      body.customer_phone ||
+      body.phone_number ||
+      body.phone ||
+      body.raabta_number ||
+      body.rabta_number ||
+      body.contact_number ||
+      null;
+
+    const customer_email = body.customer_email || body.email || null;
+
+    const rawPartySize =
+      body.party_size ??
+      body.person ??
+      body.persons ??
+      body.afraad ??
+      body.guests ??
+      body.guest_count ??
+      body.people ??
+      body.tadaad ??
+      null;
+
+    const rawDate =
+      body.reservation_date ||
+      body.date ||
+      body.tareekh ||
+      body.tareeqh ||
+      body.booking_date ||
+      body.res_date ||
+      null;
+
+    const rawTime =
+      body.reservation_time ||
+      body.time ||
+      body.waqt ||
+      body.booking_time ||
+      body.start_time ||
+      body.res_time ||
+      null;
+
+    const slot_duration_hours = body.slot_duration_hours || body.duration || 1;
+    const notes = body.notes || body.special_notes || body.instructions || null;
+
+    const pSize = parsePartySize(rawPartySize);
+    const isoDate = rawDate ? parseReservationDate(rawDate) : null;
+    const isoTime = rawTime
+      ? parseReservationTime(rawTime) ||
+        parseReservationTime(String(rawTime).replace(/[^\d:apm.\s]/gi, "")) ||
+        lastSpokenReservationTime(String(rawTime))
+      : null;
+
+    // Conversational flow questions if details are missing:
+    if (!isoDate && !isoTime) {
       return res.status(200).json({
         success: false,
-        speak: "Ji, table ke liye aapka naam, afraad ki tadaad, tareekh aur waqt bata dijiye?",
+        speak: "Ji, main table reservation mein madad kar sakti hoon. Aap kis date aur kis time table chahengay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask for any missing details: name, date, time, and guest count. Do not switch languages.",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, main table reservation mein madad kar sakti hoon. Aap kis date aur kis time table chahengay?",
+      });
+    }
+
+    if (!isoTime) {
+      return res.status(200).json({
+        success: false,
+        speak: "Ji, kis time table chahengay?",
+        message:
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, kis time table chahengay?",
+      });
+    }
+
+    if (!isoDate) {
+      return res.status(200).json({
+        success: false,
+        speak: "Ji, kis date ke liye table chahengay?",
+        message:
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, kis date ke liye table chahengay?",
+      });
+    }
+
+    if (!pSize) {
+      return res.status(200).json({
+        success: false,
+        speak: "Ji, kitne person ke liye table chahengay?",
+        message:
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, kitne person ke liye table chahengay?",
+      });
+    }
+
+    if (!customer_name || /^(none|null|n\/a|unknown)$/i.test(String(customer_name).trim())) {
+      return res.status(200).json({
+        success: false,
+        speak: "Ji, aap kis naam se reservation karwana chahengay?",
+        message:
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, aap kis naam se reservation karwana chahengay?",
+      });
+    }
+
+    const phoneToUse = resolveCustomerPhone(body, customer_phone);
+    if (!phoneToUse) {
+      return res.status(200).json({
+        success: false,
+        phone_required: true,
+        speak: "Ji, apna phone number share kar dein?",
+        message:
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, apna phone number share kar dein?",
       });
     }
 
@@ -90,26 +197,9 @@ export async function aiReserveTable(req, res) {
       body.branch_name || body.branch || body.area || null,
     );
 
-    const pSize = Math.max(1, parseInt(party_size, 10) || 1);
     const duration = Number(slot_duration_hours) || 1;
-    const isoDate = parseReservationDate(reservation_date);
-    const isoTime =
-      parseReservationTime(reservation_time) ||
-      parseReservationTime(String(reservation_time).replace(/[^\d:apm.\s]/gi, "")) ||
-      lastSpokenReservationTime(String(reservation_time));
 
-    if (!isoTime) {
-      return res.status(200).json({
-        success: false,
-        speak: "Ji, kis waqt aana chahenge?",
-        message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language, softly and politely. Ask the booking time once (example 7 PM). Do not ask area/branch unless ## Branch ordering lists areas. Do not switch languages.",
-      });
-    }
-
-    console.log(`👤 Customer: ${customer_name} | Party: ${pSize} | Date: ${isoDate} | Time: ${isoTime} (raw=${reservation_time}) | Duration: ${duration}h`);
-
-    const phoneToUse = resolveCustomerPhone(body, customer_phone);
+    console.log(`👤 Customer: ${customer_name} | Party: ${pSize} | Date: ${isoDate} | Time: ${isoTime} (raw=${rawTime}) | Phone: ${phoneToUse} | Duration: ${duration}h`);
 
     const availableTable = await findAvailableTable(knex, {
       restaurantId: branchRestaurantId,
@@ -160,7 +250,7 @@ export async function aiReserveTable(req, res) {
         raw: body,
         provider: body.synthflow_agent_id ? "synthflow" : "elevenlabs",
         synthflow_call_id: synthflowCallId ? String(synthflowCallId) : null,
-        reservation_time_raw: reservation_time,
+        reservation_time_raw: rawTime,
         reservation_time: isoTime,
         reservation_date: isoDate,
       },
@@ -168,7 +258,7 @@ export async function aiReserveTable(req, res) {
 
     console.log(`✅ Reservation created: id=${reservation.id} table=${availableTable.table_number}`);
 
-    const speakUr = `Ji, aapki table confirm ho chuki hai, ${pSize} logon ke liye table mehfooz hai. Bohot shukriya!`;
+    const speakUr = `Ji, aapki table confirm ho chuki hai, ${pSize} person ke liye table mehfooz hai. Bohot shukriya!`;
     const speakEn = `Your table is confirmed for ${pSize} guest(s). Thank you so much!`;
 
     const confirmMsg =
@@ -183,9 +273,17 @@ export async function aiReserveTable(req, res) {
       speak_en: speakEn,
       speak_ur: speakUr,
       message: speakUr,
+      reservation_id: reservation.id,
       _reservation_id: reservation.id,
+      table_number: availableTable.table_number,
       _table_number: availableTable.table_number,
+      party_size: pSize,
       _party_size: pSize,
+      person: pSize,
+      date: isoDate,
+      time: isoTime,
+      customer_name,
+      customer_phone: phoneToUse,
     });
   } catch (e) {
     console.error("❌ Reserve Table Error:", e);

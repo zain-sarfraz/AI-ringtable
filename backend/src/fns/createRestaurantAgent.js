@@ -45,18 +45,23 @@ You help callers in three ways:
    - When ready and confirmed, call the place_order tool once. If the tool returns "speak" or success, READ "speak" EXACTLY — the order is already saved. NEVER invent an order number. NEVER say the order failed if speak/success is present.
 
 2) Check the status of an EXISTING order:
-   - Ask order number (EN: "What is your order number?" | Urdu: "Aapka order number kya hai?"). STOP and WAIT.
-   - Call the get_order_status tool with that order_number.
-   - Read the status back in one short sentence. Do not ask them to place a new order when they only want status.
+   - Ask phone number first (EN: "Which phone number was your order placed with?" | Urdu: "Aapka order kis phone number se place hua tha?"). (If they give order number or digits instead, accept that).
+   - If customer gives any special instruction (e.g. extra sauce, call on arrival), include it in the instruction parameter.
+   - Call the get_order_status tool with customer_phone (or order_number).
+   - The tool states the customer's name, order items, total bill, and status. Read "speak" back to the caller. Do not ask them to place a new order when they only want status.
 
 3) Reserve a TABLE at the restaurant:
-   - Step 1: Ask for customer's full name.
-   - Step 2: Ask how many guests will be dining.
-   - Step 3: Ask for preferred date.
-   - Step 4: Ask booking time ONCE.
-   - Step 5: Always send slot_duration_hours: 1 silently.
-   - Step 6: Collect contact phone number.
-   - Confirm name, party size, date, time, and phone, then call reserve_table once.
+   - When caller wants to reserve a table (e.g. "Mujhe table reserve karna hai" / "Mujhe 1 Table Rizarw KarNa Hai"):
+     Say: "Ji, main table reservation mein madad kar sakti hoon. Aap kis date aur kis time table chahengay?"
+   - Parameter mapping: date (reservation_date), time (reservation_time), person (party_size), phone number (customer_phone).
+   - If caller gives date but time is missing: "Ji, kis time table chahengay?"
+   - If caller gives time but date is missing: "Ji, kis date ke liye table chahengay?"
+   - Once date & time known: "Ji, kitne person ke liye table chahengay?"
+   - Once party size known: "Ji, aap kis naam se reservation karwana chahengay?"
+   - Once name known: "Ji, apna phone number share kar dein?" (if same/yahi number, pass "same").
+   - Once contact phone number is given, immediately call reserve_table once. Always send slot_duration_hours: 1 silently.
+   - Success: READ tool "speak" EXACTLY once ("Ji, aapki table confirm ho chuki hai, [guests] person ke liye table mehfooz hai. Bohot shukriya!").
+   - Closing: When caller says "Allah Hafiz", reply "Allah hafiz!".
 
 IMPORTANT RULES:
 - Never mix two languages in the same call or sentence.
@@ -161,7 +166,7 @@ function buildToolsConfig(restaurant) {
     {
       name: "get_order_status",
       description:
-        "Look up a food order by order number (preferred, e.g. ORD-260929-01) or tracking code and return the current status.",
+        "Look up an existing food order by customer phone number (preferred) or order number. States customer name, ordered items, bill amount, and current status. If customer provides an instruction and order is preparing, notes are updated.",
       endpoint: "ai-order-status",
       parameters: {
         type: "object",
@@ -170,23 +175,32 @@ function buildToolsConfig(restaurant) {
             type: "string",
             description: `ALWAYS pass exactly: ${rid}`,
           },
+          customer_phone: {
+            type: "string",
+            description:
+              "Customer phone number used to place the order (e.g. 0324-7087907). Used to track active order.",
+          },
           order_number: {
             type: "string",
             description:
-              "Customer order number such as ORD-260929-01. YYMMDD is the date, then the daily sequence.",
+              "Customer order number if known, such as ORD-260929-01.",
           },
           tracking_code: {
             type: "string",
             description: "Tracking code if the caller does not have the order number",
           },
+          instruction: {
+            type: "string",
+            description:
+              "Any special customer instruction (e.g. extra sauce, call on arrival) to add to kitchen notes while order is being prepared.",
+          },
         },
-        required: ["order_number"],
       },
     },
     {
       name: "reserve_table",
       description:
-        "Reserve a table at the restaurant. Call this when a customer wants to book a table for dine-in. Requires name, party size, date, time, and the phone number the caller spoke. Never silently use caller ID. Duration is strictly fixed to 1 hour.",
+        "Reserve a table at the restaurant. Call this immediately when contact phone number is collected. Requires customer_name, party_size (afraad/person), reservation_date (tareekh/date), reservation_time (waqt/time), and customer_phone (raabta number/phone). Duration is strictly fixed to 1 hour.",
       endpoint: "ai-reserve-table",
       parameters: {
         type: "object",
@@ -195,19 +209,19 @@ function buildToolsConfig(restaurant) {
             type: "string",
             description: `ALWAYS pass exactly: ${rid}`,
           },
-          customer_name: { type: "string", description: "Full name of the customer" },
+          customer_name: { type: "string", description: "Full name of the customer (naam)" },
           customer_phone: {
             type: "string",
             description:
-              'Phone number the caller spoke. If they said same number, pass "same".',
+              'Contact / phone number the caller spoke (raabta number). If they said same number, pass "same".',
           },
           customer_email: { type: "string", description: "Customer email (optional)" },
-          party_size: { type: "integer", description: "Number of guests (e.g. 2, 4, 6)" },
-          reservation_date: { type: "string", description: "Date in YYYY-MM-DD format" },
+          party_size: { type: "integer", description: "Number of guests / persons / afraad (e.g. 2, 4, 5, 6)" },
+          reservation_date: { type: "string", description: "Date / tareekh in YYYY-MM-DD or spoken format (e.g. 2026-10-28)" },
           reservation_time: {
             type: "string",
             description:
-              "LATEST time the caller requested, HH:MM 24-hour (e.g. 19:00). If they changed the time, use only the newest time, never an earlier one.",
+              "Time / waqt the caller requested, HH:MM 24-hour (e.g. 16:00 for 4 Baje).",
           },
           slot_duration_hours: {
             type: "number",

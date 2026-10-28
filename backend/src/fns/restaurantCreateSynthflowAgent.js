@@ -195,15 +195,15 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
   }
 
   const reserveVars = [
-    duringCallVar("customer_name", "Guest full name", "Ali Ahmed"),
+    duringCallVar("customer_name", "Guest full name (naam)", "Bilal"),
     duringCallVar(
       "customer_phone",
-      'Guest phone. If they say same/this/calling/dial/yahi number, pass exactly "same".',
+      'Guest contact number (raabta number). If they say same/this/yahi number, pass exactly "same".',
       "same",
     ),
-    duringCallVar("party_size", "Number of guests", "5"),
-    duringCallVar("reservation_date", "Date as YYYY-MM-DD or today/tomorrow", "today"),
-    duringCallVar("reservation_time", "Latest booking time as HH:MM 24-hour", "19:00"),
+    duringCallVar("party_size", "Number of guests / persons / afraad", "5"),
+    duringCallVar("reservation_date", "Date as YYYY-MM-DD or spoken date (tareekh)", "2026-10-28"),
+    duringCallVar("reservation_time", "Latest booking time as HH:MM 24-hour (waqt)", "16:00"),
     duringCallVar("slot_duration_hours", "Always 1", "1"),
   ];
   if (isMultiBranch) {
@@ -263,22 +263,33 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "get_order_status",
         description:
-          "TRACK ORDER ONLY. As soon as the caller wants to track an order, check status, or speaks their order number in ANY form (e.g. ORD-261026-01, 26102601, 'two six one...', 'chhabees das...', or '01'). Focus completely on the order number. NEVER ask city/area/branch/address or sell food. Immediately call this tool with whatever order number or digits they provided. AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in the caller's locked language.",
+          "TRACK ORDER ONLY. When caller wants to track an order or check status, ask for their phone number (or order number). If customer provides an instruction (e.g. extra sauce, call on arrival), pass it into instruction. Immediately call this tool. AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in the caller's locked language.",
         agent_speak_naturally: false,
         speech_while_using_the_tool: "Ji.",
         failure_timeout: 15,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
           duringCallVar(
+            "customer_phone",
+            "Phone number the customer placed the order with, e.g. 0324-7087907. Used to track active order. Leave empty or pass 'same' if caller uses same line.",
+            "03247087907",
+          ),
+          duringCallVar(
             "order_number",
-            "Order number, digits, or tracking code spoken by caller. Capture whatever they said, e.g. ORD-261026-02, 26102602, 02, two six one zero..., chhabees das... Never leave empty.",
+            "Order number, digits, or tracking code if spoken by caller, e.g. ORD-261026-02, 26102602, 02. Leave blank if caller does not know it.",
             "ORD-261008-02",
+          ),
+          duringCallVar(
+            "instruction",
+            "Any special kitchen or delivery instruction given by customer (e.g. extra sauce, call on arrival) to add to notes while order is being prepared.",
+            "extra sauce",
           ),
         ],
         json_body_stringified: JSON.stringify({
           ...lookup,
+          customer_phone: "<customer_phone>",
           order_number: "<order_number>",
-          customer_phone: "<user_phone_number>",
+          instruction: "<instruction>",
           caller_phone: "<user_phone_number>",
           synthflow_call_id: "<call_id>",
         }),
@@ -292,7 +303,7 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
         run_action_before_call_start: false,
         name: "reserve_table",
         description:
-          "TABLE RESERVATIONS ONLY. FORBIDDEN to call before caller confirms summary! Collect softly: name, party size, date, time, phone. Speak summary: '[guests] afraad ke liye [date] ko [time] baje [name] ke naam par table pakki kar doon?'. WAIT for haan. ONLY on haan: call this tool with branch_name (none if no branches). AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in Roman Urdu. NEVER speak English phrases like 'One moment while I reserve'. NEVER read reservation IDs or UUIDs.",
+          "TABLE RESERVATIONS ONLY. Call this tool as soon as contact phone number is collected. Parameters: customer_name, party_size (person), reservation_date (date), reservation_time (time), customer_phone (phone number). Pass branch_name (none if single location). AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in Roman Urdu. NEVER speak English phrases like 'One moment while I reserve'. NEVER read reservation IDs or UUIDs.",
         agent_speak_naturally: false,
         speech_while_using_the_tool: "Ji.",
         failure_timeout: 20,
@@ -302,10 +313,14 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
           ...lookup,
           customer_name: "<customer_name>",
           customer_phone: "<customer_phone>",
+          phone_number: "<customer_phone>",
           caller_phone: "<user_phone_number>",
           party_size: "<party_size>",
+          person: "<party_size>",
           reservation_date: "<reservation_date>",
+          date: "<reservation_date>",
           reservation_time: "<reservation_time>",
+          time: "<reservation_time>",
           slot_duration_hours: "<slot_duration_hours>",
           branch_name: isMultiBranch ? "<branch_name>" : singleBranchName,
           synthflow_call_id: "<call_id>",

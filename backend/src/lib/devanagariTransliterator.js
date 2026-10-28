@@ -181,6 +181,38 @@ const DICTIONARY_ROMAN = {
   "घंटा": "Ghanta",
   "सेकंड": "Second",
 
+  // Table reservation & time terms
+  "तारीख": "Tareekh",
+  "तारीख़": "Tareekh",
+  "राब्ता": "Raabta",
+  "राबता": "Raabta",
+  "महफ़ूज़": "Mehfooz",
+  "महफूज": "Mehfooz",
+  "मदद": "Madad",
+  "हाफ़िज़": "Hafiz",
+  "हाफिज": "Hafiz",
+  "अल्लाह": "Allah",
+
+  // Months
+  "जनवरी": "January",
+  "फ़रवरी": "February",
+  "फरवरी": "February",
+  "मार्च": "March",
+  "अप्रैल": "April",
+  "अप्रेल": "April",
+  "मई": "May",
+  "जून": "June",
+  "जुलाई": "July",
+  "अगस्त": "August",
+  "सितंबर": "September",
+  "सितम्बर": "September",
+  "अक्टूबर": "Aktoobar",
+  "अक्तूबर": "Aktoobar",
+  "नवंबर": "November",
+  "नवम्बर": "November",
+  "दिसंबर": "December",
+  "दिसम्बर": "December",
+
   // Numbers
   "एक": "1",
   "दो": "2",

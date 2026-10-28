@@ -75,8 +75,8 @@ export function branchOrderingSection(branches) {
       "FORBIDDEN spoken words/areas: NEVER ask which branch, area, or town. This restaurant has only ONE location.",
       "DELIVERY: ask only the complete street address (softly). Accept on first try. Pass branch_name as exactly none. NEVER ask city/area/branch after the address.",
       "PICKUP: Customer collects directly from this restaurant. Say: \"Theek hai ji, pickup ke liye note kar liya. Apna phone number share kar dein?\" Go straight to phone — do NOT ask area/branch. Pass branch_name as exactly none.",
-      "TABLE: collect name → guests → date → time → phone (ONE soft question per turn). Do NOT ask area/branch. Pass branch_name as exactly none on reserve_table.",
-      "TRACK ORDER: ask only the order number, then call get_order_status. NEVER ask area/branch/phone for tracking.",
+      "TABLE: collect name, date & time, person, and phone number (ONE soft question per turn). Do NOT ask area/branch. Pass branch_name as exactly none on reserve_table. Once phone number is given, call reserve_table immediately.",
+      "TRACK ORDER: ask only the order number or phone number, then call get_order_status. NEVER ask area/branch for tracking.",
       "After customer says haan/yes to confirm: speak NOTHING — call place_order / reserve_table immediately with branch_name none. NEVER ask area after haan.",
     ].join("\n");
   }

@@ -257,6 +257,53 @@ export function normalizeElevenLabsToolBody(raw) {
     }
   }
 
+  // Reservation aliases: tareekh -> date, waqt -> time, afraad -> person, raabta number -> phone number
+  if (!out.reservation_date) {
+    const d = out.date ?? out.tareekh ?? out.tareeqh ?? out.booking_date ?? out.res_date;
+    if (d != null) out.reservation_date = d;
+  }
+  if (!out.date && out.reservation_date) {
+    out.date = out.reservation_date;
+  }
+  if (!out.reservation_time) {
+    const t = out.time ?? out.waqt ?? out.booking_time ?? out.start_time ?? out.res_time;
+    if (t != null) out.reservation_time = t;
+  }
+  if (!out.time && out.reservation_time) {
+    out.time = out.reservation_time;
+  }
+  if (out.party_size == null) {
+    const p = out.person ?? out.persons ?? out.afraad ?? out.guests ?? out.guest_count ?? out.people ?? out.tadaad;
+    if (p != null) out.party_size = p;
+  }
+  if (out.person == null && out.party_size != null) {
+    out.person = out.party_size;
+  }
+  if (!out.customer_phone) {
+    const ph = out.phone_number ?? out.phone ?? out.raabta_number ?? out.rabta_number ?? out.contact_number;
+    if (ph != null) out.customer_phone = ph;
+  }
+  if (!out.phone_number && out.customer_phone) {
+    out.phone_number = out.customer_phone;
+  }
+  if (!out.customer_name) {
+    const n = out.name ?? out.guest_name ?? out.caller_name;
+    if (n != null) out.customer_name = n;
+  }
+  if (!out.instruction) {
+    const ins =
+      out.customer_instruction ??
+      out.special_instruction ??
+      out.special_instructions ??
+      out.instructions ??
+      out.notes ??
+      out.special_notes ??
+      out.delivery_notes;
+    if (ins != null && String(ins).trim()) {
+      out.instruction = String(ins).trim();
+    }
+  }
+
   return out;
 }
 

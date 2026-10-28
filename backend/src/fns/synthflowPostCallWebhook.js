@@ -123,7 +123,7 @@ export function extractSynthflowFields(payload) {
   // Common aliases
   const aliases = {
     customer_name: ["customer_name", "name", "user_name", "full_name"],
-    customer_phone: ["customer_phone", "phone", "phone_number", "caller_phone"],
+    customer_phone: ["customer_phone", "phone", "phone_number", "caller_phone", "raabta_number", "rabta_number"],
     customer_email: ["customer_email", "email", "email_address", "user_email"],
     delivery_address: ["delivery_address", "address", "shipping_address"],
     order_items: ["order_items", "items", "ordered_items", "food_items"],
@@ -133,9 +133,9 @@ export function extractSynthflowFields(payload) {
     branch_name: ["branch_name", "branch", "restaurant_branch", "selected_branch"],
     payment_method: ["payment_method", "payment"],
     order_placed: ["order_placed", "placed_order", "order_confirmed"],
-    party_size: ["party_size", "party", "guests", "number_of_guests", "people", "guest_count", "persons"],
-    reservation_date: ["reservation_date", "booking_date", "date", "res_date"],
-    reservation_time: ["reservation_time", "booking_time", "time", "start_time", "res_time"],
+    party_size: ["party_size", "party", "guests", "number_of_guests", "people", "guest_count", "persons", "person", "afraad"],
+    reservation_date: ["reservation_date", "booking_date", "date", "res_date", "tareekh", "tareeqh"],
+    reservation_time: ["reservation_time", "booking_time", "time", "start_time", "res_time", "waqt"],
     slot_duration_hours: ["slot_duration_hours", "duration", "duration_hours", "slot_duration", "slot_hours"],
     table_reserved: ["table_reserved", "reserve_table", "table_reservation", "reservation_made", "is_reservation"],
   };
@@ -533,7 +533,7 @@ export async function synthflowPostCallWebhook(req, res) {
       try {
         const combinedText = `${transcript || ""} ${callNotes || ""}`;
         const looksLikeReservationOnly =
-          /reserv(e|ation)|table\s+for|book(ing)?\s+(a\s+)?table|kitne logon|afraad/i.test(combinedText) &&
+          /reserv(e|ation)|table\s+for|book(ing)?\s+(a\s+)?table|kitne logon|kitne person|afraad/i.test(combinedText) &&
           !/\b(order|burger|pizza|biryani|rupay|darj|kul raqam|chicken|fries)\b/i.test(combinedText);
 
         if (!looksLikeReservationOnly) {
