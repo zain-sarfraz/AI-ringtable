@@ -154,9 +154,9 @@ export async function aiReserveTable(req, res) {
     if (!pSize) {
       return res.status(200).json({
         success: false,
-        speak: "Ji, kitne person ke liye table chahengay?",
+        speak: "Ji, kitne persons ke liye table chahengay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, kitne person ke liye table chahengay?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, kitne persons ke liye table chahengay? NEVER say afraad.",
       });
     }
 
@@ -258,13 +258,13 @@ export async function aiReserveTable(req, res) {
 
     console.log(`✅ Reservation created: id=${reservation.id} table=${availableTable.table_number}`);
 
-    const speakUr = `Ji, aapki table confirm ho chuki hai, ${pSize} person ke liye table mehfooz hai. Bohot shukriya!`;
+    const speakUr = `Ji, aapki table confirm ho chuki hai, ${pSize} persons ke liye table mehfooz hai. Bohot shukriya!`;
     const speakEn = `Your table is confirmed for ${pSize} guest(s). Thank you so much!`;
 
     const confirmMsg =
       `CRITICAL: Reply ONLY in the caller's LOCKED language — soft, warm, polite human tone — do not switch. ` +
       `READ THIS EXACTLY: ${speakUr} ` +
-      `Never say order number or bill. Never ask area after success. FORBIDDEN: spelling out reservation UUIDs or reading Table numbers in English.`;
+      `Never say order number or bill. Never ask area after success. FORBIDDEN: afraad, tareekh, raabta, rabta, spelling out reservation UUIDs or reading Table numbers in English.`;
 
     return res.json({
       success: true,

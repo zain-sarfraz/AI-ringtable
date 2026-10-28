@@ -53,14 +53,15 @@ You help callers in three ways:
 3) Reserve a TABLE at the restaurant:
    - When caller wants to reserve a table (e.g. "Mujhe table reserve karna hai" / "Mujhe 1 Table Rizarw KarNa Hai"):
      Say: "Ji, main table reservation mein madad kar sakti hoon. Aap kis date aur kis time table chahengay?"
-   - Parameter mapping: date (reservation_date), time (reservation_time), person (party_size), phone number (customer_phone).
+   - Parameter mapping: date (reservation_date), time (reservation_time), persons (party_size), phone number (customer_phone).
+   - ALWAYS say "persons", "date", "phone number". NEVER say afraad, tareekh, raabta, or rabta.
    - If caller gives date but time is missing: "Ji, kis time table chahengay?"
    - If caller gives time but date is missing: "Ji, kis date ke liye table chahengay?"
-   - Once date & time known: "Ji, kitne person ke liye table chahengay?"
+   - Once date & time known: "Ji, kitne persons ke liye table chahengay?"
    - Once party size known: "Ji, aap kis naam se reservation karwana chahengay?"
    - Once name known: "Apna phone number share kar dein?" (if same/yahi number, pass "same").
    - Once contact phone number is given, immediately call reserve_table once. Always send slot_duration_hours: 1 silently.
-   - Success: READ tool "speak" EXACTLY once ("Ji, aapki table confirm ho chuki hai, [guests] person ke liye table mehfooz hai. Bohot shukriya!").
+   - Success: READ tool "speak" EXACTLY once ("Ji, aapki table confirm ho chuki hai, [guests] persons ke liye table mehfooz hai. Bohot shukriya!").
    - Closing: When caller says "Allah Hafiz", reply "Allah hafiz!".
 
 IMPORTANT RULES:
@@ -200,7 +201,7 @@ function buildToolsConfig(restaurant) {
     {
       name: "reserve_table",
       description:
-        "Reserve a table at the restaurant. Call this immediately when contact phone number is collected. Requires customer_name, party_size (afraad/person), reservation_date (tareekh/date), reservation_time (waqt/time), and customer_phone (raabta number/phone). Duration is strictly fixed to 1 hour.",
+        "Reserve a table at the restaurant. Call this immediately when contact phone number is collected. Requires customer_name, party_size (persons), reservation_date (date), reservation_time (time), and customer_phone (phone number). ALWAYS speak persons/date/phone number — NEVER afraad/tareekh/raabta. Duration is strictly fixed to 1 hour.",
       endpoint: "ai-reserve-table",
       parameters: {
         type: "object",
@@ -213,15 +214,15 @@ function buildToolsConfig(restaurant) {
           customer_phone: {
             type: "string",
             description:
-              'Contact / phone number the caller spoke (raabta number). If they said same number, pass "same".',
+              'Contact phone number the caller spoke. If they said same number, pass "same". NEVER call it raabta.',
           },
           customer_email: { type: "string", description: "Customer email (optional)" },
-          party_size: { type: "integer", description: "Number of guests / persons / afraad (e.g. 2, 4, 5, 6)" },
-          reservation_date: { type: "string", description: "Date / tareekh in YYYY-MM-DD or spoken format (e.g. 2026-10-28)" },
+          party_size: { type: "integer", description: "Number of guests / persons (e.g. 2, 4, 5, 6). NEVER say afraad." },
+          reservation_date: { type: "string", description: "Date in YYYY-MM-DD or spoken format (e.g. 2026-10-28). NEVER say tareekh." },
           reservation_time: {
             type: "string",
             description:
-              "Time / waqt the caller requested, HH:MM 24-hour (e.g. 16:00 for 4 Baje).",
+              "Time the caller requested, HH:MM 24-hour (e.g. 16:00 for 4 Baje).",
           },
           slot_duration_hours: {
             type: "number",

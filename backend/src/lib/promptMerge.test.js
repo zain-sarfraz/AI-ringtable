@@ -99,6 +99,25 @@ Turn 1: Speak exactly: "Assalamualaikum"
     assert.doesNotMatch(fixed, /with branch_name per$/m);
   });
 
+  it("rewrites table reservation afraad/tareekh/rabta to persons/date/phone number", () => {
+    const stale = `
+Ji zaroor, kitne afraad ke liye table chahengay?
+Ji, kis tareekh aur kis time ke liye table chahengay?
+Ji, apna Aapka rabta number share kar dein?
+Ji, aapki table confirm ho chuki hai, 5 person ke liye table mehfooz hai.
+NEVER say "afraad", "tareekh", "raabta"
+Turn 1: Speak exactly: "Assalamualaikum"
+`.trim();
+    const fixed = rewriteStaleOrderSpeechRules(stale, 0);
+    assert.match(fixed, /kitne persons ke liye table chahengay/);
+    assert.match(fixed, /kis date aur kis time/);
+    assert.match(fixed, /Apna phone number share kar dein\?/);
+    assert.match(fixed, /5 persons ke liye table/);
+    assert.match(fixed, /NEVER say "afraad", "tareekh"/);
+    assert.doesNotMatch(fixed, /kitne afraad/);
+    assert.doesNotMatch(fixed, /kis tareekh/);
+  });
+
   it("rewrites single-item PHONE SCRIPT to explicit accept ask", () => {
     const stale = `
 SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hain. Aap konsa lena chahenge?

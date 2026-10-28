@@ -198,12 +198,12 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
     duringCallVar("customer_name", "Guest full name (naam)", "Bilal"),
     duringCallVar(
       "customer_phone",
-      'Guest contact number (raabta number). If they say same/this/yahi number, pass exactly "same".',
+      'Guest phone number. ALWAYS ask as "phone number" — NEVER say raabta/rabta. If they say same/this/yahi number, pass exactly "same".',
       "same",
     ),
-    duringCallVar("party_size", "Number of guests / persons / afraad", "5"),
-    duringCallVar("reservation_date", "Date as YYYY-MM-DD or spoken date (tareekh)", "2026-10-28"),
-    duringCallVar("reservation_time", "Latest booking time as HH:MM 24-hour (waqt)", "16:00"),
+    duringCallVar("party_size", "Number of guests / persons. ALWAYS ask as persons — NEVER say afraad.", "5"),
+    duringCallVar("reservation_date", "Date as YYYY-MM-DD or spoken date. ALWAYS ask as date — NEVER say tareekh.", "2026-10-28"),
+    duringCallVar("reservation_time", "Latest booking time as HH:MM 24-hour", "16:00"),
     duringCallVar("slot_duration_hours", "Always 1", "1"),
   ];
   if (isMultiBranch) {

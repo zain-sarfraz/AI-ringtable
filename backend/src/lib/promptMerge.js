@@ -141,6 +141,26 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     /Aapka (?:raabta|rabta) number bata dijiye\?/gi,
     "Apna phone number share kar dein?",
   );
+  // Table reservation spoken vocab: afraad→persons, tareekh→date (do not rewrite FORBIDDEN lists)
+  text = text.replace(/kitne afraad/gi, "kitne persons");
+  text = text.replace(/kis tareekh\s+aur\s+kis\s+time/gi, "kis date aur kis time");
+  text = text.replace(/kis tareekh/gi, "kis date");
+  text = text.replace(/kitne person ke liye table/gi, "kitne persons ke liye table");
+  text = text.replace(/(\d+|\[guests\]) person ke liye table/gi, "$1 persons ke liye table");
+  text = text.replace(
+    /Ji,?\s*apna\s+Aapka\s+(?:raabta|rabta|phone)\s+number\s+share\s+kar\s+dein\?/gi,
+    "Apna phone number share kar dein?",
+  );
+  text = text.replace(/\bafraad\b/gi, (match, offset) => {
+    const before = text.slice(Math.max(0, offset - 50), offset);
+    if (/FORBIDDEN|NEVER say|NEVER speak|ALWAYS say/i.test(before)) return match;
+    return "persons";
+  });
+  text = text.replace(/\btareekh\b/gi, (match, offset) => {
+    const before = text.slice(Math.max(0, offset - 50), offset);
+    if (/FORBIDDEN|NEVER say|NEVER speak|ALWAYS say/i.test(before)) return match;
+    return "date";
+  });
   text = text.replace(
     /9\.\s*Track order: ask "Aapka order number kya hai\?"[^\n]*/gi,
     '9. TRACK ORDER: ask "Ji zaroor, aapka order kis phone number se place hua tha?" WAIT. Call get_order_status with customer_phone (yahi/same → "same"). If they already said an order number, pass order_number. READ speak EXACTLY — status first, then items, then bill.',
