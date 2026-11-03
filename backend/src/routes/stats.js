@@ -1278,7 +1278,7 @@ function roundMoney(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
-/** This month's real call, order, and reservation totals, plus the missed-revenue estimate. */
+/** Last 30 days of real call, order, and reservation totals, plus the missed-revenue estimate. */
 router.get("/ai-value", optionalAuth, requireAuth, async (req, res) => {
   try {
     const knex = getKnex();
@@ -1288,7 +1288,8 @@ router.get("/ai-value", optionalAuth, requireAuth, async (req, res) => {
     }
 
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    // Rolling 30 days — calendar-month reset was wiping the panel to all zeros on the 1st.
+    const periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const phoneList = PHONE_ORDER_SOURCES.map(() => "?").join(", ");
     const phoneSql = `(LOWER(COALESCE(source, '')) IN (${phoneList}) OR call_id IS NOT NULL)`;
 
@@ -1297,7 +1298,7 @@ router.get("/ai-value", optionalAuth, requireAuth, async (req, res) => {
     const [callStats, orderStats, reservationStats] = await Promise.all([
       knex("calls")
         .modify((qb) => scoped(qb, "restaurant_id"))
-        .where("created_at", ">=", monthStart)
+        .where("created_at", ">=", periodStart)
         .select(
           knex.raw("COUNT(*)::int as calls"),
           knex.raw("COUNT(*) FILTER (WHERE status = 'missed')::int as missed"),
@@ -1305,7 +1306,7 @@ router.get("/ai-value", optionalAuth, requireAuth, async (req, res) => {
         .first(),
       knex("orders")
         .modify((qb) => scoped(qb, "restaurant_id"))
-        .where("created_at", ">=", monthStart)
+        .where("created_at", ">=", periodStart)
         .whereNot("status", "cancelled")
         .select(
           knex.raw("COUNT(*)::int as orders"),
@@ -1316,7 +1317,7 @@ router.get("/ai-value", optionalAuth, requireAuth, async (req, res) => {
         .first(),
       knex("table_reservations")
         .modify((qb) => scoped(qb, "restaurant_id"))
-        .where("created_at", ">=", monthStart)
+        .where("created_at", ">=", periodStart)
         .whereNotIn("status", ["cancelled", "no_show"])
         .select(
           knex.raw("COUNT(*)::int as reservations"),
@@ -1343,8 +1344,10 @@ router.get("/ai-value", optionalAuth, requireAuth, async (req, res) => {
     const staffMinutes = answered * 4;
 
     return res.json({
-      period: "month",
-      month_start: monthStart.toISOString(),
+      period: "last_30_days",
+      period_start: periodStart.toISOString(),
+      // Keep month_start for older frontends that still read it.
+      month_start: periodStart.toISOString(),
       calls,
       answered,
       missed,
@@ -1359,7 +1362,7 @@ router.get("/ai-value", optionalAuth, requireAuth, async (req, res) => {
       estimated_revenue_recovered: recovered,
       estimated_revenue_still_missed: stillMissed,
       note:
-        "Counts start at local midnight on the 1st of this month. Answered calls are total calls minus missed calls. Orders leave out cancelled orders. Phone orders are phone, call, voice, AI, Synthflow, or ElevenLabs, plus any order linked to a call. Reservations leave out cancelled and no-show. Staff time is 4 minutes saved per answered call. The average order uses phone orders when any exist, otherwise all orders. Conversion is phone orders divided by answered calls, capped at 100%. Missed revenue avoided is answered calls × conversion × that average. Recovered revenue is the actual phone-order total. Still missed applies the same rate to unanswered calls.",
+        "Counts cover the last 30 days. Answered calls are total calls minus missed calls. Orders leave out cancelled orders. Phone orders are phone, call, voice, AI, Synthflow, or ElevenLabs, plus any order linked to a call. Reservations leave out cancelled and no-show. Staff time is 4 minutes saved per answered call. The average order uses phone orders when any exist, otherwise all orders. Conversion is phone orders divided by answered calls, capped at 100%. Missed revenue avoided is answered calls × conversion × that average. Recovered revenue is the actual phone-order total. Still missed applies the same rate to unanswered calls.",
     });
   } catch (e) {
     console.error("AI VALUE STATS ERROR:", e.message);

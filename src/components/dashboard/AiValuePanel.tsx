@@ -38,8 +38,6 @@ export function AiValuePanel({
   restaurantId: string | null;
   embedded?: boolean;
 }) {
-  const monthLabel = new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" });
-
   const { data, isPending, isError } = useQuery({
     queryKey: ["ai-value", restaurantId],
     queryFn: async () => {
@@ -59,6 +57,13 @@ export function AiValuePanel({
   const reservations = data?.reservations ?? 0;
   const phoneOrders = data?.phone_orders ?? 0;
   const phoneReservations = data?.phone_reservations ?? 0;
+  const allZero =
+    !isPending &&
+    !isError &&
+    calls === 0 &&
+    answered === 0 &&
+    orders === 0 &&
+    reservations === 0;
 
   const monthTiles = [
     { icon: Phone, label: "Calls", value: formatNumber(calls) },
@@ -83,15 +88,19 @@ export function AiValuePanel({
   const monthCard = (
       <Card className={embedded ? "rounded-xl border-border/70 shadow-none" : "rounded-xl border-border/80 shadow-sm overflow-hidden"}>
         <CardContent className={embedded ? "p-0 space-y-5" : "p-5 sm:p-6 space-y-5"}>
-          {!embedded && (
-            <div>
+          <div>
+            {!embedded && (
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Missed revenue</p>
-              <h2 className="mt-1 text-xl font-extrabold tracking-tight">This month · {monthLabel}</h2>
+            )}
+            <h2 className={`${embedded ? "text-sm font-semibold text-muted-foreground" : "mt-1 text-xl font-extrabold tracking-tight"}`}>
+              Last 30 days
+            </h2>
+            {!embedded && (
               <p className="mt-1 text-sm text-muted-foreground">
                 Live totals from calls, orders, and reservations. The estimate uses those totals.
               </p>
-            </div>
-          )}
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             {monthTiles.map((tile) => (
@@ -119,7 +128,13 @@ export function AiValuePanel({
                 : ""}
             </p>
           </div>
-          {isError && <p className="text-sm text-destructive">Could not load this month’s numbers.</p>}
+          {allZero && (
+            <p className="text-sm text-muted-foreground">
+              No calls, orders, or reservations in the last 30 days for this restaurant on this dashboard’s database.
+              Phone orders only appear here when the AI agent tools point at the same API this dashboard uses.
+            </p>
+          )}
+          {isError && <p className="text-sm text-destructive">Could not load the last 30 days’ numbers.</p>}
         </CardContent>
       </Card>
   );
