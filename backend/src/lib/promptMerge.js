@@ -72,18 +72,18 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
 
   text = text.replace(
-    /Confirm FAST \(do not drag\): "Aapka order: \[qty\] \[item\], \[naam\], \[delivery \/ pickup\], (?:teks shamil karke|tax include kar ke|tax include kar k|tax shamil kar ke) (?:kul raqam|kul bill) \[English AFTER-TAX total e\.g\. five hundred forty [^\"]+\] hai\. Kya main yeh order confirm kar doon\?" Then WAIT — on haan(?: \/ kar do)? call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
-    'Confirm FAST in natural sentences (NOT keyword lists): "Aapka order yeh hai: [ek/do/teen] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX total] rupees bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan / kar do call place_order immediately. NEVER say daraj/darj/rupay.',
+    /Confirm FAST \(do not drag\): "Aapka order: \[qty\] \[item\], \[naam\], \[delivery \/ pickup\], (?:teks shamil karke|teks include kar ke|tax include kar ke|tax include kar k|tax shamil kar ke) (?:kul raqam|kul bill) \[English AFTER-TAX total e\.g\. five hundred forty [^\"]+\] hai\. Kya main yeh order confirm kar doon\?" Then WAIT — on haan(?: \/ kar do)? call place_order immediately\. NEVER say daraj\/darj\/rupay\./gi,
+    'Confirm FAST in natural sentences (NOT keyword lists): "Aapka order yeh hai: [ek/do/teen] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks include kar ke kul bill [English AFTER-TAX total] rupees bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan / kar do call place_order immediately. NEVER say daraj/darj/rupay.',
   );
 
   text = text.replace(
-    /"Aapka order: \[quantity\] \[item name\], \[naam\], \[delivery ya pickup\], \[pata\], (?:teks shamil karke|tax include kar ke|tax include kar k|tax shamil kar ke) (?:kul raqam|kul bill) \[e\.g\. five hundred forty\] ([^"]+) hai\. Kya main yeh order confirm kar doon\?"/gi,
-    '"Aapka order yeh hai: [ek/do/teen] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye. Tax include kar ke kul bill [e.g. five hundred forty three] $1 bana hai. Kya main yeh order confirm kar doon?"',
+    /"Aapka order: \[quantity\] \[item name\], \[naam\], \[delivery ya pickup\], \[pata\], (?:teks shamil karke|teks include kar ke|tax include kar ke|tax include kar k|tax shamil kar ke) (?:kul raqam|kul bill) \[e\.g\. five hundred forty\] ([^"]+) hai\. Kya main yeh order confirm kar doon\?"/gi,
+    '"Aapka order yeh hai: [ek/do/teen] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye. Teks include kar ke kul bill [e.g. five hundred forty three] $1 bana hai. Kya main yeh order confirm kar doon?"',
   );
 
   text = text.replace(
-    /(?:teks shamil karke|tax include kar ke|tax include kar k|tax shamil kar ke)\s+kul\s+(?:bill|raqam)/gi,
-    "Tax include kar ke kul bill",
+    /(?:teks shamil karke|teks include kar ke|tax include kar ke|tax include kar k|tax shamil kar ke)\s+kul\s+(?:bill|raqam)/gi,
+    "Teks include kar ke kul bill",
   );
 
   text = text.replace(
@@ -131,8 +131,11 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     /Apna mukammal address bata dijiye\?/gi,
     'Apna mukammal address bata dein?',
   );
-  text = text.replace(/teks shamil karke/gi, "Tax include kar ke");
-  text = text.replace(/tax shamil kar ke/gi, "Tax include kar ke");
+  // Spoken customer wording: keep "Teks" for TTS; never rewrite teks → Tax.
+  text = text.replace(/teks shamil karke/gi, "Teks include kar ke");
+  text = text.replace(/tax shamil kar ke/gi, "Teks include kar ke");
+  text = text.replace(/Tax include kar ke/g, "Teks include kar ke");
+  text = text.replace(/tax include kar ke/gi, "Teks include kar ke");
   text = text.replace(
     /Kya yeh order delivery ke liye hai ya pickup\?(?! karein)/gi,
     "Kya yeh order delivery ke liye hai ya pickup karein gay?",

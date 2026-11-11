@@ -1972,6 +1972,12 @@ export default function RestaurantSettings() {
               {r.synthflow_synced_at ? (
                 <div>Last synced: {new Date(r.synthflow_synced_at).toLocaleString()}</div>
               ) : null}
+              <div>
+                {t(
+                  "restaurantSettings:concurrentCallsHint",
+                  "Multiple customers can call at the same time — one agent opens a separate session per caller (limited by your Synthflow workspace concurrency). Orders stay isolated by call ID.",
+                )}
+              </div>
             </div>
           ) : null}
         </CardContent>

@@ -18,6 +18,7 @@ import {
   loadActiveChildBranches,
   isMaleVoice,
   PAKISTANI_NAME_KEYWORDS,
+  SYNTHFLOW_VOICE_PROMPT,
 } from "../lib/restaurantVoiceContext.js";
 import { PromptMergeError, resolveSynthflowPromptUpdate } from "../lib/promptMerge.js";
 import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
@@ -607,6 +608,7 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       send_user_idle_reminders: false,
       voice_id: voiceId || "EXAVITQu4vr4xnSDxMaL",
       voice_gender: voiceGender,
+      voice_prompt: SYNTHFLOW_VOICE_PROMPT,
     };
 
     // NEVER auto-create a new Synthflow agent. Only update an already-linked agent ID.

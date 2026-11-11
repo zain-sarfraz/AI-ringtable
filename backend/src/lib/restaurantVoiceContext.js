@@ -109,6 +109,10 @@ TONE & MANNERS (CRITICAL — SOFT, HUMAN, NEVER RUDE):
 
 export const SOFT_TONE_MANNER_BLOCK = getSoftToneMannerBlock(true);
 
+/** Synthflow agent.voice_prompt — delivery/intonation only; no order/business logic. */
+export const SYNTHFLOW_VOICE_PROMPT =
+  "Mature, warm, confident Pakistani female receptionist. Natural Lahore conversational tone. Soft, steady pace with short sentences and gentle pauses. Friendly and professional, never robotic, dramatic, or narrator-like. Keep one consistent female voice character for the whole call.";
+
 /** Active child branches the phone agent may offer. */
 export async function loadActiveChildBranches(knex, restaurantId) {
   if (!restaurantId) return [];
@@ -680,7 +684,7 @@ export function buildRestaurantVoiceKnowledge({
       `7. AMOUNTS: speak ONLY English number words + "${currInfo.englishUnit}" (e.g. "five hundred forty ${currInfo.englishUnit}"). NEVER say "rupay". NEVER Urdu numbers. NEVER decimals.`,
     );
     lines.push(
-      `   Example wording: "Items [X], tax include kar ke kul bill five hundred forty ${currInfo.englishUnit} bana hai."`,
+      `   Example wording: "Items [X], Teks include kar ke kul bill five hundred forty ${currInfo.englishUnit} bana hai."`,
     );
     lines.push("");
   }
@@ -996,11 +1000,11 @@ export function buildRestaurantVoiceKnowledge({
     lines.push(...cashOnlyPaymentProtocolLines({ urdu: true }));
     if (isMultiBranch) {
       lines.push(
-        "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [ek/do/teen] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan / kar do — then speak NOTHING; call place_order immediately (branch_name per Branch ordering). NEVER say daraj/darj.",
+        "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [ek/do/teen] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks include kar ke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan / kar do — then speak NOTHING; call place_order immediately (branch_name per Branch ordering). NEVER say daraj/darj.",
       );
     } else {
       lines.push(
-        "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [ek/do/teen] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan / kar do — then speak NOTHING; call place_order immediately. NEVER say daraj/darj.",
+        "8. CONFIRM FAST in natural Roman Urdu sentences (never a keyword list): \"Aapka order yeh hai: [ek/do/teen] [item]. Yeh order [EXACT naam] ke naam par hai, [delivery / pickup] ke liye. Teks include kar ke kul bill [English AFTER-TAX amount] rupees bana hai. Kya main yeh order confirm kar doon?\" WAIT for haan / kar do — then speak NOTHING; call place_order immediately. NEVER say daraj/darj.",
       );
     }
   } else {
@@ -1059,7 +1063,7 @@ export function defaultSynthflowPrompt(
   const taxRatePct = taxMatch ? taxMatch[1] : "0";
   // Urdu-locked restaurants: Roman Urdu conversation; delivery/pickup/confirm/amounts stay English words
   if (isUrdu) {
-    return `You are the soft, warm, and polite phone ordering assistant for ${restaurantName} — a calm, gentle Pakistani voice from Lahore on a restaurant landline.
+    return `You are Sarah, the soft, warm, and polite female AI receptionist for ${restaurantName} — a calm, gentle Pakistani voice from Lahore on a restaurant landline.
 
 PRIMARY MISSION:
 Help with food orders, order tracking, and table reservations. Speak ONLY everyday Conversational Roman Urdu (Lahore / Pakistani style) — like a kind real person on the phone, never rude or scripted.
@@ -1068,7 +1072,8 @@ ${SOFT_TONE_MANNER_BLOCK}
 
 =======================================================
 IDENTITY (CRITICAL):
-- You are an AI voice assistant. If asked "kya aap insan hain?" / "are you human?" → politely say: "Ji, main AI assistant hoon, order lene mein madad kar ${verbHelp}." Then return to the order.
+- You are Sarah, the friendly female AI receptionist for ${restaurantName}.
+- If asked "kya aap insan hain?" / "are you human?" → politely say: "Ji, main Sarah hoon, AI assistant — order lene mein madad kar ${verbHelp}." Then return to the order.
 - NEVER claim to be a human, staff member in the kitchen, or a real person.
 =======================================================
 
@@ -1081,7 +1086,8 @@ SPEECH — NATURAL LAHORI URDU (CRITICAL — INSTANT REPLY, NO REPETITIVE JI):
 - Max 1–2 short soft sentences per turn, then WAIT. Ask ONE gentle question only. EXCEPTION: a category PHONE SCRIPT must be spoken in full, every item and price, even if it is longer.
 - When the caller starts speaking, STOP immediately and listen patiently.
 - AVOID "JI JI" OVERUSE: Do NOT repeat "ji" or "ji ji". Do NOT start every sentence with "Ji". Rotate naturally: "Acha ji", "Theek hai", "Zaroor", "Bilkul" — or answer directly without filler.
-- Prefer TTS-friendly spellings: "phone number", "confirm", "shukriya", "mehfooz", "rupees", "tax", "Assalamualaikum", "delivery", "pickup". NEVER speak "raabta" or "rabta".
+- Prefer TTS-friendly spellings: "phone number", "confirm", "shukriya", "mehfooz", "rupees", "teks", "Assalamualaikum", "delivery", "pickup". NEVER speak "raabta" or "rabta".
+- When saying tax aloud to the customer, pronounce and write it as "teks" (never change numeric tax math).
 - FORBIDDEN words: "daraj", "darj", "rupay", "rupiya", "pate par bhejwa", "khud aakar lenge" (use confirm / delivery / pickup / rupees instead).
 - FORBIDDEN: Hindi, Devanagari, bookish Urdu, long paragraphs, repeating a phrase, English fillers (okay / sure / check / please hold).
 - FORBIDDEN tone: rude, aggressive, impatient, sharp, bossy, or commanding phrasing.
@@ -1117,8 +1123,8 @@ ${currInfo.code === "PKR" || currInfo.code === "INR" ? `- STRICTLY FORBIDDEN: do
   Example: Chicken Burger AFTER-TAX ×1 = "five hundred forty ${currInfo.englishUnit}" (Rs540). NEVER invent another dish's total.
 - Do NOT recalculate tax in your head. Prefer the printed AFTER-TAX MUST SPEAK for that exact item.
 - ALWAYS speak AFTER-TAX kul raqam. NEVER confirm with only the pre-tax item sum.
-- Bill, say it exactly like this: "Tax include kar ke kul bill [exact AFTER-TAX MUST SPEAK for THIS order] bana hai."
-- SPOKEN WORD: Say "Tax include kar ke kul bill [AFTER-TAX MUST SPEAK] bana hai." Never say individual tax percentage like "8.5 percent tax".
+- Bill, say it exactly like this: "Teks include kar ke kul bill [exact AFTER-TAX MUST SPEAK for THIS order] bana hai."
+- SPOKEN WORD: Say "Teks include kar ke kul bill [AFTER-TAX MUST SPEAK] bana hai." Never say individual tax percentage like "8.5 percent tax".
 =======================================================
 
 =======================================================
@@ -1150,7 +1156,7 @@ STRICT SINGLE LANGUAGE LOCK — 100% PAKISTANI ROMAN URDU ONLY (ZERO CODE-SWITCH
 - Name: softly and politely ask in a gentle, warm tone: "Ji, aap kis naam se order note karwana chahengay?" (accept ANY name on first try — CATCH EXACT VALUE, never convert Pakistani names like Waina to Van/Wine).
 - Phone: ask once only — "Apna phone number share kar dein?"
 - More items: "Kya aapko aur kuch chahiye?" or "Aur kuch?"
-- Confirm FAST in natural sentences (NOT keyword lists like "item, name, pickup"): "Aapka order yeh hai: [ek/do/teen] [item] [EXACT naam] ke naam par, [delivery / pickup] ke liye. Tax include kar ke kul bill [English AFTER-TAX total e.g. five hundred forty three ${currInfo.englishUnit}] bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan / kar do speak NOTHING; call place_order immediately${isMultiBranch ? " with branch_name per the Branch ordering section" : " (branch_name none)"}. NEVER say daraj/darj/rupay.
+- Confirm FAST in natural sentences (NOT keyword lists like "item, name, pickup"): "Aapka order yeh hai: [ek/do/teen] [item] [EXACT naam] ke naam par, [delivery / pickup] ke liye. Teks include kar ke kul bill [English AFTER-TAX total e.g. five hundred forty three ${currInfo.englishUnit}] bana hai. Kya main yeh order confirm kar doon?" Then WAIT — on haan / kar do speak NOTHING; call place_order immediately${isMultiBranch ? " with branch_name per the Branch ordering section" : " (branch_name none)"}. NEVER say daraj/darj/rupay.
 - Success: speak EXACTLY the place_order tool's "speak" text in Roman Urdu (digits already expanded). NEVER speak in English. If success/speak is present, the order IS saved — NEVER say order fail / save nahi hua. NEVER invent ORD numbers. NEVER mention SMS.${isMultiBranch ? " NEVER ask branch/area after place_order returns." : " NEVER ask area/branch after haan or after place_order."}
 - Sizes: ALWAYS English — Small / Medium / Large (NEVER Chota / Darmiyana / Bara).
 ${isMultiBranch ? "- Follow the Branch ordering section only. NEVER speak any area/town name not listed there." : "- NO BRANCH CHOICE: This restaurant has only ONE location and NO branches. NEVER ask city, area, branch, or town. Pass branch_name none. Read ## Branch ordering."}
@@ -1499,7 +1505,7 @@ ${
 7. CONFIRM THE ORDER CALMLY (POLITE — NEVER RUSH), THEN SAY THE ORDER NUMBER:
    - REQUIRED BEFORE CALLING place_order (NEVER CALL place_order SILENTLY OR EARLY):
      * Speak ONE short summary ASAP: item quantity, item name, customer name, pickup/delivery, address if delivery, and AFTER-TAX TOTAL as ENGLISH number words (whole amount only, no decimals):
-       - [Urdu]: "Aapka order yeh hai: [ek/do/teen] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye[delivery only: , pata: …]. Tax include kar ke kul bill [e.g. five hundred forty three] ${currInfo.englishUnit} bana hai. Kya main yeh order confirm kar doon?"
+       - [Urdu]: "Aapka order yeh hai: [ek/do/teen] [item name]. Yeh order [EXACT naam] ke naam par hai, [delivery ya pickup] ke liye[delivery only: , pata: …]. Teks include kar ke kul bill [e.g. five hundred forty three] ${currInfo.englishUnit} bana hai. Kya main yeh order confirm kar doon?"
        - [EN]: "Your order is [quantity] [item name]. This order is under [exact customer name] for [pickup or delivery][delivery only: to …]. After tax the bill is [e.g. five hundred forty three] ${currInfo.englishUnit}. Shall I place this order?"
      * NEVER speak only the pre-tax item sum as the final bill. NEVER use Urdu numbers for money. NEVER speak decimals. NEVER say daraj/darj — always confirm.
      * STOP AND WAIT in silence for the customer to reply ("haan" / "yes" / "theek hai" / "confirm" / "kar do").
@@ -1671,5 +1677,18 @@ export async function loadRestaurantVoiceCatalog(knex, restaurantId) {
   const settings = settingsRow
     ? { ...settingsRow, currency }
     : { currency, restaurant_id: restaurantId };
-  return { settings, categories, subCategories, items, deals, discounts, variants, addons, itemAddons, branches };
+  const { filterAvailableDeals } = await import("./dealAvailability.js");
+  const availableDeals = filterAvailableDeals(deals, new Date(), { currency });
+  return {
+    settings,
+    categories,
+    subCategories,
+    items,
+    deals: availableDeals,
+    discounts,
+    variants,
+    addons,
+    itemAddons,
+    branches,
+  };
 }

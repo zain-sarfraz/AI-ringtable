@@ -803,8 +803,8 @@ export async function createPhoneOrder(knex, input) {
     .select("id", "name", "price", "is_available", "track_inventory", "stock_quantity");
 
   let effectiveMenuRestId = targetRestaurantId;
+  const targetRest = await knex("restaurants").where({ id: targetRestaurantId }).first();
   if (!menu.length) {
-    const targetRest = await knex("restaurants").where({ id: targetRestaurantId }).first();
     if (targetRest?.is_branch && targetRest.parent_restaurant_id) {
       effectiveMenuRestId = targetRest.parent_restaurant_id;
       menu = await knex("menu_items")
@@ -826,8 +826,12 @@ export async function createPhoneOrder(knex, input) {
   ]);
 
   const settings = await knex("restaurant_settings").where({ restaurant_id: targetRestaurantId }).first();
+  const { filterAvailableDeals } = await import("./dealAvailability.js");
+  const activeDeals = filterAvailableDeals(deals, new Date(), {
+    currency: settings?.currency || targetRest?.currency,
+  });
 
-  const { lines, unmatched, outOfStock } = matchMenuLines(menu, foodItems, variants, addons, itemAddons, deals);
+  const { lines, unmatched, outOfStock } = matchMenuLines(menu, foodItems, variants, addons, itemAddons, activeDeals);
 
   if (outOfStock.length > 0) {
     const err = new Error(`Item "${outOfStock.join(", ")}" is currently out of order / out of stock.`);

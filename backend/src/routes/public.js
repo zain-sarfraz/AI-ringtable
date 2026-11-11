@@ -15,6 +15,7 @@ import { canonicalOrderNumber, nextOrderNumber } from "../lib/orderNumbers.js";
 import { withAbsoluteMedia } from "../lib/mediaUrl.js";
 import { notifyNewOrderLater, orderTrackUrl } from "../lib/orderAlerts.js";
 import { sendTeamMail, buildLeadNotifyHtml } from "../lib/sendTeamMail.js";
+import { filterAvailableDeals } from "../lib/dealAvailability.js";
 
 const router = Router();
 
@@ -113,7 +114,9 @@ router.get("/storefront", async (req, res) => {
       settings: settings || null,
       categories,
       items: (items || []).map((it) => withAbsoluteMedia(it, ["image_url"])),
-      deals: (deals || []).map((d) => withAbsoluteMedia(d, ["image_url"])),
+      deals: filterAvailableDeals(deals || [], new Date(), {
+        currency: settings?.currency || r?.currency,
+      }).map((d) => withAbsoluteMedia(d, ["image_url"])),
       hours: hours || [],
       variants: variants || [],
       addons: addons || [],

@@ -64,7 +64,7 @@ Turn 1: Speak exactly: "Assalamualaikum"
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
     assert.match(fixed, /Aapka order yeh hai/);
     assert.match(fixed, /ke naam par hai/);
-    assert.match(fixed, /Tax include kar ke kul bill/);
+    assert.match(fixed, /Teks include kar ke kul bill/);
     assert.match(fixed, /CASH ONLY/);
     assert.match(fixed, /speak NOTHING/i);
     assert.doesNotMatch(fixed, /Aapka order: \[qty\] \[item\], \[naam\]/);
@@ -94,7 +94,7 @@ Turn 1: Speak exactly: "Assalamualaikum"
     assert.match(fixed, /thora sa masla/);
     assert.match(fixed, /Ji, aap kis naam se order note karwana chahengay\?/);
     assert.match(fixed, /Kya yeh order delivery ke liye hai ya pickup karein gay\?/);
-    assert.match(fixed, /Tax include kar ke kul bill/);
+    assert.match(fixed, /Teks include kar ke kul bill/);
     assert.match(fixed, /with branch_name none/);
     assert.doesNotMatch(fixed, /with branch_name per$/m);
   });

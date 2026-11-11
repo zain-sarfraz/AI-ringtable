@@ -7,6 +7,7 @@ import {
   loadRestaurantVoiceCatalog,
   isMaleVoice,
   PAKISTANI_NAME_KEYWORDS,
+  SYNTHFLOW_VOICE_PROMPT,
 } from "../lib/restaurantVoiceContext.js";
 import { PromptMergeError, resolveSynthflowPromptUpdate } from "../lib/promptMerge.js";
 import { refreshSynthflowPlaceOrderTool } from "./restaurantCreateSynthflowAgent.js";
@@ -130,6 +131,7 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
         // Pizza Go / Urdu live voice (Sarah). Never fall back to Jessica — that mismatch is what Sir hears.
         voice_id: r.agent_voice_id || "EXAVITQu4vr4xnSDxMaL",
         voice_gender: voiceGender,
+        voice_prompt: SYNTHFLOW_VOICE_PROMPT,
         voice_speed: 1.08,
         min_words_to_interrupt: 2,
         interruption_fade_out: 1,

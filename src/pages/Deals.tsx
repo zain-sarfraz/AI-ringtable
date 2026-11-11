@@ -35,11 +35,51 @@ interface Deal {
   image_url: string | null;
   starts_at: string | null;
   ends_at: string | null;
+  /** 0=Sun … 6=Sat. Empty = every day. */
+  available_days?: number[] | null;
+  available_start_time?: string | null;
+  available_end_time?: string | null;
   is_active: boolean;
 }
 interface Discount { id: string; code: string; description: string | null; discount_type: string; discount_value: number; min_order_amount: number; max_uses: number | null; used_count: number; starts_at: string | null; ends_at: string | null; is_active: boolean }
 
-type DealFieldKey = "name" | "description" | "price" | "original_price" | "dates";
+const DEAL_WEEKDAYS: { value: number; label: string }[] = [
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+  { value: 0, label: "Sun" },
+];
+
+function normalizeDealDays(days: unknown): number[] {
+  if (!Array.isArray(days)) return [];
+  return [...new Set(days.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort(
+    (a, b) => a - b,
+  );
+}
+
+function timeInputValue(t: string | null | undefined): string {
+  if (!t) return "";
+  return String(t).slice(0, 5);
+}
+
+function formatDealSchedule(d: Pick<Deal, "available_days" | "available_start_time" | "available_end_time">): string {
+  const days = normalizeDealDays(d.available_days);
+  const dayPart =
+    days.length === 0
+      ? "Every day"
+      : days
+          .map((v) => DEAL_WEEKDAYS.find((x) => x.value === v)?.label || String(v))
+          .join(", ");
+  const start = timeInputValue(d.available_start_time);
+  const end = timeInputValue(d.available_end_time);
+  if (!start && !end) return dayPart;
+  return `${dayPart} · ${start || "00:00"}–${end || "23:59"}`;
+}
+
+type DealFieldKey = "name" | "description" | "price" | "original_price" | "dates" | "schedule";
 
 function validateDealForm(form: Partial<Deal>): Partial<Record<DealFieldKey, string>> {
   const errors: Partial<Record<DealFieldKey, string>> = {};
@@ -78,12 +118,30 @@ function validateDealForm(form: Partial<Deal>): Partial<Record<DealFieldKey, str
     else if (ts > te) errors.dates = "End date/time must be on or after the start.";
   }
 
+  const startT = timeInputValue(form.available_start_time);
+  const endT = timeInputValue(form.available_end_time);
+  if ((startT && !endT) || (!startT && endT)) {
+    errors.schedule = "Set both daily start and end time, or leave both empty.";
+  }
+
   return errors;
 }
 
 type DealClusterRow = Pick<
   Deal,
-  "id" | "restaurant_id" | "name" | "description" | "price" | "original_price" | "image_url" | "starts_at" | "ends_at" | "is_active"
+  | "id"
+  | "restaurant_id"
+  | "name"
+  | "description"
+  | "price"
+  | "original_price"
+  | "image_url"
+  | "starts_at"
+  | "ends_at"
+  | "available_days"
+  | "available_start_time"
+  | "available_end_time"
+  | "is_active"
 >;
 
 function dealPriceNorm(n: unknown): string {
@@ -94,7 +152,20 @@ function dealPriceNorm(n: unknown): string {
 
 /** Best-effort grouping for multi-restaurant copies (same fields; no shared DB group id). */
 function dealIdentityKey(
-  d: Pick<Deal, "name" | "description" | "price" | "original_price" | "image_url" | "starts_at" | "ends_at" | "is_active">,
+  d: Pick<
+    Deal,
+    | "name"
+    | "description"
+    | "price"
+    | "original_price"
+    | "image_url"
+    | "starts_at"
+    | "ends_at"
+    | "available_days"
+    | "available_start_time"
+    | "available_end_time"
+    | "is_active"
+  >,
 ) {
   const desc = d.description == null ? "" : String(d.description);
   const orig = d.original_price == null ? "" : dealPriceNorm(d.original_price);
@@ -106,6 +177,9 @@ function dealIdentityKey(
     (d.image_url ?? "").trim(),
     d.starts_at ?? "",
     d.ends_at ?? "",
+    normalizeDealDays(d.available_days).join(","),
+    timeInputValue(d.available_start_time),
+    timeInputValue(d.available_end_time),
     d.is_active ? "1" : "0",
   ].join("\0");
 }
@@ -206,6 +280,9 @@ export default function Deals() {
 
   const saveDeal = async (form: DealFormSubmit) => {
     const { restaurant_ids: pickedIds, ...dealFields } = form;
+    const days = normalizeDealDays(dealFields.available_days);
+    const startT = timeInputValue(dealFields.available_start_time) || null;
+    const endT = timeInputValue(dealFields.available_end_time) || null;
     const basePayload = {
       name: dealFields.name,
       description: dealFields.description || null,
@@ -214,6 +291,10 @@ export default function Deals() {
       image_url: dealFields.image_url ?? null,
       starts_at: dealFields.starts_at || null,
       ends_at: dealFields.ends_at || null,
+      // Must be JSON text: knex/pg rejects JS arrays for jsonb ("invalid input syntax for type json")
+      available_days: JSON.stringify(days),
+      available_start_time: startT,
+      available_end_time: endT,
       is_active: dealFields.is_active ?? true,
     };
 
@@ -356,6 +437,7 @@ export default function Deals() {
                 <th className="p-3 whitespace-nowrap">{t("deals:colOriginal", "Original")}</th>
                 <th className="p-3 whitespace-nowrap">{t("deals:colStarts", "Starts")}</th>
                 <th className="p-3 whitespace-nowrap">{t("deals:colEnds", "Ends")}</th>
+                <th className="p-3 whitespace-nowrap">{t("deals:colSchedule", "Days / Time")}</th>
                 <th className="p-3 whitespace-nowrap">{t("deals:colRestaurants", "Restaurants")}</th>
                 <th className="p-3">{t("deals:colStatus", "Status")}</th>
                 <th className="p-3 w-[100px]" />
@@ -384,6 +466,9 @@ export default function Deals() {
                     <td className="p-3 align-middle whitespace-nowrap text-muted-foreground">{d.original_price != null ? formatCurrency(d.original_price) : "—"}</td>
                     <td className="p-3 align-middle whitespace-nowrap text-muted-foreground">{fmtTableDate(d.starts_at)}</td>
                     <td className="p-3 align-middle whitespace-nowrap text-muted-foreground">{fmtTableDate(d.ends_at)}</td>
+                    <td className="p-3 align-middle text-muted-foreground text-sm max-w-[180px]" title={formatDealSchedule(d)}>
+                      {formatDealSchedule(d)}
+                    </td>
                     <td className="p-3 align-middle">
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -447,7 +532,7 @@ export default function Deals() {
               })}
               {deals.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="p-10 text-center text-muted-foreground">{t("deals:noDeals", "No deals yet")}</td>
+                  <td colSpan={11} className="p-10 text-center text-muted-foreground">{t("deals:noDeals", "No deals yet")}</td>
                 </tr>
               )}
             </tbody>
@@ -488,6 +573,9 @@ function DealForm({
         image_url: null,
         starts_at: null,
         ends_at: null,
+        available_days: [],
+        available_start_time: null,
+        available_end_time: null,
         is_active: true,
         restaurant_id: defaultRestaurantId,
       },
@@ -498,7 +586,12 @@ function DealForm({
 
   useEffect(() => {
     if (initial) {
-      setForm({ ...initial });
+      setForm({
+        ...initial,
+        available_days: normalizeDealDays(initial.available_days),
+        available_start_time: timeInputValue(initial.available_start_time) || null,
+        available_end_time: timeInputValue(initial.available_end_time) || null,
+      });
       setSelectedRestaurantIds(initialRestaurantIds.length ? initialRestaurantIds : [initial.restaurant_id]);
     } else {
       setForm({
@@ -509,6 +602,9 @@ function DealForm({
         image_url: null,
         starts_at: null,
         ends_at: null,
+        available_days: [],
+        available_start_time: null,
+        available_end_time: null,
         is_active: true,
         restaurant_id: defaultRestaurantId,
       });
@@ -824,6 +920,70 @@ function DealForm({
           </div>
         </div>
         {fieldErrors.dates ? <p className="text-xs text-destructive">{fieldErrors.dates}</p> : null}
+        <div className="space-y-2">
+          <Label>{t("deals:availableDays", "Available days")}</Label>
+          <p className="text-xs text-muted-foreground">
+            {t("deals:availableDaysHint", "Leave all unselected for every day. Select one or more weekdays to limit the deal.")}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {DEAL_WEEKDAYS.map((day) => {
+              const selected = normalizeDealDays(form.available_days).includes(day.value);
+              return (
+                <Button
+                  key={day.value}
+                  type="button"
+                  size="sm"
+                  variant={selected ? "default" : "outline"}
+                  onClick={() => {
+                    const current = normalizeDealDays(form.available_days);
+                    const next = selected ? current.filter((d) => d !== day.value) : [...current, day.value];
+                    setForm({ ...form, available_days: normalizeDealDays(next) });
+                    clearFieldError("schedule");
+                  }}
+                >
+                  {day.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="deal-day-start">{t("deals:availableStartTime", "Daily start time")}</Label>
+            <Input
+              id="deal-day-start"
+              type="time"
+              value={timeInputValue(form.available_start_time)}
+              aria-invalid={!!fieldErrors.schedule}
+              className={cn(fieldErrors.schedule && "border-destructive focus-visible:ring-destructive")}
+              onChange={(e) => {
+                setForm({ ...form, available_start_time: e.target.value || null });
+                clearFieldError("schedule");
+              }}
+            />
+          </div>
+          <div>
+            <Label htmlFor="deal-day-end">{t("deals:availableEndTime", "Daily end time")}</Label>
+            <Input
+              id="deal-day-end"
+              type="time"
+              value={timeInputValue(form.available_end_time)}
+              aria-invalid={!!fieldErrors.schedule}
+              className={cn(fieldErrors.schedule && "border-destructive focus-visible:ring-destructive")}
+              onChange={(e) => {
+                setForm({ ...form, available_end_time: e.target.value || null });
+                clearFieldError("schedule");
+              }}
+            />
+          </div>
+        </div>
+        {fieldErrors.schedule ? <p className="text-xs text-destructive">{fieldErrors.schedule}</p> : null}
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "deals:scheduleHint",
+            "Optional daily window (e.g. 11:00–15:00). Leave empty for all day. Campaign Starts/Ends above still apply.",
+          )}
+        </p>
         <div className="flex items-center gap-2">
           <Switch checked={form.is_active ?? true} onCheckedChange={(v) => setForm({ ...form, is_active: v })} />
           <Label>{t("deals:active", "Active")}</Label>

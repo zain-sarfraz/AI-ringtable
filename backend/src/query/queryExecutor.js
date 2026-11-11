@@ -316,8 +316,33 @@ async function assertOrdersBelongToTenant(knex, user, orderIds) {
   }
 }
 
+/** pg + knex bind JS arrays as PG arrays; jsonb columns need JSON text. */
+function coerceDealWriteValues(values) {
+  if (!values || typeof values !== "object" || Array.isArray(values)) return values;
+  const out = { ...values };
+  if (Object.prototype.hasOwnProperty.call(out, "available_days")) {
+    const days = out.available_days;
+    if (days == null) {
+      out.available_days = "[]";
+    } else if (Array.isArray(days)) {
+      out.available_days = JSON.stringify(days);
+    } else if (typeof days === "object") {
+      out.available_days = JSON.stringify([]);
+    } else if (typeof days !== "string") {
+      out.available_days = JSON.stringify(days);
+    }
+  }
+  for (const key of ["available_start_time", "available_end_time"]) {
+    if (out[key] === "") out[key] = null;
+  }
+  return out;
+}
+
 /** Validates and normalizes insert payloads so tenants cannot attach rows to other restaurants. */
 async function validateAndNormalizeInsert(knex, table, rows, user) {
+  if (table === "deals") {
+    rows = (Array.isArray(rows) ? rows : [rows]).map((r) => coerceDealWriteValues(r));
+  }
   if (user.roles?.includes("super_admin")) return rows;
 
   if (TENANT_QUERY_DENY.has(table)) {
@@ -505,7 +530,9 @@ export async function executeQuery(knex, body, user) {
       targetOrders = await matchQ;
     }
 
-    let q = knex(table).update(body.values || {});
+    const updateValues =
+      table === "deals" ? coerceDealWriteValues(body.values || {}) : body.values || {};
+    let q = knex(table).update(updateValues);
     applyScope(knex, q, table, user);
     applyFilters(q, body.filters);
 
