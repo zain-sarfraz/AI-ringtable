@@ -172,6 +172,7 @@ jobs:
 
           # Release port if held by an orphan process and restart clean
           fuser -k "${BACKEND_PORT}/tcp" 2>/dev/null || true
+          sleep 1
           "$PM2" delete ringtable-api 2>/dev/null || true
           # Pass production flags in the process env so a stale .env cannot win
           RINGTABLE_DEPLOYMENT=1 APP_ENV=production PORT="$BACKEND_PORT" \
@@ -179,11 +180,24 @@ jobs:
           "$PM2" save
           "$PM2" status ringtable-api
 
-          # Fail deploy if API did not come up (avoids silent 503 after ship)
-          sleep 3
-          if ! curl -sf --max-time 10 "http://127.0.0.1:${BACKEND_PORT}/api/health" >/dev/null; then
-            echo "::error::API health check failed on 127.0.0.1:${BACKEND_PORT} — dumping pm2 logs"
-            "$PM2" logs ringtable-api --lines 80 --nostream || true
+          # Boot runs migrations + seedAdmin before listen — retry health instead of a single 3s wait.
+          # (A premature curl failure dumps Synthflow webhook noise and marks the whole deploy failed.)
+          HEALTH_OK=0
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            sleep 5
+            BODY="$(curl -sS --max-time 10 "http://127.0.0.1:${BACKEND_PORT}/api/health" 2>/dev/null || true)"
+            if echo "$BODY" | grep -q '"ok":true'; then
+              echo "API health OK (attempt $i): $BODY" | head -c 400
+              echo
+              HEALTH_OK=1
+              break
+            fi
+            echo "Health not ready yet (attempt $i)…"
+            "$PM2" describe ringtable-api >/dev/null 2>&1 || "$PM2" status ringtable-api || true
+          done
+          if [ "$HEALTH_OK" != "1" ]; then
+            echo "::error::API health check failed on 127.0.0.1:${BACKEND_PORT} after retries — dumping pm2 logs"
+            "$PM2" logs ringtable-api --lines 120 --nostream || true
             exit 1
           fi
           echo "API health OK"

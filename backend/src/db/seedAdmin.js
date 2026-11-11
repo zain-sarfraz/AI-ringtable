@@ -21,13 +21,17 @@ export async function seedAdminUser(connectionString) {
 
   const royalAdminEmail = "royal@gmail.com";
   const royalAdminPassword = "11223344";
+  // Production boots must not reset admin passwords on every deploy/restart.
+  const forcePasswordReset =
+    String(process.env.SEED_ADMIN_RESET_PASSWORDS || "").trim() === "1" ||
+    String(process.env.SEED_ADMIN_RESET_PASSWORDS || "").toLowerCase() === "true";
 
   const client = new pg.Client({ connectionString: url.trim() });
   await client.connect();
 
   try {
-    const superAdminHash = await bcrypt.hash(superAdminPassword, 10);
-    const royalAdminHash = await bcrypt.hash(royalAdminPassword, 10);
+    let superAdminHash = null;
+    let royalAdminHash = null;
 
     // 1. Ensure Royal Restaurant exists
     let restCheck = await client.query("SELECT id, name FROM restaurants WHERE slug = 'royal-restaurant' LIMIT 1");
@@ -60,6 +64,7 @@ export async function seedAdminUser(connectionString) {
     let superProfile = await client.query("SELECT id FROM profiles WHERE lower(email) = lower($1)", [superAdminEmail]);
     let superAdminId;
     if (superProfile.rowCount === 0) {
+      superAdminHash = await bcrypt.hash(superAdminPassword, 10);
       superAdminId = randomUUID();
       await client.query(
         `INSERT INTO profiles (id, email, full_name, password_hash, status)
@@ -69,15 +74,20 @@ export async function seedAdminUser(connectionString) {
       console.log(`[seedAdmin] Created Super Admin profile: ${superAdminEmail}`);
     } else {
       superAdminId = superProfile.rows[0].id;
-      await client.query(
-        `UPDATE profiles 
-         SET password_hash = $1, 
-             full_name = COALESCE(full_name, 'Super Admin'),
-             updated_at = NOW()
-         WHERE id = $2`,
-        [superAdminHash, superAdminId]
-      );
-      console.log(`[seedAdmin] Updated Super Admin password: ${superAdminEmail}`);
+      if (forcePasswordReset) {
+        superAdminHash = await bcrypt.hash(superAdminPassword, 10);
+        await client.query(
+          `UPDATE profiles 
+           SET password_hash = $1, 
+               full_name = COALESCE(full_name, 'Super Admin'),
+               updated_at = NOW()
+           WHERE id = $2`,
+          [superAdminHash, superAdminId]
+        );
+        console.log(`[seedAdmin] Updated Super Admin password: ${superAdminEmail}`);
+      } else {
+        console.log(`[seedAdmin] Super Admin already present: ${superAdminEmail}`);
+      }
     }
 
     // Assign role 'super_admin' (upsert)
@@ -97,6 +107,7 @@ export async function seedAdminUser(connectionString) {
     let royalProfile = await client.query("SELECT id FROM profiles WHERE lower(email) = lower($1)", [royalAdminEmail]);
     let royalAdminId;
     if (royalProfile.rowCount === 0) {
+      royalAdminHash = await bcrypt.hash(royalAdminPassword, 10);
       royalAdminId = randomUUID();
       await client.query(
         `INSERT INTO profiles (id, email, full_name, password_hash, status)
@@ -106,15 +117,20 @@ export async function seedAdminUser(connectionString) {
       console.log(`[seedAdmin] Created Royal Restaurant Admin profile: ${royalAdminEmail}`);
     } else {
       royalAdminId = royalProfile.rows[0].id;
-      await client.query(
-        `UPDATE profiles 
-         SET password_hash = $1, 
-             full_name = 'Royal Restaurant Admin',
-             updated_at = NOW()
-         WHERE id = $2`,
-        [royalAdminHash, royalAdminId]
-      );
-      console.log(`[seedAdmin] Updated Royal Restaurant Admin password: ${royalAdminEmail}`);
+      if (forcePasswordReset) {
+        royalAdminHash = await bcrypt.hash(royalAdminPassword, 10);
+        await client.query(
+          `UPDATE profiles 
+           SET password_hash = $1, 
+               full_name = 'Royal Restaurant Admin',
+               updated_at = NOW()
+           WHERE id = $2`,
+          [royalAdminHash, royalAdminId]
+        );
+        console.log(`[seedAdmin] Updated Royal Restaurant Admin password: ${royalAdminEmail}`);
+      } else {
+        console.log(`[seedAdmin] Royal Restaurant Admin already present: ${royalAdminEmail}`);
+      }
     }
 
     // Assign role 'admin' only (upsert)
