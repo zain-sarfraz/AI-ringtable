@@ -102,3 +102,26 @@ export function isDealAvailableAt(deal, at = new Date(), opts = {}) {
 export function filterAvailableDeals(deals, at = new Date(), opts = {}) {
   return (deals || []).filter((d) => isDealAvailableAt(d, at, opts));
 }
+
+const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Human-readable weekly schedule for voice prompts / admin. */
+export function formatDealScheduleLabel(deal) {
+  const days = normalizeDealDays(deal?.available_days);
+  const start = deal?.available_start_time != null ? String(deal.available_start_time).slice(0, 5) : "";
+  const end = deal?.available_end_time != null ? String(deal.available_end_time).slice(0, 5) : "";
+  const dayPart = days ? days.map((d) => DOW_LABELS[d] || String(d)).join("/") : "every day";
+  if (!start && !end) {
+    return days ? `Available ${dayPart}, all day` : "Available every day";
+  }
+  return `Available ${dayPart} ${start || "00:00"}–${end || "23:59"}`;
+}
+
+/** Snapshot used in voice knowledge so the agent knows "now" without relying on sync-time filtering. */
+export function restaurantLocalNowLabel(at = new Date(), opts = {}) {
+  const tz = resolveDealTimeZone({}, opts);
+  const { dow, minutes } = getZonedDayAndMinutes(at, tz);
+  const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
+  const mm = String(minutes % 60).padStart(2, "0");
+  return `${DOW_LABELS[dow] || "?"} ${hh}:${mm} (${tz})`;
+}

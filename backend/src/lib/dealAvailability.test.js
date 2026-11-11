@@ -1,6 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isDealAvailableAt, filterAvailableDeals } from "./dealAvailability.js";
+import {
+  isDealAvailableAt,
+  filterAvailableDeals,
+  formatDealScheduleLabel,
+  restaurantLocalNowLabel,
+} from "./dealAvailability.js";
 
 describe("isDealAvailableAt", () => {
   it("allows deals with no weekly schedule", () => {
@@ -55,5 +60,14 @@ describe("isDealAvailableAt", () => {
       { timeZone: "Asia/Karachi" },
     );
     assert.deepEqual(out.map((d) => d.id), ["a"]);
+  });
+
+  it("formats schedule labels for voice", () => {
+    assert.match(formatDealScheduleLabel({ available_days: [], available_start_time: null, available_end_time: null }), /every day/i);
+    assert.match(
+      formatDealScheduleLabel({ available_days: [3], available_start_time: "11:00", available_end_time: "15:00" }),
+      /Wed.*11:00–15:00/,
+    );
+    assert.match(restaurantLocalNowLabel(new Date("2026-11-11T12:00:00+05:00"), { timeZone: "Asia/Karachi" }), /Wed 12:00/);
   });
 });

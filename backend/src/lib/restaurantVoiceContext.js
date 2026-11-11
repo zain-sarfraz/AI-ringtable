@@ -585,6 +585,7 @@ export function buildRestaurantVoiceKnowledge({
   branches = [],
   subCategories = [],
   preferUrduPrices = false,
+  dealClockLabel = null,
 }) {
   const currency = currencyOverride || settings?.currency || "USD";
   const currInfo = getCurrencyDetails(currency);
@@ -932,13 +933,26 @@ export function buildRestaurantVoiceKnowledge({
   if (deals?.length) {
     lines.push("");
     lines.push("## Active Deals and Promotions");
+    lines.push(
+      "Offer a deal ONLY when its line says AVAILABLE NOW. If it says NOT AVAILABLE NOW, do not sell it — if asked, politely say when it runs (schedule below). Never invent deals.",
+    );
+    if (dealClockLabel) {
+      lines.push(`Restaurant local time at last sync: ${dealClockLabel}.`);
+    }
     for (const d of deals) {
       const orig =
         d.original_price && Number(d.original_price) > Number(d.price)
           ? ` (Original: ${fmtPrice(d.original_price)})`
           : "";
+      const schedule = d.schedule_label ? ` [${d.schedule_label}]` : "";
+      const nowFlag =
+        d.available_now === false
+          ? " NOT AVAILABLE NOW"
+          : d.available_now === true
+            ? " AVAILABLE NOW"
+            : "";
       lines.push(
-        `- **${d.name}**: ${fmtPrice(d.price)}${orig}${
+        `- **${d.name}**: ${fmtPrice(d.price)}${orig}${schedule}${nowFlag}${
           d.description ? ` — Details: ${d.description}` : ""
         }`
       );
@@ -1677,14 +1691,28 @@ export async function loadRestaurantVoiceCatalog(knex, restaurantId) {
   const settings = settingsRow
     ? { ...settingsRow, currency }
     : { currency, restaurant_id: restaurantId };
-  const { filterAvailableDeals } = await import("./dealAvailability.js");
-  const availableDeals = filterAvailableDeals(deals, new Date(), { currency });
+  // Keep ALL active deals in the voice prompt (with schedule + available-now flags).
+  // Filtering only at sync time hid deals that were outside the window when Sync ran,
+  // so live callers during deal hours still heard "no deals available".
+  const {
+    isDealAvailableAt,
+    formatDealScheduleLabel,
+    restaurantLocalNowLabel,
+  } = await import("./dealAvailability.js");
+  const now = new Date();
+  const dealOpts = { currency };
+  const dealsForVoice = (deals || []).map((d) => ({
+    ...d,
+    schedule_label: formatDealScheduleLabel(d),
+    available_now: isDealAvailableAt(d, now, dealOpts),
+  }));
   return {
     settings,
     categories,
     subCategories,
     items,
-    deals: availableDeals,
+    deals: dealsForVoice,
+    dealClockLabel: restaurantLocalNowLabel(now, dealOpts),
     discounts,
     variants,
     addons,
