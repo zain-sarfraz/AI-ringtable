@@ -54,15 +54,49 @@ const DEAL_WEEKDAYS: { value: number; label: string }[] = [
 ];
 
 function normalizeDealDays(days: unknown): number[] {
-  if (!Array.isArray(days)) return [];
-  return [...new Set(days.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort(
+  let raw: unknown = days;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      raw = JSON.parse(trimmed);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort(
     (a, b) => a - b,
   );
 }
 
 function timeInputValue(t: string | null | undefined): string {
-  if (!t) return "";
-  return String(t).slice(0, 5);
+  if (t == null || t === "") return "";
+  const s = String(t).trim();
+  // Postgres TIME may arrive as "17:04:00" or "17:04:00.000"
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return "";
+  return `${m[1].padStart(2, "0")}:${m[2]}`;
+}
+
+/** datetime-local value in the browser's local timezone (never slice UTC ISO directly). */
+function toDatetimeLocalValue(value: string | Date | null | undefined): string {
+  if (value == null || value === "") return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(d.getTime())) {
+    const s = String(value);
+    return s.length >= 16 ? s.slice(0, 16) : "";
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Persist datetime-local wall time as UTC ISO for timestamptz columns. */
+function fromDatetimeLocalValue(local: string | null | undefined): string | null {
+  if (local == null || !String(local).trim()) return null;
+  const d = new Date(String(local).trim());
+  if (!Number.isFinite(d.getTime())) return null;
+  return d.toISOString();
 }
 
 function formatDealSchedule(d: Pick<Deal, "available_days" | "available_start_time" | "available_end_time">): string {
@@ -122,6 +156,8 @@ function validateDealForm(form: Partial<Deal>): Partial<Record<DealFieldKey, str
   const endT = timeInputValue(form.available_end_time);
   if ((startT && !endT) || (!startT && endT)) {
     errors.schedule = "Set both daily start and end time, or leave both empty.";
+  } else if (startT && endT && startT === endT) {
+    errors.schedule = "Daily end time must be after start time (or leave both empty for all day).";
   }
 
   return errors;
@@ -281,20 +317,22 @@ export default function Deals() {
   const saveDeal = async (form: DealFormSubmit) => {
     const { restaurant_ids: pickedIds, ...dealFields } = form;
     const days = normalizeDealDays(dealFields.available_days);
-    const startT = timeInputValue(dealFields.available_start_time) || null;
-    const endT = timeInputValue(dealFields.available_end_time) || null;
+    const startT = timeInputValue(dealFields.available_start_time);
+    const endT = timeInputValue(dealFields.available_end_time);
     const basePayload = {
       name: dealFields.name,
       description: dealFields.description || null,
       price: dealFields.price ?? 0,
       original_price: dealFields.original_price ?? null,
       image_url: dealFields.image_url ?? null,
-      starts_at: dealFields.starts_at || null,
-      ends_at: dealFields.ends_at || null,
+      // Campaign window: convert datetime-local → UTC ISO for timestamptz
+      starts_at: fromDatetimeLocalValue(dealFields.starts_at),
+      ends_at: fromDatetimeLocalValue(dealFields.ends_at),
       // Must be JSON text: knex/pg rejects JS arrays for jsonb ("invalid input syntax for type json")
       available_days: JSON.stringify(days),
-      available_start_time: startT,
-      available_end_time: endT,
+      // Daily wall-clock window (HH:MM) — not timezone-shifted
+      available_start_time: startT || null,
+      available_end_time: endT || null,
       is_active: dealFields.is_active ?? true,
     };
 
@@ -588,6 +626,9 @@ function DealForm({
     if (initial) {
       setForm({
         ...initial,
+        // Keep datetime-local strings in form state (not raw UTC ISO)
+        starts_at: toDatetimeLocalValue(initial.starts_at) || null,
+        ends_at: toDatetimeLocalValue(initial.ends_at) || null,
         available_days: normalizeDealDays(initial.available_days),
         available_start_time: timeInputValue(initial.available_start_time) || null,
         available_end_time: timeInputValue(initial.available_end_time) || null,
@@ -895,7 +936,7 @@ function DealForm({
             <Input
               id="deal-starts"
               type="datetime-local"
-              value={form.starts_at?.slice(0, 16) || ""}
+              value={toDatetimeLocalValue(form.starts_at)}
               aria-invalid={!!fieldErrors.dates}
               className={cn(fieldErrors.dates && "border-destructive focus-visible:ring-destructive")}
               onChange={(e) => {
@@ -909,7 +950,7 @@ function DealForm({
             <Input
               id="deal-ends"
               type="datetime-local"
-              value={form.ends_at?.slice(0, 16) || ""}
+              value={toDatetimeLocalValue(form.ends_at)}
               aria-invalid={!!fieldErrors.dates}
               className={cn(fieldErrors.dates && "border-destructive focus-visible:ring-destructive")}
               onChange={(e) => {
@@ -953,11 +994,12 @@ function DealForm({
             <Input
               id="deal-day-start"
               type="time"
+              step={60}
               value={timeInputValue(form.available_start_time)}
               aria-invalid={!!fieldErrors.schedule}
               className={cn(fieldErrors.schedule && "border-destructive focus-visible:ring-destructive")}
               onChange={(e) => {
-                setForm({ ...form, available_start_time: e.target.value || null });
+                setForm({ ...form, available_start_time: timeInputValue(e.target.value) || null });
                 clearFieldError("schedule");
               }}
             />
@@ -967,11 +1009,12 @@ function DealForm({
             <Input
               id="deal-day-end"
               type="time"
+              step={60}
               value={timeInputValue(form.available_end_time)}
               aria-invalid={!!fieldErrors.schedule}
               className={cn(fieldErrors.schedule && "border-destructive focus-visible:ring-destructive")}
               onChange={(e) => {
-                setForm({ ...form, available_end_time: e.target.value || null });
+                setForm({ ...form, available_end_time: timeInputValue(e.target.value) || null });
                 clearFieldError("schedule");
               }}
             />
@@ -981,7 +1024,7 @@ function DealForm({
         <p className="text-xs text-muted-foreground">
           {t(
             "deals:scheduleHint",
-            "Optional daily window (e.g. 11:00–15:00). Leave empty for all day. Campaign Starts/Ends above still apply.",
+            "Optional daily window in restaurant local time (e.g. 11:00–15:00 Pakistan time). Leave empty for all day. Campaign Starts/Ends above still apply.",
           )}
         </p>
         <div className="flex items-center gap-2">
@@ -1000,8 +1043,27 @@ function DealForm({
 
 function DiscountForm({ initial, onSubmit }: { initial: Discount | null; onSubmit: (f: Partial<Discount>) => void }) {
   const { t } = useTranslation(["coupons", "common"]);
-  const [form, setForm] = useState<Partial<Discount>>(initial || { code: "", discount_type: "percentage", discount_value: 10, min_order_amount: 0, is_active: true });
-  useEffect(() => { setForm(initial || { code: "", discount_type: "percentage", discount_value: 10, min_order_amount: 0, is_active: true }); }, [initial]);
+  const blank = (): Partial<Discount> => ({
+    code: "",
+    discount_type: "percentage",
+    discount_value: 10,
+    min_order_amount: 0,
+    is_active: true,
+    starts_at: null,
+    ends_at: null,
+  });
+  const fromInitial = (row: Discount | null): Partial<Discount> => {
+    if (!row) return blank();
+    return {
+      ...row,
+      starts_at: toDatetimeLocalValue(row.starts_at) || null,
+      ends_at: toDatetimeLocalValue(row.ends_at) || null,
+    };
+  };
+  const [form, setForm] = useState<Partial<Discount>>(() => fromInitial(initial));
+  useEffect(() => {
+    setForm(fromInitial(initial));
+  }, [initial]);
   return (
     <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
       <DialogHeader>
@@ -1028,12 +1090,24 @@ function DiscountForm({ initial, onSubmit }: { initial: Discount | null; onSubmi
           <div><Label>{t("coupons:maxUses", "Max uses")}</Label><Input type="number" value={form.max_uses || ""} onChange={(e) => setForm({ ...form, max_uses: parseInt(e.target.value) || null })} /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div><Label>{t("coupons:startDate", "Starts")}</Label><Input type="datetime-local" value={form.starts_at?.slice(0,16) || ""} onChange={(e) => setForm({ ...form, starts_at: e.target.value || null })} /></div>
-          <div><Label>{t("coupons:endDate", "Ends")}</Label><Input type="datetime-local" value={form.ends_at?.slice(0,16) || ""} onChange={(e) => setForm({ ...form, ends_at: e.target.value || null })} /></div>
+          <div><Label>{t("coupons:startDate", "Starts")}</Label><Input type="datetime-local" value={toDatetimeLocalValue(form.starts_at)} onChange={(e) => setForm({ ...form, starts_at: e.target.value || null })} /></div>
+          <div><Label>{t("coupons:endDate", "Ends")}</Label><Input type="datetime-local" value={toDatetimeLocalValue(form.ends_at)} onChange={(e) => setForm({ ...form, ends_at: e.target.value || null })} /></div>
         </div>
         <div className="flex items-center gap-2"><Switch checked={form.is_active ?? true} onCheckedChange={(v) => setForm({ ...form, is_active: v })} /><Label>{t("coupons:active", "Active")}</Label></div>
       </div>
-      <DialogFooter><Button onClick={() => onSubmit(form)}>{t("common:save", "Save")}</Button></DialogFooter>
+      <DialogFooter>
+        <Button
+          onClick={() =>
+            onSubmit({
+              ...form,
+              starts_at: fromDatetimeLocalValue(form.starts_at),
+              ends_at: fromDatetimeLocalValue(form.ends_at),
+            })
+          }
+        >
+          {t("common:save", "Save")}
+        </Button>
+      </DialogFooter>
     </DialogContent>
   );
 }

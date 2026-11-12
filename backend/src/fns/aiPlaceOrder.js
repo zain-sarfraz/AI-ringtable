@@ -50,15 +50,27 @@ export async function aiPlaceOrder(req, res) {
       }
     }
 
-    if (!body.customer_name || !hasUsableOrderItems(body.items)) {
-      console.error("❌ Validation Failed: Missing customer_name or items", {
+    if (!hasUsableOrderItems(body.items)) {
+      console.error("❌ Validation Failed: Missing items", {
         name: body.customer_name || null,
         items: body.items,
       });
       return res.status(200).json({
         success: false,
+        phone_required: false,
+        speak:
+          "Maazrat, order items clear nahi hain. Pehle item confirm karein, phir order place karein.",
         message:
-          "Missing customer_name or items. Ask once for name and items, then call place_order again. Do NOT invent an order number.",
+          "order_items was empty/null. Do NOT say the order failed. Ask which item they want, confirm \"Kya aap [Item] order karna chahengay?\", WAIT for haan, then continue collecting name/phone. Call place_order ONLY after final summary confirmation with a non-empty order_items string (e.g. \"1 Chicken Burger\"). Do NOT invent an order number.",
+      });
+    }
+    if (!body.customer_name) {
+      console.error("❌ Validation Failed: Missing customer_name", { items: body.items });
+      return res.status(200).json({
+        success: false,
+        speak: "Ji, aap kis naam se order note karwana chahengay?",
+        message:
+          "customer_name missing. Ask for the name once, then continue. Do NOT invent an order number.",
       });
     }
 
@@ -184,10 +196,40 @@ export async function aiPlaceOrder(req, res) {
       phoneToUse,
     );
 
+    const fulfillmentRaw = String(body.fulfillment_type || body.fulfillment || "").trim().toLowerCase();
+    const isPickupF =
+      fulfillmentRaw === "pickup" || /pickup|khud|aakar|lenge/i.test(String(body.delivery_address || ""));
+    const isDeliveryF = fulfillmentRaw === "delivery" || (!isPickupF && fulfillmentRaw !== "");
+    if (fulfillmentRaw !== "pickup" && fulfillmentRaw !== "delivery" && !isPickupF) {
+      return res.status(200).json({
+        success: false,
+        fulfillment_required: true,
+        order_failed: false,
+        speak: "Kya yeh order delivery ke liye hai ya pickup karein gay?",
+        message:
+          "fulfillment_type missing. Speak EXACTLY the speak field, WAIT, then retry place_order with fulfillment_type delivery or pickup. Do NOT invent an order number. Do NOT say order failed.",
+      });
+    }
+    body.fulfillment_type = isPickupF ? "pickup" : "delivery";
+
+    if (!isPickupF) {
+      const addr = String(body.delivery_address || "").trim();
+      if (!addr || /^(none|null|n\/a|pickup)$/i.test(addr)) {
+        return res.status(200).json({
+          success: false,
+          address_required: true,
+          order_failed: false,
+          speak: "Apna mukammal address bata dein?",
+          message:
+            "Delivery address missing. Speak EXACTLY the speak field, WAIT, then retry place_order with delivery_address. Do NOT invent an order number.",
+        });
+      }
+    } else if (!body.delivery_address || /^(none|null|n\/a)$/i.test(String(body.delivery_address).trim())) {
+      body.delivery_address = "Pickup";
+    }
+
     if (!phoneToUse) {
-      // Soft fail — NEVER tell the agent "order failed". Ask digits ONCE; never loop phone questions.
-      const speakUr =
-        "Apna phone number share kar dein?";
+      const speakUr = "Apna phone number share kar dein?";
       return res.status(200).json({
         success: false,
         phone_required: true,

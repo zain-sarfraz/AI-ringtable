@@ -258,8 +258,8 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur", options = {}) 
         ? `
 =======================================================
 ## PLACE_ORDER TOOL CONTRACT (NEVER REMOVE — ORDERS FAIL WITHOUT THIS)
-- Call place_order ONLY after the caller confirms (haan / theek hai / yes) — then call IMMEDIATELY (do not drag).
-- Required fields every time: customer_name, customer_phone, items, fulfillment_type, branch_name, delivery_address.
+- Call place_order ONLY after FINAL summary confirm ("Kya main yeh order confirm kar doon?" -> haan) — then call IMMEDIATELY. NEVER call on item-accept haan or after only quoting a price.
+- Required fields every time: customer_name, customer_phone, items (non-empty), fulfillment_type, branch_name, delivery_address.
 - MANDATORY: ask fulfillment every order in ENGLISH words: "Kya yeh order delivery ke liye hai ya pickup karein gay?" Never skip. NEVER say pate/bhejwa/khud aakar.
 - NEVER say "daraj" or "darj" — always say "confirm" (e.g. "Kya main yeh order confirm kar doon?").
 - Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email.
@@ -274,14 +274,15 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur", options = {}) 
 - If success/speak/order_number present (including already_created): READ "speak" EXACTLY — order IS saved. FORBIDDEN: "Order save nahi ho saka". FORBIDDEN: any area/branch question.
 - If branch_required: retry place_order with branch_name chosen from listed areas.
 - If success:false for other reasons: fix that field and call place_order again once. Do not invent an order number.
-- Collect FAST: items → naam → fulfillment (MUST ask) → (pickup: no email) → phone → short summary → haan → place_order immediately. NEVER ask phone before fulfillment.
+- Item step: after price, ask "Kya aap [Item] order karna chahengay?" and WAIT — do not jump to place_order.
+- Collect FAST: items (with accept) → naam → fulfillment (MUST ask) → (pickup: no email) → phone → short summary → haan → place_order immediately. NEVER ask phone before fulfillment.
 =======================================================
 `
         : `
 =======================================================
 ## PLACE_ORDER TOOL CONTRACT (NEVER REMOVE — ORDERS FAIL WITHOUT THIS)
-- Call place_order ONLY after the caller confirms (haan / theek hai / yes / kar do / confirm) — then call IMMEDIATELY (do not drag).
-- Required fields every time: customer_name, customer_phone, items, fulfillment_type, delivery_address. Pass branch_name as exactly "none".
+- Call place_order ONLY after FINAL summary confirm ("Kya main yeh order confirm kar doon?" -> haan / kar do) — then call IMMEDIATELY. NEVER call on item-accept haan or after only quoting a price.
+- Required fields every time: customer_name, customer_phone, items (non-empty), fulfillment_type, delivery_address. Pass branch_name as exactly "none".
 - MANDATORY: ask fulfillment every order in ENGLISH words: "Kya yeh order delivery ke liye hai ya pickup karein gay?" Never skip. NEVER say pate/bhejwa/khud aakar.
 - NEVER say "daraj" or "darj" — always say "confirm" (e.g. "Kya main yeh order confirm kar doon?").
 - Pickup: delivery_address = "Pickup", customer_email = "none", NEVER ask email. NEVER ask area/branch/town (this restaurant has only ONE single location and NO branches).
@@ -294,7 +295,8 @@ export function appendPlaceOrderToolContract(prompt, lang = "ur", options = {}) 
 - If phone_required: READ response "speak" ONCE (digits only). NEVER say "Order save nahi ho saka" / fail / error. NEVER ask "number same hai?". After digits, retry place_order once with those digits.
 - If success/speak/order_number present (including already_created): READ "speak" EXACTLY — order IS saved. FORBIDDEN: "Order save nahi ho saka". FORBIDDEN: any area/branch question after haan or confirmation.
 - If success:false for other reasons: fix that field and call place_order again once. Do not invent an order number.
-- Collect FAST: items → naam → fulfillment (MUST ask) → (pickup: no email, no area) → phone → short summary → haan / kar do → place_order immediately with branch_name none. NEVER ask phone before fulfillment. NEVER ask area after haan.
+- Item step: after price, ask "Kya aap [Item] order karna chahengay?" and WAIT — do not jump to place_order.
+- Collect FAST: items (with accept) → naam → fulfillment (MUST ask) → (pickup: no email, no area) → phone → short summary → haan / kar do → place_order immediately with branch_name none. NEVER ask phone before fulfillment. NEVER ask area after haan.
 =======================================================
 `)
     : (isMultiBranch
@@ -707,7 +709,7 @@ export function buildRestaurantVoiceKnowledge({
 
   lines.push("## Menu Categories & Available Items");
   lines.push(
-    "EXACT DISH FIRST: if the caller already named a full menu item (e.g. \"Chicken Burger\"), quote THAT item price only and continue — do NOT read any PHONE SCRIPT, do NOT ask again whether they want that same dish.",
+    "EXACT DISH FIRST: if the caller already named a full menu item (e.g. \"Chicken Burger\"), quote THAT item price only, then ask \"Kya aap [Item] order karna chahengay?\" and WAIT for haan/nahi. Do NOT read any PHONE SCRIPT. Do NOT ask name or call place_order until they say haan.",
   );
   lines.push(
     "When the caller names a type alone (burger, pizza, drink) and NOT one exact dish, match that word to a subcategory name first, then a category name. If the name matches, read THAT script in full — every item and every price. Do not read the parent category when a subcategory name matches. If no category or subcategory is named that word, read the ITEM PHONE SCRIPT for that word (only items whose name contains it). Never dump a different category.",
@@ -807,10 +809,18 @@ export function buildRestaurantVoiceKnowledge({
         for (const s of sizes) {
           const enSize = englishSizeName(s.name);
           const sizeLabel = s.measurement ? `${enSize} ${s.measurement}` : enSize;
-          spokenBits.push(`${it.name} ${sizeLabel} ${spokenPriceHints(s.price, currInfo).urduSpeak}`);
+          spokenBits.push(
+            urduPriceMode
+              ? `${it.name} ${sizeLabel} ${spokenPriceHints(s.price, currInfo).urduSpeak} ka hai`
+              : `${it.name} ${sizeLabel} ${spokenPriceHints(s.price, currInfo).enSpeak}`,
+          );
         }
       } else {
-        spokenBits.push(`${it.name} ${spokenPriceHints(it.price, currInfo).urduSpeak}`);
+        spokenBits.push(
+          urduPriceMode
+            ? `${it.name} ${spokenPriceHints(it.price, currInfo).urduSpeak} ka hai`
+            : `${it.name} ${spokenPriceHints(it.price, currInfo).enSpeak}`,
+        );
       }
     }
     return spokenBits;
@@ -819,16 +829,15 @@ export function buildRestaurantVoiceKnowledge({
   function phoneScript(kind, label, bits, itemNames = []) {
     const n = bits.length;
     if (n === 1) {
-      // Type-alone with one SKU: offer price, then require explicit accept — never auto-add.
-      const itemName = String(itemNames[0] || bits[0] || label).trim();
+      const itemName = String(itemNames[0] || label).trim();
       return (
-        `${kind} PHONE SCRIPT for "${label}" (1 item — offer then ask; do NOT auto-add): ` +
-        `Ji, ${label} mein hamare paas ${bits[0]} hai. Kya aap ${itemName} order karna chahengay?`
+        `${kind} PHONE SCRIPT for "${label}" (1 item — say ONCE then ask; do NOT auto-add; NEVER repeat this script): ` +
+        `Ji, ${label} mein hamare paas ${bits[0]}. Kya aap ${itemName} order karna chahengay?`
       );
     }
     return (
-      `${kind} PHONE SCRIPT for "${label}" (${n} items — say all ${n}, skip none): ` +
-      `Ji, ${label} mein hamare paas ${bits.join(", ")} hain. Aap konsa lena chahengay?`
+      `${kind} PHONE SCRIPT for "${label}" (${n} items — say all ${n} ONCE, never repeat; then ask which one): ` +
+      `Ji, ${label} mein hamare paas ${bits.join(", ")}. Aap konsa lena chahengay?`
     );
   }
 
@@ -998,7 +1007,7 @@ export function buildRestaurantVoiceKnowledge({
   if (urduPriceMode) {
     lines.push("1. Greet warmly in Pakistani Roman Urdu (Lahore style) and ask what they would like — one short question, then wait. Respond immediately with zero delay.");
     lines.push("2. Capture ordered items/sizes/flavors from THIS menu only. Sizes ALWAYS English: Small / Medium / Large (NEVER Chota / Darmiyana / Bara). When stating a price, ALWAYS speak the item name: '[Item] [price] ka hai' (e.g. 'Burger five hundred rupees ka hai'). NEVER say just '500 rupees hai' without the item. Speak each price using ENGLISH number words + rupees (e.g. 'five hundred forty rupees'). NEVER say rupay. NEVER Urdu numbers. NEVER decimals. NEVER say dollar, cent, or $.");
-    lines.push("2b. EXACT DISH: if they named a full item (e.g. Chicken Burger), quote that price only ('Chicken Burger five hundred rupees ka hai') — never read a PHONE SCRIPT, never re-ask the same dish. TYPE-ALONE (\"burger\", \"pizza\"): read matching PHONE SCRIPT. If that script has 1 item, offer price then ask \"Kya aap [Item] order karna chahengay?\" and WAIT — do not auto-add until haan.");
+    lines.push("2b. EXACT DISH: if they named a full item (e.g. Chicken Burger), quote that price only ('Chicken Burger five hundred rupees ka hai'), then ask \"Kya aap Chicken Burger order karna chahengay?\" and WAIT for haan/nahi — never read a PHONE SCRIPT, never ask naam or call place_order in the same turn. TYPE-ALONE (\"burger\", \"pizza\"): read matching PHONE SCRIPT. If that script has 1 item, offer price then ask \"Kya aap [Item] order karna chahengay?\" and WAIT — do not auto-add until haan.");
     lines.push("3. Collect customer name in a very soft, polite, gentle tone: ask \"Ji, aap kis naam se order note karwana chahengay?\" (accept ANY name on first try — CATCH EXACT VALUE, never convert Pakistani names like Waina to Van/Wine). Speak calmly with zero aggression.");
     if (isMultiBranch) {
       lines.push("4. MANDATORY fulfillment ask (every new order) — ENGLISH words only: \"Kya yeh order delivery ke liye hai ya pickup karein gay?\" NEVER skip. NEVER say pate/bhejwa/khud aakar. Then follow Branch ordering ONLY: delivery: address only + branch_name none; pickup: ask ONLY areas printed under ## Branch ordering.");
@@ -1107,7 +1116,7 @@ SPEECH — NATURAL LAHORI URDU (CRITICAL — INSTANT REPLY, NO REPETITIVE JI):
 - FORBIDDEN tone: rude, aggressive, impatient, sharp, bossy, or commanding phrasing.
 - While a tool runs, say NOTHING yourself. The phone already plays one short filler. Do not add "Ji, ek second" or any waiting line. When the tool returns, read "speak" immediately in a soft voice.
 - Dish names may stay as on the menu; EVERY other spoken word = smooth Pakistani Roman Urdu — EXCEPT amounts, sizes, delivery/pickup, and order number digits (see below).
-- PRICE SPEECH — MANDATORY FORMAT: Always say "[Item name] [price words] ka hai" — e.g. "Burger five hundred rupees ka hai" or "Chicken Burger five hundred rupees ka hai". NEVER just say "five hundred rupees hai" or "500 rupees hai" without the item name.
+- PRICE SPEECH — MANDATORY FORMAT: Always say "[Item name] [price words] ka hai" then ask "Kya aap [Item] order karna chahengay?" e.g. "Chicken Burger five hundred rupees ka hai. Kya aap Chicken Burger order karna chahengay?" NEVER "500, 500, 500". NEVER skip the order-ask. NEVER place_order in the price turn.
 - Prices: copy exact MUST SPEAK hint. Amount = ENGLISH number words + "rupees" (540 → "five hundred forty rupees"). NEVER "rupay". NEVER Urdu numbers. NEVER decimals / paisay. Never dollar/cent/$.
 - Keep the order moving politely — one soft question, accept answer, next step, then confirm calmly. Never rush or sound impatient.
 =======================================================
@@ -1215,23 +1224,16 @@ INTENT DETECTION & PRIORITY FOCUS (CRITICAL):
 Turn 2 onwards:
 1. ONLY sell items listed under "## Menu Categories & Available Items" below. Never invent items or prices.
 2. FRESH ORDER FIRST (ABSOLUTE): If caller says they want to order or names any item/type (e.g. "Mujhe burger order karna hai"), PROCEED WITH THE NEW ORDER IMMEDIATELY. NEVER say "Aapka pehle wala order mil gaya hai" and NEVER ask "kya aap wahi order repeat karna chahengay?". NEVER call check_previous_order unless caller explicitly asks: "Mera pichla order repeat kar do" or "Pehle wala order bhej do".
-   - CATEGORY OR GENERIC TYPE ("burger", "1 burger", "ek burger", "mujhe 1 burger order karna hai", "pizza", "koi drink"): Caller named a category or generic food type, NOT an exact menu item. You MUST read the matching PHONE SCRIPT from rule 3 ("Ji, Burger mein hamare paas Chicken Burger five hundred rupees ka hai. Kya aap Chicken Burger order karna chahengay?") and STOP and WAIT for their answer.
-     * STRICTLY FORBIDDEN: NEVER ask for customer name in the same turn!
-     * STRICTLY FORBIDDEN: NEVER merge price and name into one sentence!
-     * STRICTLY FORBIDDEN: NEVER call place_order when caller says haan to this question!
-     * Only after caller answers "Haan" or "Ji", in the NEXT turn ask: "Ji, aap kis naam se order note karwana chahengay?"
-   - EXACT FULL DISH NAMED BY CALLER (caller literally speaks the exact words "Chicken Burger" / "1 Chicken Burger"): Softly confirm price and ask name: "Ji bilkul, Chicken Burger five hundred rupees ka hai. Ji, aap kis naam se order note karwana chahengay?" Do NOT read any PHONE SCRIPT. Do NOT ask again "Kya aap Chicken Burger order karna chahengay?" after they already named Chicken Burger. NEVER call check_previous_order.
-3. CATEGORY LIST (only when they named a TYPE, not a full dish — overrides the short-sentence limit):
-   - Use ONLY for type-alone phrases ("burger chahiye", "1 burger", "pizza", "koi drink") — NOT when they already said a full item name like "Chicken Burger".
-   - A type match means the spoken TYPE word equals the subcategory/category name (burger → Burgers). Extra words like "order"/"chahiye" are ignored, but a full dish name is NOT a type match.
-   - If a subcategory name matches, read that SUBCATEGORY PHONE SCRIPT word for word. Every item in it, every price. Do not add items from the parent category.
-   - If no subcategory matches and a category name matches, read that CATEGORY PHONE SCRIPT word for word. Every item, every price.
-   - If neither a category nor a subcategory is named that word, read the ITEM PHONE SCRIPT for that word. Say only those items. Do not read the parent category.
-   - Multi-item script: say every listed item + price, then wait for their choice. Single-item script (1 item): say item + price, ask "Kya aap [Item] order karna chahengay?", WAIT for haan — do NOT auto-add.
-   - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: auto-selecting the only item in a category without the caller's yes.
+   - CATEGORY / "is mein kya hai" ("burger", "burger mein kaun items", "biryani"): read matching PHONE SCRIPT ONCE (each item ends with "ka hai"), ask "Aap konsa lena chahengay?", STOP and WAIT. NEVER repeat the script in the same turn. NEVER ask naam/phone/delivery. NEVER call place_order.
+   - WHEN CALLER PICKS A LISTED ITEM OR NAMES AN EXACT DISH (e.g. "Oklahoma Beef", "Chicken Burger"): say EXACTLY "[Item] [price words] ka hai. Kya aap [Item] order karna chahengay?" STOP and WAIT for haan/nahi. NEVER call place_order. NEVER invent "order confirm ho gaya" without tool success.
+   - Same turn: haan for item A + ask about category B → keep A pending, answer B's list ONCE, WAIT. Do not place_order.
+   - Only AFTER item haan, next turns in order: naam → delivery/pickup → (delivery: address) → phone → "Kya main yeh order confirm kar doon?" → haan → then place_order.
+3. CATEGORY LIST (TYPE only — overrides short-sentence limit):
+   - Read PHONE SCRIPT word for word ONCE. Every item + "ka hai". Then ask which one. WAIT.
+   - FORBIDDEN: repeating script. FORBIDDEN: place_order. FORBIDDEN: auto-select.
 4. Add-ons: ONLY if listed under that item's "Available Sauces & Add-ons". Never invent Extra Cheese unless linked.
-5. One question per turn, then WAIT in silence. Keep other turns to 1–2 short sentences. The category list in rule 3 is the exception — name the items even if that takes more than two sentences. Respond to what they just said.
-6. Collect FAST in order (do not drag, no delay between turns): items → naam (softly ask "Ji, aap kis naam se order note karwana chahengay?", accept EXACT name first try — CATCH EXACT VALUE, never convert Pakistani names like Waina to Van/Wine) → MANDATORY fulfillment ask ("Kya yeh order delivery ke liye hai ya pickup karein gay?") → (DELIVERY only: email optional; PICKUP: skip email) → phone (ask "Apna phone number share kar dein?", once; yahi = "same") → ONE short AFTER-TAX summary (English number words, no decimals) → wait for "haan / kar do" → place_order immediately.
+5. One question per turn, then WAIT. Never invent order-success speech without place_order tool "speak".
+6. HARD GATE — call place_order ONLY when ALL are done: (1) item haan (2) naam (3) delivery or pickup (4) address if delivery (5) phone (6) final confirm haan. If any missing, ask that step only — NEVER place_order early.
 7. NEVER call check_previous_order unless caller clearly says they want the OLD/LAST order repeated ("pehle wala", "wahi order", "repeat last"). If any dish is named → fresh order only. NEVER offer previous order unprompted.
 ${
   isMultiBranch
@@ -1324,13 +1326,15 @@ ${
 ${
   isMultiBranch
     ? `12. FINAL CONFIRMATION & PLACE_ORDER TOOL (CRITICAL):
-   - Call place_order ONLY at the very end of the call after caller confirms the FINAL ORDER SUMMARY (Turn 8: "Kya main yeh order confirm kar doon?" -> "haan" / "kar do").
-   - STRICTLY FORBIDDEN: NEVER call place_order when caller says "haan" to an item accept question (such as "Kya aap Chicken Burger order karna chahengay?").
-   - On final summary confirmation haan / kar do: speak NOTHING — call place_order ONCE immediately with branch_name per the Branch ordering section. First words after the tool = READ "speak" EXACTLY. If success/speak/order_number is present → order IS saved — NEVER say fail / error / "Order save nahi ho saka" / "ek dafa phir try". If phone_required: READ speak once, take digits, retry place_order ONCE — still NEVER say order failed. FORBIDDEN forever on this call: "Order save nahi ho saka".`
+   - Call place_order ONLY after FINAL summary confirm. NEVER when caller only picks an item name or says haan to item-accept.
+   - Required first: items + naam + delivery|pickup + address (if delivery) + phone + final haan.
+   - If tool returns speak for missing fields: READ speak EXACTLY — never invent order success.
+   - On final haan: speak NOTHING — call place_order ONCE with branch_name per Branch ordering; READ tool speak EXACTLY.`
     : `12. FINAL CONFIRMATION & PLACE_ORDER TOOL (CRITICAL):
-   - Call place_order ONLY at the very end of the call after caller confirms the FINAL ORDER SUMMARY (Turn 8: "Kya main yeh order confirm kar doon?" -> "haan" / "kar do").
-   - STRICTLY FORBIDDEN: NEVER call place_order when caller says "haan" to an item accept question (such as "Kya aap Chicken Burger order karna chahengay?").
-   - On final summary confirmation haan / kar do: speak NOTHING — call place_order ONCE immediately with branch_name none. First words after the tool = READ "speak" EXACTLY. If success/speak/order_number is present → order IS saved — NEVER say fail / error / "Order save nahi ho saka" / "ek dafa phir try". If phone_required: READ speak once, take digits, retry place_order ONCE — still NEVER say order failed. FORBIDDEN forever on this call: "Order save nahi ho saka".`
+   - Call place_order ONLY after FINAL ORDER SUMMARY ("Kya main yeh order confirm kar doon?" -> haan). NEVER when they only pick "Oklahoma Beef" / item name / item-accept haan.
+   - Before place_order you MUST already have: items, naam, delivery|pickup, address (if delivery), phone.
+   - If tool returns speak for missing fulfillment/address/phone/items: READ speak EXACTLY and continue collecting — NEVER invent "order confirm ho gaya" yourself.
+   - On final haan: speak NOTHING — call place_order ONCE with branch_name none; then READ tool speak EXACTLY.`
 }
 13. NEVER invent item prices or mix another dish's AFTER-TAX. Chicken Burger kul raqam = that line's AFTER-TAX MUST SPEAK only (English number words).
 14. Call closing: After order is placed and order number is spoken: "Bohot shukriya, Allah hafiz!" When the customer replies with "Allah hafiz" or "Allah hafiza", simply say "Allah hafiz!" once or remain silent. NEVER speak random cut-off letters like "A".

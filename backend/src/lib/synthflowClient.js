@@ -225,21 +225,100 @@ export async function createInboundAgent(payload) {
 }
 
 /**
+ * Create an outbound Synthflow voice agent (required for Place test call / dial-out).
+ * Inbound agents cannot place outbound calls — Synthflow keeps the types separate.
+ */
+export async function createOutboundAgent(payload) {
+  const flattened = {
+    ...payload,
+    ...(payload?.agent || {}),
+  };
+  if (flattened.min_words_to_interrupt === 1) {
+    flattened.min_words_to_interrupt = 2;
+  }
+  const body = {
+    type: "outbound",
+    voice_engine_version: "2.0",
+    is_recording: true,
+    ...flattened,
+    agent: {
+      ...(payload?.agent || {}),
+      prompt: flattened.prompt,
+      greeting_message: flattened.greeting_message,
+      language: flattened.language,
+      llm: flattened.llm,
+      voice_id: flattened.voice_id,
+      min_words_to_interrupt: flattened.min_words_to_interrupt || 2,
+    },
+  };
+  return synthflowRequest("/assistants", {
+    method: "POST",
+    body,
+  });
+}
+
+/** Attach E.164 numbers to an agent's pool (outbound can share numbers with inbound). */
+export async function attachPhoneNumbersToAgent(modelId, phoneNumbers) {
+  const id = String(modelId || "").trim();
+  const numbers = (Array.isArray(phoneNumbers) ? phoneNumbers : [])
+    .map((n) => String(n || "").trim())
+    .filter(Boolean);
+  if (!id || !numbers.length) {
+    throw new Error("model_id and phone_numbers are required");
+  }
+  return synthflowRequest(`/assistants/${encodeURIComponent(id)}/phone_numbers`, {
+    method: "PUT",
+    body: { phone_numbers: numbers },
+  });
+}
+
+/** Prefer a free/available Synthflow number that is not the live restaurant DID. */
+export async function pickOutboundCallerId({ excludeNumbers = [] } = {}) {
+  const exclude = new Set(
+    (Array.isArray(excludeNumbers) ? excludeNumbers : [])
+      .map((n) => String(n || "").replace(/\s/g, ""))
+      .filter(Boolean),
+  );
+  const nums = await listWorkspaceNumbers();
+  const available = (Array.isArray(nums) ? nums : []).filter((n) => {
+    const num = String(n?.number || n?.phone_number || "").trim();
+    if (!num || exclude.has(num)) return false;
+    return n?.is_available === true;
+  });
+  if (available[0]) {
+    return String(available[0].number || available[0].phone_number).trim();
+  }
+  // Fall back to any non-excluded workspace number
+  for (const n of nums || []) {
+    const num = String(n?.number || n?.phone_number || "").trim();
+    if (num && !exclude.has(num)) return num;
+  }
+  return null;
+}
+
+/**
  * Place an outbound call from a Synthflow agent to a phone number.
  * Used for the dashboard test call. Posts to the region that owns the agent
  * (US workspace keys get 401/404 on the global host).
+ *
+ * Synthflow often returns HTTP 200 + call_id even when dialing never starts
+ * (status=failed, end_call_reason="Failed to start outbound call"). We briefly
+ * poll the call record so the dashboard can show a real error instead of a
+ * fake "calling…" success.
  */
-export async function startOutboundCall({ modelId, phone, name }) {
+export async function startOutboundCall({ modelId, phone, name, fromPhoneNumber }) {
   const id = String(modelId || "").trim();
   if (!id) throw new Error("model_id is required");
   const to = String(phone || "").trim();
   if (!to) throw new Error("phone is required");
+  const from = String(fromPhoneNumber || "").trim();
 
   const body = {
     model_id: id,
     phone: to,
     name: name || "Test call",
   };
+  if (from) body.from_phone_number = from;
 
   let preferredBases = [...synthflowRegionBases()];
   try {
@@ -266,7 +345,26 @@ export async function startOutboundCall({ modelId, phone, name }) {
         json?.call_id ||
         json?.response?.id ||
         null;
-      return { raw: json, call_id: callId, api_base: base };
+
+      const dial = callId
+        ? await waitForOutboundDialResult(base, callId)
+        : { status: null, end_call_reason: null, error_message: null, phone_number_from: null };
+
+      if (isOutboundDialFailed(dial)) {
+        const reason =
+          dial.error_message ||
+          dial.end_call_reason ||
+          "Failed to start outbound call";
+        throw Object.assign(
+          new Error(
+            `${reason} (from=${dial.phone_number_from || "none"}). ` +
+              "Check Synthflow outbound minutes / caller ID, or test by calling the restaurant number inbound.",
+          ),
+          { status: 400, call_id: callId, dial },
+        );
+      }
+
+      return { raw: json, call_id: callId, api_base: base, dial };
     } catch (err) {
       lastErr = err;
       const status = Number(err?.status);
@@ -291,6 +389,62 @@ export async function startOutboundCall({ modelId, phone, name }) {
     ),
     { status: Number(lastErr?.status) || 404, payload: lastErr?.payload },
   );
+}
+
+function isOutboundDialFailed(dial) {
+  if (!dial) return false;
+  const status = String(dial.status || "").toLowerCase();
+  const reason = String(dial.end_call_reason || dial.error_message || "");
+  if (status === "failed" || status === "canceled" || status === "cancelled") return true;
+  if (/failed to start outbound call/i.test(reason)) return true;
+  return false;
+}
+
+/** Poll call record a few times — Synthflow marks dial failures within ~1–3s. */
+async function waitForOutboundDialResult(apiBase, callId) {
+  const base = String(apiBase || "").replace(/\/$/, "");
+  let last = { status: null, end_call_reason: null, error_message: null, phone_number_from: null };
+  for (let i = 0; i < 4; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 1500));
+    try {
+      const detail = await synthflowRequest(`${base}/calls/${encodeURIComponent(callId)}`, {
+        method: "GET",
+      });
+      const row =
+        detail?.response?.calls?.[0] ||
+        detail?.response?.call ||
+        detail?.response ||
+        detail?.call ||
+        null;
+      if (!row || typeof row !== "object") continue;
+      last = {
+        status: row.status ?? null,
+        end_call_reason: row.end_call_reason ?? null,
+        error_message: row.error_message ?? null,
+        phone_number_from: row.phone_number_from ?? null,
+        phone_number_to: row.phone_number_to ?? null,
+      };
+      const st = String(last.status || "").toLowerCase();
+      // Terminal or clearly dialing
+      if (
+        st === "failed" ||
+        st === "completed" ||
+        st === "busy" ||
+        st === "no-answer" ||
+        st === "canceled" ||
+        st === "cancelled" ||
+        st === "in-progress" ||
+        st === "ongoing" ||
+        st === "ringing" ||
+        last.phone_number_from
+      ) {
+        break;
+      }
+    } catch {
+      // keep last; network blip should not invent success
+    }
+  }
+  return last;
 }
 
 export async function updateAgent(modelId, payload) {

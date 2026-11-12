@@ -1,0 +1,56 @@
+@base = http://127.0.0.1:3033
+@secret = {{$dotenv WEBHOOK_SECRET}}
+
+### 1 valid order
+POST {{base}}/api/orders/voice
+Content-Type: application/json
+x-webhook-secret: {{secret}}
+
+{
+  "call_id": "test-call-valid-001",
+  "customer_phone": "+92 300 1234567",
+  "customer_name": "Ali",
+  "order_type": "pickup",
+  "items": [{ "item_id": "pg-tikka-pizza", "qty": 1, "size": "large", "notes": "" }],
+  "payment_method": "cash",
+  "language": "ur"
+}
+
+### 2 unknown item_id
+POST {{base}}/api/orders/voice
+Content-Type: application/json
+x-webhook-secret: {{secret}}
+
+{
+  "call_id": "test-call-bad-item-001",
+  "customer_phone": "03001234567",
+  "order_type": "pickup",
+  "items": [{ "item_id": "does-not-exist", "qty": 1 }],
+  "language": "ur"
+}
+
+### 3 delivery without address
+POST {{base}}/api/orders/voice
+Content-Type: application/json
+x-webhook-secret: {{secret}}
+
+{
+  "call_id": "test-call-no-addr-001",
+  "customer_phone": "03001234567",
+  "order_type": "delivery",
+  "items": [{ "item_id": "pg-zinger-burger", "qty": 2 }],
+  "language": "ur"
+}
+
+### 4 duplicate call_id (run after #1)
+POST {{base}}/api/orders/voice
+Content-Type: application/json
+x-webhook-secret: {{secret}}
+
+{
+  "call_id": "test-call-valid-001",
+  "customer_phone": "03001234567",
+  "order_type": "pickup",
+  "items": [{ "item_id": "pg-fries", "qty": 1 }],
+  "language": "ur"
+}

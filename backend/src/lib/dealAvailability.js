@@ -11,10 +11,20 @@ const WEEKDAY_TO_DOW = {
 };
 
 export function normalizeDealDays(days) {
-  if (!Array.isArray(days) || days.length === 0) return null;
+  let raw = days;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+      raw = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(raw) || raw.length === 0) return null;
   const cleaned = [
     ...new Set(
-      days
+      raw
         .map((d) => Number(d))
         .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6),
     ),

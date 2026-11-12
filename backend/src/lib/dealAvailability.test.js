@@ -70,4 +70,10 @@ describe("isDealAvailableAt", () => {
     );
     assert.match(restaurantLocalNowLabel(new Date("2026-11-11T12:00:00+05:00"), { timeZone: "Asia/Karachi" }), /Wed 12:00/);
   });
+
+  it("parses available_days JSON strings", async () => {
+    const { normalizeDealDays } = await import("./dealAvailability.js");
+    assert.deepEqual(normalizeDealDays("[3,1]"), [1, 3]);
+    assert.equal(normalizeDealDays("[]"), null);
+  });
 });

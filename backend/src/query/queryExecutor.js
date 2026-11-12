@@ -333,7 +333,22 @@ function coerceDealWriteValues(values) {
     }
   }
   for (const key of ["available_start_time", "available_end_time"]) {
-    if (out[key] === "") out[key] = null;
+    if (!Object.prototype.hasOwnProperty.call(out, key)) continue;
+    const raw = out[key];
+    if (raw == null || raw === "") {
+      out[key] = null;
+      continue;
+    }
+    // Normalize "9:30", "09:30", "09:30:00.000" → "HH:MM:SS" for PG time columns
+    const m = String(raw).trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) {
+      out[key] = null;
+      continue;
+    }
+    const hh = String(Number(m[1])).padStart(2, "0");
+    const mm = String(Number(m[2])).padStart(2, "0");
+    const ss = m[3] != null ? String(Number(m[3])).padStart(2, "0") : "00";
+    out[key] = `${hh}:${mm}:${ss}`;
   }
   return out;
 }

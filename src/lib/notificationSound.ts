@@ -140,6 +140,9 @@ export function saveNotificationPrefs(prefs: NotificationPrefs, restaurantId?: s
    WEB AUDIO API SOUND SYNTHESIS ENGINE (100% Reliable & Offline)
    ════════════════════════════════════════════════════════════ */
 let sharedAudioContext: AudioContext | null = null;
+let audioUnlockedByGesture = false;
+let gestureListenersInstalled = false;
+let pendingPlay: { id: RingtoneId; volume: number; loop: boolean } | null = null;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -151,8 +154,32 @@ function getAudioContext(): AudioContext | null {
   return sharedAudioContext;
 }
 
-/** Resume AudioContext; browsers mute until a user gesture + successful resume. */
+function canResumeAudio(): boolean {
+  if (audioUnlockedByGesture) return true;
+  const ua = (navigator as Navigator & { userActivation?: { hasBeenActive?: boolean } }).userActivation;
+  return Boolean(ua?.hasBeenActive);
+}
+
+function installGestureUnlockListeners() {
+  if (typeof window === "undefined" || gestureListenersInstalled) return;
+  gestureListenersInstalled = true;
+  const onGesture = () => {
+    audioUnlockedByGesture = true;
+    void unlockNotificationAudio();
+  };
+  for (const evt of ["pointerdown", "keydown", "touchstart", "click"] as const) {
+    window.addEventListener(evt, onGesture, { once: true, capture: true });
+  }
+}
+
+if (typeof window !== "undefined") {
+  installGestureUnlockListeners();
+}
+
+/** Resume AudioContext only after a user gesture (Chrome autoplay policy). */
 export async function unlockNotificationAudio(): Promise<boolean> {
+  installGestureUnlockListeners();
+  if (!canResumeAudio()) return false;
   const ctx = getAudioContext();
   if (!ctx) return false;
   if (ctx.state === "suspended") {
@@ -162,12 +189,18 @@ export async function unlockNotificationAudio(): Promise<boolean> {
       return false;
     }
   }
+  if (ctx.state === "running" && pendingPlay) {
+    const next = pendingPlay;
+    pendingPlay = null;
+    if (next.loop) startNotificationLoop(next.id, next.volume);
+    else void playNotificationSound(next.id, next.volume);
+  }
   return ctx.state === "running";
 }
 
 export function synthesizeRingtone(id: RingtoneId, volume = 0.9): () => void {
   const ctx = getAudioContext();
-  if (!ctx) return () => {};
+  if (!ctx || ctx.state !== "running") return () => {};
 
   const masterGain = ctx.createGain();
   const scaledVol = Math.max(0.01, Math.min(1, volume));
@@ -313,7 +346,12 @@ let activeLoopInterval: number | null = null;
 let stopCurrentTone: (() => void) | null = null;
 
 export async function playNotificationSound(id: RingtoneId = "classic-bell", volume = 0.9) {
-  await unlockNotificationAudio();
+  installGestureUnlockListeners();
+  const unlocked = await unlockNotificationAudio();
+  if (!unlocked) {
+    pendingPlay = { id, volume, loop: false };
+    return;
+  }
   if (stopCurrentTone) {
     stopCurrentTone();
     stopCurrentTone = null;
@@ -327,6 +365,11 @@ export function startNotificationLoop(
   intervalMs = 2800
 ) {
   stopNotificationLoop();
+  installGestureUnlockListeners();
+  if (!canResumeAudio()) {
+    pendingPlay = { id, volume, loop: true };
+    return;
+  }
   void playNotificationSound(id, volume);
   activeLoopInterval = window.setInterval(() => {
     void playNotificationSound(id, volume);

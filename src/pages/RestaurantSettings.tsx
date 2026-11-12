@@ -898,9 +898,25 @@ export default function RestaurantSettings() {
       const { data, error } = await supabase.functions.invoke("synthflow-test-call", {
         body: { restaurant_id: r.id, phone, name: "Test call" },
       });
-      if (error) throw new Error(error.message);
-      const d = data as { success?: boolean; error?: string; message?: string; phone?: string };
-      if (!d?.success) throw new Error(d?.error || "Test call failed");
+      const d = (data || {}) as {
+        success?: boolean;
+        error?: string;
+        message?: string;
+        phone?: string;
+        dial_in_number?: string;
+        skipped?: boolean;
+      };
+      if (error || d?.skipped || !d?.success) {
+        const dialIn =
+          d.dial_in_number || r.telnyx_phone_number || r.twilio_phone_number || r.phone || null;
+        throw new Error(
+          d.error ||
+            error?.message ||
+            (dialIn
+              ? `Outbound dial failed. Call ${dialIn} from your phone to test instead.`
+              : "Test call failed"),
+        );
+      }
       toast({
         title: "Test call started",
         description: d.message || `The agent is calling ${d.phone || phone}. Answer to test the order flow.`,
@@ -1940,9 +1956,17 @@ export default function RestaurantSettings() {
             <p className="text-xs text-muted-foreground">
               {t(
                 "restaurantSettings:testCallDesc",
-                "The Synthflow agent calls this number so you can try the menu, branch question, and order flow.",
+                "Place test call dials your phone via a Synthflow outbound twin. If dialing fails, call the restaurant number below to test inbound.",
               )}
             </p>
+            {(r.telnyx_phone_number || r.twilio_phone_number || r.phone) ? (
+              <p className="text-sm">
+                Call to test:{" "}
+                <span className="font-mono font-medium text-foreground">
+                  {r.telnyx_phone_number || r.twilio_phone_number || r.phone}
+                </span>
+              </p>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <Input
                 value={testCallPhone}

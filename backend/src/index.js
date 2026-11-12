@@ -18,6 +18,7 @@ import tableSessionsRoutes from "./routes/tableSessions.js";
 import uberOrdersRoutes from "./routes/uberOrders.js";
 import billingRoutes, { billingWebhookHandler } from "./routes/billing.js";
 import posRoutes from "./routes/pos.js";
+import voiceOrdersRoutes from "./routes/voiceOrders.js";
 import { billingMode } from "./billing/plans.js";
 import { twilioInboundWebhook } from "./fns/twilioInboundWebhook.js";
 import { uberWebhookHttpHandler } from "./uber/webhookHandler.js";
@@ -45,7 +46,7 @@ const corsMiddleware = cors({
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-webhook-secret"],
 });
 
 app.use(corsMiddleware);
@@ -141,6 +142,7 @@ app.use("/api", jsonParser, tableSessionsRoutes);
 app.use("/api", jsonParser, uberOrdersRoutes);
 app.use("/api/billing", jsonParser, billingRoutes);
 app.use("/api/pos", jsonParser, posRoutes);
+app.use("/api", jsonParser, voiceOrdersRoutes);
 
 app.post(
   "/api/functions/twilio-inbound-webhook",
