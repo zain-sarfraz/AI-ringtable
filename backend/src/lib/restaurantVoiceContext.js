@@ -1648,6 +1648,32 @@ export function isMaleVoice(voiceId) {
   return maleIds.includes(vid) || /male|adam|josh|antoni|callum|daniel|liam|brian|george|roger|charlie/i.test(vid);
 }
 
+/**
+ * Grammar gender for Urdu verbs (sakta/sakti) — independent of TTS voice_id.
+ * So a restaurant can keep wdXhc… voice but still speak as male if first message / prompt says sakta.
+ */
+export function resolveAgentGender({
+  voiceId,
+  voiceGender,
+  firstMessage,
+  systemPrompt,
+} = {}) {
+  const explicit = String(voiceGender || "").toLowerCase().trim();
+  if (explicit === "male" || explicit === "female") return explicit;
+
+  const greet = String(firstMessage || "");
+  if (/madad kar sakta|kar sakta hoon|\bsakta hoon\b/i.test(greet)) return "male";
+  if (/madad kar sakti|kar sakti hoon|\bsakti hoon\b/i.test(greet)) return "female";
+
+  const prompt = String(systemPrompt || "");
+  if (/GENDER \(MALE\)|You are Ahmed|male AI receptionist/i.test(prompt)) return "male";
+  if (/GENDER \(FEMALE\)|You are Sarah|female AI receptionist/i.test(prompt)) return "female";
+  if (/\bsakta hoon\b/i.test(prompt) && !/\bsakti hoon\b/i.test(prompt)) return "male";
+  if (/\bsakti hoon\b/i.test(prompt)) return "female";
+
+  return isMaleVoice(voiceId) ? "male" : "female";
+}
+
 export function defaultSynthflowGreeting(restaurantName, language = "ur", gender = "female") {
   const isUrdu = !language || String(language).toLowerCase().startsWith("ur");
   const isMale = String(gender).toLowerCase() === "male";

@@ -16,7 +16,7 @@ import {
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
   loadActiveChildBranches,
-  isMaleVoice,
+  resolveAgentGender,
   getSynthflowVoicePrompt,
   PAKISTANI_NAME_KEYWORDS,
 } from "../lib/restaurantVoiceContext.js";
@@ -550,18 +550,23 @@ export async function restaurantCreateSynthflowAgent(req, res) {
     });
 
     const voiceId = body.voice_id || r.agent_voice_id || undefined;
-    const voiceGender =
-      body.voice_gender ||
-      (voiceId && isMaleVoice(voiceId) ? "male" : "female");
-    const lang = toSynthflowLanguage(agentLanguage);
+    const savedGreeting = (body.first_message ?? r.agent_first_message)?.trim() || "";
     const savedPrompt = String(r.agent_system_prompt || "");
-    const savedLooksFemale = /You are Sarah|sakti hoon|female AI receptionist/i.test(savedPrompt);
-    const savedLooksMale = /You are Ahmed|sakta hoon|male AI receptionist/i.test(savedPrompt);
+    // Gender follows first-message/prompt wording (sakta/sakti), NOT voice_id —
+    // keep wdXhc… voice while speaking male if greeting says sakta.
+    const voiceGender = resolveAgentGender({
+      voiceId,
+      voiceGender: body.voice_gender,
+      firstMessage: savedGreeting,
+      systemPrompt: body.system_prompt || savedPrompt,
+    });
+    const lang = toSynthflowLanguage(agentLanguage);
+    const savedLooksFemale = /You are Sarah|sakti hoon|female AI receptionist|GENDER \(FEMALE\)/i.test(savedPrompt);
+    const savedLooksMale = /You are Ahmed|sakta hoon|male AI receptionist|GENDER \(MALE\)/i.test(savedPrompt);
     const genderFlip =
       (voiceGender === "male" && savedLooksFemale) ||
       (voiceGender === "female" && savedLooksMale);
     // Gender switch always rebuilds greeting (sakti/sakta) even if a greeting was saved.
-    const savedGreeting = (body.first_message ?? r.agent_first_message)?.trim() || "";
     const greeting =
       genderFlip ||
       !savedGreeting ||

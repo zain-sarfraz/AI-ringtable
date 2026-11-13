@@ -3,7 +3,7 @@ import {
   buildRestaurantVoiceKnowledge,
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
-  isMaleVoice,
+  resolveAgentGender,
   PAKISTANI_NAME_KEYWORDS,
 } from "./restaurantVoiceContext.js";
 import { PromptMergeError, resolveSynthflowPromptUpdate } from "./promptMerge.js";
@@ -30,7 +30,11 @@ export async function pushBranchListToAgent(knex, parentRestaurantId) {
     preferUrduPrices,
     ...catalog,
   });
-  const voiceGender = isMaleVoice(restaurant.agent_voice_id) ? "male" : "female";
+  const voiceGender = resolveAgentGender({
+    voiceId: restaurant.agent_voice_id,
+    firstMessage: restaurant.agent_first_message,
+    systemPrompt: restaurant.agent_system_prompt,
+  });
 
   let prompt;
   try {

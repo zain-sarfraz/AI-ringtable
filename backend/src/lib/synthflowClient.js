@@ -460,11 +460,19 @@ export async function updateAgent(modelId, payload) {
   }
   const body = {
     ...flattened,
+    // Greeting/voice must live on agent.* — Synthflow ignores top-level greeting_message alone.
+    greeting_message: flattened.greeting_message,
+    voice_id: flattened.voice_id,
+    voice_gender: flattened.voice_gender,
     agent: {
       ...(payload?.agent || {}),
       prompt: flattened.prompt,
       greeting_message: flattened.greeting_message,
       language: flattened.language,
+      voice_id: flattened.voice_id,
+      voice_gender: flattened.voice_gender,
+      voice_prompt: flattened.voice_prompt,
+      voice_speed: flattened.voice_speed,
       min_words_to_interrupt: flattened.min_words_to_interrupt || 2,
     },
   };

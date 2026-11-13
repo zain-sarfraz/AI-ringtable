@@ -5,7 +5,7 @@ import {
   defaultSynthflowGreeting,
   defaultSynthflowPrompt,
   loadRestaurantVoiceCatalog,
-  isMaleVoice,
+  resolveAgentGender,
   getSynthflowVoicePrompt,
   PAKISTANI_NAME_KEYWORDS,
 } from "../lib/restaurantVoiceContext.js";
@@ -68,10 +68,15 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
       preferUrduPrices,
       ...catalog,
     });
-    const voiceGender = isMaleVoice(r.agent_voice_id) ? "male" : "female";
-    const lang = toSynthflowLanguage(agentLanguage);
     const savedGreeting = (r.agent_first_message || "").trim();
+    const voiceGender = resolveAgentGender({
+      voiceId: r.agent_voice_id,
+      firstMessage: savedGreeting,
+      systemPrompt: r.agent_system_prompt,
+    });
+    const lang = toSynthflowLanguage(agentLanguage);
     // Refresh auto-generated / English greetings; keep only a truly custom first message.
+    // Gender from first message (sakta/sakti) — do not force female just because voice is wdXhc.
     const greeting =
       !savedGreeting ||
       /^Hi[, ]/i.test(savedGreeting) ||
