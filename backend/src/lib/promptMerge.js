@@ -184,6 +184,12 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     /Ji,\s*aapka order confirm ho gaya hai/gi,
     'Aapka order confirm ho gaya hai',
   );
+  // Strip leftover Ji fillers from stale prompts / examples.
+  text = text.replace(/\bJi bilkul,?\s*/gi, "Bilkul, ");
+  text = text.replace(/\bJi zaroor,?\s*/gi, "Zaroor, ");
+  text = text.replace(/(^|[\n.])\s*Ji\.\s*/g, "$1");
+  text = text.replace(/\bJi,\s+/g, "");
+  text = text.replace(/\bJi\b(?=\s|$)/g, "");
   // Stale single-item scripts that auto-continued → require explicit accept.
   text = text.replace(
     /(\w+ PHONE SCRIPT for "[^"]+" \(1 item — say it once, then continue\): )Acha, (.+?) ka hai\. Main yeh note kar leti hoon\./gi,

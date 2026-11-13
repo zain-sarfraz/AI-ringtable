@@ -233,7 +233,7 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
           : "FOOD ORDERS ONLY. FORBIDDEN to call when caller only named/chose an item or said haan to item accept. Call ONLY after FINAL summary confirm. Required: customer_name, customer_phone, order_items (non-empty), fulfillment_type (delivery|pickup), delivery_address (address OR Pickup). If fulfillment_required/address_required/phone_required/speak: READ speak EXACTLY, WAIT, retry — NEVER invent order number.",
         // Must be false — true lets the LLM invent area questions instead of reading "speak".
         agent_speak_naturally: false,
-        // No spoken filler — empty string prevents stacked fillers on the phone.
+        // Must stay empty — any text (esp. "Ji.") is spoken before the tool returns.
         speech_while_using_the_tool: "",
         failure_timeout: 25,
         headers: [{ key: "Content-Type", value: "application/json" }],
@@ -307,7 +307,7 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
         run_action_before_call_start: false,
         name: "reserve_table",
         description:
-          "TABLE RESERVATIONS ONLY. Call this tool as soon as contact phone number is collected. Parameters: customer_name, party_size (person), reservation_date (date), reservation_time (time), customer_phone (phone number). Pass branch_name (none if single location). AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in Roman Urdu. If speak says missing fields, ask only that. NEVER invent 'table reserve nahi ho raha'. NEVER speak English phrases like 'One moment while I reserve'. NEVER read reservation IDs or UUIDs.",
+          "TABLE RESERVATIONS ONLY. Call this tool as soon as contact phone number is collected. Parameters: customer_name, party_size (person), reservation_date (date), reservation_time (time), customer_phone (phone number). Pass branch_name (none if single location). WHILE TOOL RUNS: stay completely SILENT — never say Ji / Ji. / One moment. AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in Roman Urdu. If speak says missing fields, ask only that. NEVER invent 'table reserve nahi ho raha'. NEVER read reservation IDs or UUIDs.",
         agent_speak_naturally: false,
         speech_while_using_the_tool: "",
         failure_timeout: 25,
@@ -357,20 +357,28 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
 
   for (const spec of specs) {
     if (!spec.action.url) continue;
-    const marker = `tool:${spec.key}:v3`;
+    // v4 = force-clear speech_while_using_the_tool "Ji." leftover on live actions.
+    const marker = `tool:${spec.key}:v4`;
     const markerIndex = ids.findIndex((id) => String(id).startsWith(`tool:${spec.key}:`));
     const existingActionId =
       markerIndex > 0 && !String(ids[markerIndex - 1]).startsWith("tool:") ? ids[markerIndex - 1] : null;
+    const markerStale =
+      markerIndex !== -1 && String(ids[markerIndex]) !== marker;
 
     if (
       (spec.key === "place_order" ||
         spec.key === "reserve_table" ||
         spec.key === "get_order_status" ||
         spec.key === "check_previous_order") &&
-      existingActionId
+      existingActionId &&
+      !markerStale
     ) {
       try {
-        await updateCustomAction(existingActionId, spec.action);
+        // Always PUT full action so empty speech_while overwrites stale "Ji." on Synthflow.
+        await updateCustomAction(existingActionId, {
+          ...spec.action,
+          speech_while_using_the_tool: "",
+        });
         ids[markerIndex] = marker;
         if (identity.modelId) {
           await attachActions(identity.modelId, [], [
@@ -391,8 +399,11 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
         errors.push(`${spec.key} update: ${updateErr.message}`);
         ids.splice(markerIndex - 1, 2);
       }
-    } else if (markerIndex !== -1) {
+    } else if (markerIndex !== -1 && !markerStale) {
       continue;
+    } else if (markerStale) {
+      // v3→v4: drop old action id + marker so we recreate with silent speech_while (empty PUT may not clear "Ji.").
+      ids.splice(markerIndex > 0 ? markerIndex - 1 : markerIndex, markerIndex > 0 ? 2 : 1);
     }
 
     try {
