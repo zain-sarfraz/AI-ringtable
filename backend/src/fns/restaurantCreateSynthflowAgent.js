@@ -17,8 +17,8 @@ import {
   loadRestaurantVoiceCatalog,
   loadActiveChildBranches,
   isMaleVoice,
+  getSynthflowVoicePrompt,
   PAKISTANI_NAME_KEYWORDS,
-  SYNTHFLOW_VOICE_PROMPT,
 } from "../lib/restaurantVoiceContext.js";
 import { PromptMergeError, resolveSynthflowPromptUpdate } from "../lib/promptMerge.js";
 import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
@@ -550,22 +550,35 @@ export async function restaurantCreateSynthflowAgent(req, res) {
     });
 
     const voiceId = body.voice_id || r.agent_voice_id || undefined;
-    const voiceGender = body.voice_gender || (voiceId && isMaleVoice(voiceId) ? "male" : "female");
+    const voiceGender =
+      body.voice_gender ||
+      (voiceId && isMaleVoice(voiceId) ? "male" : "female");
     const lang = toSynthflowLanguage(agentLanguage);
+    const savedPrompt = String(r.agent_system_prompt || "");
+    const savedLooksFemale = /You are Sarah|sakti hoon|female AI receptionist/i.test(savedPrompt);
+    const savedLooksMale = /You are Ahmed|sakta hoon|male AI receptionist/i.test(savedPrompt);
+    const genderFlip =
+      (voiceGender === "male" && savedLooksFemale) ||
+      (voiceGender === "female" && savedLooksMale);
+    // Gender switch always rebuilds greeting (sakti/sakta) even if a greeting was saved.
     const savedGreeting = (body.first_message ?? r.agent_first_message)?.trim() || "";
     const greeting =
+      genderFlip ||
       !savedGreeting ||
       /^Hi[, ]/i.test(savedGreeting) ||
       /^Hello[, ]/i.test(savedGreeting) ||
       /^Thanks for calling/i.test(savedGreeting) ||
       /^Assalam-o-Alaikum/i.test(savedGreeting) ||
       /^Assalamualaikum/i.test(savedGreeting) ||
-      /^ہیلو،/i.test(savedGreeting)
+      /^ہیلو،/i.test(savedGreeting) ||
+      /madad kar sakti hoon/i.test(savedGreeting) ||
+      /madad kar sakta hoon/i.test(savedGreeting)
         ? defaultSynthflowGreeting(r.name, agentLanguage, voiceGender)
         : savedGreeting;
     // Non-destructive merge: keep saved conversation rules; refresh menu / branch / place_order.
-    // Full overwrite only when the client explicitly sets replace_full_prompt=true.
-    const replaceFull = body.replace_full_prompt === true || body.replace_full === true;
+    // Full overwrite when client asks OR gender flips (Sarah↔Ahmed / sakti↔sakta).
+    const replaceFull =
+      body.replace_full_prompt === true || body.replace_full === true || genderFlip;
     let fullPrompt;
     try {
       fullPrompt = resolveSynthflowPromptUpdate({
@@ -621,9 +634,9 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       patience_level: "low",
       transcriber_keywords: menuKeywords,
       send_user_idle_reminders: false,
-      voice_id: voiceId || "wdXhcCmAYpPsryFWCtn2",
+      voice_id: voiceId || (voiceGender === "male" ? "JBFqnCBsd6RMkjVDRZzb" : "wdXhcCmAYpPsryFWCtn2"),
       voice_gender: voiceGender,
-      voice_prompt: SYNTHFLOW_VOICE_PROMPT,
+      voice_prompt: getSynthflowVoicePrompt(voiceGender),
     };
 
     // NEVER auto-create a new Synthflow agent. Only update an already-linked agent ID.

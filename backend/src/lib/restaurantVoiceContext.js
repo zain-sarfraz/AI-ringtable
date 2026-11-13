@@ -110,8 +110,16 @@ TONE & MANNERS (CRITICAL — SOFT, HUMAN, NEVER RUDE):
 export const SOFT_TONE_MANNER_BLOCK = getSoftToneMannerBlock(true);
 
 /** Synthflow agent.voice_prompt — delivery/intonation only; no order/business logic. */
-export const SYNTHFLOW_VOICE_PROMPT =
-  "Mature, warm, confident Pakistani female receptionist. Natural Lahore conversational tone. Soft, steady pace with short sentences and gentle pauses. Friendly and professional, never robotic, dramatic, or narrator-like. Keep one consistent female voice character for the whole call.";
+export function getSynthflowVoicePrompt(gender = "female") {
+  const isMale = String(gender).toLowerCase() === "male";
+  if (isMale) {
+    return "Mature, warm, confident Pakistani male receptionist. Natural Lahore conversational tone. Soft, steady pace with short sentences and gentle pauses. Friendly and professional, never robotic, dramatic, or narrator-like. Keep one consistent male voice character for the whole call.";
+  }
+  return "Mature, warm, confident Pakistani female receptionist. Natural Lahore conversational tone. Soft, steady pace with short sentences and gentle pauses. Friendly and professional, never robotic, dramatic, or narrator-like. Keep one consistent female voice character for the whole call.";
+}
+
+/** @deprecated use getSynthflowVoicePrompt(gender) */
+export const SYNTHFLOW_VOICE_PROMPT = getSynthflowVoicePrompt("female");
 
 /** Active child branches the phone agent may offer. */
 export async function loadActiveChildBranches(knex, restaurantId) {
@@ -1082,11 +1090,13 @@ export function defaultSynthflowPrompt(
   const verbPlace = isMale ? "deta hoon" : "deti hoon";
   const verbLook = isMale ? "leta hoon" : "leti hoon";
   const verbTell = isMale ? "deta hoon" : "deti hoon";
+  const agentName = isMale ? "Ahmed" : "Sarah";
+  const agentGenderWord = isMale ? "male" : "female";
   const taxMatch = String(knowledge || "").match(/Tax rate:\s*([\d.]+)\s*%/i);
   const taxRatePct = taxMatch ? taxMatch[1] : "0";
   // Urdu-locked restaurants: Roman Urdu conversation; delivery/pickup/confirm/amounts stay English words
   if (isUrdu) {
-    return `You are Sarah, the soft, warm, and polite female AI receptionist for ${restaurantName} — a calm, gentle Pakistani voice from Lahore on a restaurant landline.
+    return `You are ${agentName}, the soft, warm, and polite ${agentGenderWord} AI receptionist for ${restaurantName} — a calm, gentle Pakistani voice from Lahore on a restaurant landline.
 
 PRIMARY MISSION:
 Help with food orders, order tracking, and table reservations. Speak ONLY everyday Conversational Roman Urdu (Lahore / Pakistani style) — like a kind real person on the phone, never rude or scripted.
@@ -1095,8 +1105,8 @@ ${SOFT_TONE_MANNER_BLOCK}
 
 =======================================================
 IDENTITY (CRITICAL):
-- You are Sarah, the friendly female AI receptionist for ${restaurantName}.
-- If asked "kya aap insan hain?" / "are you human?" → politely say: "Main Sarah hoon, AI assistant — order lene mein madad kar ${verbHelp}." Then return to the order.
+- You are ${agentName}, the friendly ${agentGenderWord} AI receptionist for ${restaurantName}.
+- If asked "kya aap insan hain?" / "are you human?" → politely say: "Main ${agentName} hoon, AI assistant — order lene mein madad kar ${verbHelp}." Then return to the order.
 - NEVER claim to be a human, staff member in the kitchen, or a real person.
 =======================================================
 
@@ -1630,8 +1640,12 @@ export function isMaleVoice(voiceId) {
     "n2lvs1w4etot3dr4eowo", // Callum
     "onwk4e9zlutakqww03f9", // Daniel
     "tx3lpaxmhkxfdv7voqhj", // Liam
+    "jbfqncbsd6rmkjvdrzzb", // George
+    "cwhrbwxzgahq8tq4fs17", // Roger
+    "npczcjzi2devnbz1zqrb", // Brian
+    "ikne3meq5asn9xlyudcd", // Charlie
   ];
-  return maleIds.includes(vid) || /male|adam|josh|antoni|callum|daniel|liam|brian|george/i.test(vid);
+  return maleIds.includes(vid) || /male|adam|josh|antoni|callum|daniel|liam|brian|george|roger|charlie/i.test(vid);
 }
 
 export function defaultSynthflowGreeting(restaurantName, language = "ur", gender = "female") {

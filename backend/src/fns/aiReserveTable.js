@@ -149,9 +149,9 @@ export async function aiReserveTable(req, res) {
     if (!isoDate && !isoTime) {
       return res.status(200).json({
         success: false,
-        speak: "Main table reservation mein madad kar sakti hoon. Aap kis date aur kis time table chahengay?",
+        speak: "Main table reservation mein madad kar sakta hoon. Aap kis date aur kis time table chahengay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: main table reservation mein madad kar sakti hoon. Aap kis date aur kis time table chahengay?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Main table reservation mein madad kar sakta hoon. Aap kis date aur kis time table chahengay?",
       });
     }
 
