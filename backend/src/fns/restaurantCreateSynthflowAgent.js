@@ -233,8 +233,8 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
           : "FOOD ORDERS ONLY. FORBIDDEN to call when caller only named/chose an item or said haan to item accept. Call ONLY after FINAL summary confirm. Required: customer_name, customer_phone, order_items (non-empty), fulfillment_type (delivery|pickup), delivery_address (address OR Pickup). If fulfillment_required/address_required/phone_required/speak: READ speak EXACTLY, WAIT, retry — NEVER invent order number.",
         // Must be false — true lets the LLM invent area questions instead of reading "speak".
         agent_speak_naturally: false,
-        // Fixed short filler — empty string lets the LLM invent long "please wait" loops
-        speech_while_using_the_tool: "Ji.",
+        // No spoken filler — empty string prevents stacked fillers on the phone.
+        speech_while_using_the_tool: "",
         failure_timeout: 25,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: placeOrderVars,
@@ -267,9 +267,9 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
         run_action_before_call_start: false,
         name: "get_order_status",
         description:
-          "TRACK ORDER ONLY. Ask: \"Ji zaroor, aapka order kis phone number se place hua tha?\" Call immediately with customer_phone (yahi/same → same). If they already said an order number, pass order_number. AFTER TOOL RETURNS: READ speak EXACTLY once — status first, then items, then bill. NEVER invent failure. NEVER ask area.",
+          "TRACK ORDER ONLY. Ask: \"Zaroor, aapka order kis phone number se place hua tha?\" Call immediately with customer_phone (yahi/same → same). If they already said an order number, pass order_number. AFTER TOOL RETURNS: READ speak EXACTLY once — status first, then items, then bill. NEVER invent failure. NEVER ask area.",
         agent_speak_naturally: false,
-        speech_while_using_the_tool: "Ji.",
+        speech_while_using_the_tool: "",
         failure_timeout: 15,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [
@@ -307,10 +307,10 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
         run_action_before_call_start: false,
         name: "reserve_table",
         description:
-          "TABLE RESERVATIONS ONLY. Call this tool as soon as contact phone number is collected. Parameters: customer_name, party_size (person), reservation_date (date), reservation_time (time), customer_phone (phone number). Pass branch_name (none if single location). AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in Roman Urdu. NEVER speak English phrases like 'One moment while I reserve'. NEVER read reservation IDs or UUIDs.",
+          "TABLE RESERVATIONS ONLY. Call this tool as soon as contact phone number is collected. Parameters: customer_name, party_size (person), reservation_date (date), reservation_time (time), customer_phone (phone number). Pass branch_name (none if single location). AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in Roman Urdu. If speak says missing fields, ask only that. NEVER invent 'table reserve nahi ho raha'. NEVER speak English phrases like 'One moment while I reserve'. NEVER read reservation IDs or UUIDs.",
         agent_speak_naturally: false,
-        speech_while_using_the_tool: "Ji.",
-        failure_timeout: 20,
+        speech_while_using_the_tool: "",
+        failure_timeout: 25,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: reserveVars,
         json_body_stringified: JSON.stringify({
@@ -325,7 +325,8 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
           date: "<reservation_date>",
           reservation_time: "<reservation_time>",
           time: "<reservation_time>",
-          slot_duration_hours: "<slot_duration_hours>",
+          // Always 1h — do not rely on the LLM filling a placeholder.
+          slot_duration_hours: "1",
           branch_name: isMultiBranch ? "<branch_name>" : singleBranchName,
           synthflow_call_id: "<call_id>",
           source: "phone",
@@ -341,7 +342,7 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
         name: "check_previous_order",
         description:
           "ALMOST NEVER USE. Call ONLY if the caller EXPLICITLY asks to repeat their last/previous order (e.g. pehle wala order, wahi order, repeat last order) and has NOT named any new dish. If they said any menu item (burger, pizza, Chicken Burger, etc.) — FORBIDDEN. Default: do not call this tool.",
-        speech_while_using_the_tool: "Ji.",
+        speech_while_using_the_tool: "",
         failure_timeout: 10,
         headers: [{ key: "Content-Type", value: "application/json" }],
         variables_during_the_call: [],
@@ -356,7 +357,7 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
 
   for (const spec of specs) {
     if (!spec.action.url) continue;
-    const marker = `tool:${spec.key}:v2`;
+    const marker = `tool:${spec.key}:v3`;
     const markerIndex = ids.findIndex((id) => String(id).startsWith(`tool:${spec.key}:`));
     const existingActionId =
       markerIndex > 0 && !String(ids[markerIndex - 1]).startsWith("tool:") ? ids[markerIndex - 1] : null;

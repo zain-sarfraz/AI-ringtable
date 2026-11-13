@@ -100,7 +100,7 @@ describe("cashOnlyPaymentProtocolLines", () => {
 
   it("customer requests card → polite cash-only refusal copy is present", () => {
     const ur = cashOnlyPaymentProtocolLines({ urdu: true }).join("\n");
-    assert.match(ur, /Maazrat ji, is waqt sirf cash payment available hai/);
+    assert.match(ur, /Maazrat, is waqt sirf cash payment available hai/);
     assert.match(ur, /If they ask for card/i);
     const en = cashOnlyPaymentProtocolLines({ urdu: false }).join("\n");
     assert.match(en, /politely explain only cash is accepted/i);
@@ -200,7 +200,7 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     assert.match(knowledge, /softly ask street address/i);
     assert.match(knowledge, /Do NOT ask address, area, or branch/);
     assert.doesNotMatch(knowledge, /Johar\/Iqbal/);
-    assert.match(knowledge, /TRACK ORDER: ask "Ji zaroor, aapka order kis phone number se place hua tha\?"/i);
+    assert.match(knowledge, /TRACK ORDER: ask "Zaroor, aapka order kis phone number se place hua tha\?"/i);
     assert.match(knowledge, /TABLE: collect name/i);
   });
 
@@ -253,7 +253,7 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     assert.match(knowledge, /EXACT DISH/i);
     assert.match(
       knowledge,
-      /SUBCATEGORY PHONE SCRIPT for "Burger" \(1 item — offer then ask; do NOT auto-add\): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hai\. Kya aap Chicken Burger order karna chahengay\?/i,
+      /SUBCATEGORY PHONE SCRIPT for "Burger" \(1 item — say ONCE then ask; do NOT auto-add; NEVER repeat this script\): Burger mein hamare paas Chicken Burger five hundred rupees ka hai\. Kya aap Chicken Burger order karna chahengay\?/i,
     );
     assert.match(knowledge, /## Branch ordering/i);
     assert.match(knowledge, /NO BRANCH CHOICE/i);

@@ -44,7 +44,10 @@ function resolveCustomerPhone(body, customerPhone) {
     phone = looksLikePhone(caller) ? caller : null;
   }
   if (phone && /^<[^>]+>$/.test(String(phone).trim())) phone = null;
-  return phone ? String(phone).trim() : null;
+  if (!phone) return null;
+  // "0324 7087 907" → keep digits so save never fails on spaces
+  const digits = String(phone).replace(/\D/g, "");
+  return digits.length >= 8 ? digits : String(phone).trim();
 }
 
 export async function aiReserveTable(req, res) {
@@ -116,56 +119,75 @@ export async function aiReserveTable(req, res) {
     const notes = body.notes || body.special_notes || body.instructions || null;
 
     const pSize = parsePartySize(rawPartySize);
-    const isoDate = rawDate ? parseReservationDate(rawDate) : null;
-    const isoTime = rawTime
-      ? parseReservationTime(rawTime) ||
-      parseReservationTime(String(rawTime).replace(/[^\d:apm.\s]/gi, "")) ||
-      lastSpokenReservationTime(String(rawTime))
+    // Agent often dumps "Kal Shaam 5 Baje" into only date OR only time — cross-fill both.
+    const dateBlob = rawDate != null && String(rawDate).trim() && !/^(none|null|n\/a|unknown)$/i.test(String(rawDate).trim())
+      ? String(rawDate).trim()
       : null;
+    const timeBlob = rawTime != null && String(rawTime).trim() && !/^(none|null|n\/a|unknown)$/i.test(String(rawTime).trim())
+      ? String(rawTime).trim()
+      : null;
+    const combinedBlob = [dateBlob, timeBlob].filter(Boolean).join(" ");
+    const hasRelativeDate = (s) =>
+      s && /\b(aaj|today|tonight|kal|tomorrow|parson|parso|agle\s*din|day\s*after)\b/i.test(s);
+    const isoDate = dateBlob
+      ? parseReservationDate(dateBlob)
+      : hasRelativeDate(timeBlob)
+        ? parseReservationDate(timeBlob)
+        : null;
+    const parseTimeLoose = (s) =>
+      s
+        ? parseReservationTime(s) ||
+          parseReservationTime(String(s).replace(/[^\d:apm.\s]/gi, "")) ||
+          lastSpokenReservationTime(String(s))
+        : null;
+    const isoTime =
+      parseTimeLoose(timeBlob) ||
+      parseTimeLoose(dateBlob) ||
+      parseTimeLoose(combinedBlob);
 
     // Conversational flow questions if details are missing:
     if (!isoDate && !isoTime) {
       return res.status(200).json({
         success: false,
-        speak: "Ji, main table reservation mein madad kar sakti hoon. Aap kis date aur kis time table chahengay?",
+        speak: "Main table reservation mein madad kar sakti hoon. Aap kis date aur kis time table chahengay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, main table reservation mein madad kar sakti hoon. Aap kis date aur kis time table chahengay?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: main table reservation mein madad kar sakti hoon. Aap kis date aur kis time table chahengay?",
       });
     }
 
     if (!isoTime) {
       return res.status(200).json({
         success: false,
-        speak: "Ji, kis time table chahengay?",
+        speak: "Kis time table chahengay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, kis time table chahengay?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: kis time table chahengay?",
       });
     }
 
     if (!isoDate) {
       return res.status(200).json({
         success: false,
-        speak: "Ji, kis date ke liye table chahengay?",
+        speak: "Kis date ke liye table chahengay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, kis date ke liye table chahengay?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: kis date ke liye table chahengay?",
       });
     }
 
     if (!pSize) {
       return res.status(200).json({
         success: false,
-        speak: "Ji, kitne persons ke liye table chahengay?",
+        speak: "Kitne persons ke liye table chahengay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, kitne persons ke liye table chahengay? NEVER say afraad.",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: kitne persons ke liye table chahengay? NEVER say afraad.",
       });
     }
 
     if (!customer_name || /^(none|null|n\/a|unknown)$/i.test(String(customer_name).trim())) {
       return res.status(200).json({
         success: false,
-        speak: "Ji, aap kis naam se reservation karwana chahengay?",
+        speak: "Aap kis naam se reservation karwana chahengay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Ji, aap kis naam se reservation karwana chahengay?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: aap kis naam se reservation karwana chahengay?",
       });
     }
 
@@ -187,8 +209,8 @@ export async function aiReserveTable(req, res) {
     if (!restaurantId) {
       return res.status(200).json({
         success: false,
-        speak: "Maazrat ji, restaurant verify nahi ho saka.",
-        message: `CRITICAL: Reply ONLY in the caller's LOCKED language. ${resolved.error || "Could not identify the restaurant."}`,
+        speak: "Maazrat, abhi restaurant verify nahi ho saka. Thori der baad dobara koshish karein.",
+        message: `CRITICAL: Reply ONLY in the caller's LOCKED language. READ speak EXACTLY. ${resolved.error || "Could not identify the restaurant."}`,
       });
     }
     const branchRestaurantId = await resolveSpokenBranchId(
@@ -213,7 +235,7 @@ export async function aiReserveTable(req, res) {
       return res.status(200).json({
         success: false,
         available: false,
-        speak: "Maazrat ji, is waqt koi table khali nahi hai. Kya aap kisi aur waqt aana chahenge?",
+        speak: "Maazrat, is waqt koi table khali nahi hai. Kya aap kisi aur waqt aana chahenge?",
         message:
           `CRITICAL: Reply ONLY in the caller's LOCKED language, softly and politely (apologize first). No table is free at ${isoTime} on ${isoDate}. Gently ask for a different time once. Do not sound rude. Do not ask area/branch unless ## Branch ordering lists areas. Do not switch languages.`,
       });
@@ -258,13 +280,8 @@ export async function aiReserveTable(req, res) {
 
     console.log(`✅ Reservation created: id=${reservation.id} table=${availableTable.table_number}`);
 
-    const speakUr = `Ji, aapki table confirm ho chuki hai, ${pSize} persons ke liye table mehfooz hai. Bohot shukriya!`;
+    const speakUr = `Aapki table confirm ho chuki hai, ${pSize} persons ke liye table mehfooz hai. Bohot shukriya!`;
     const speakEn = `Your table is confirmed for ${pSize} guest(s). Thank you so much!`;
-
-    const confirmMsg =
-      `CRITICAL: Reply ONLY in the caller's LOCKED language — soft, warm, polite human tone — do not switch. ` +
-      `READ THIS EXACTLY: ${speakUr} ` +
-      `Never say order number or bill. Never ask area after success. FORBIDDEN: afraad, tareekh, raabta, rabta, spelling out reservation UUIDs or reading Table numbers in English.`;
 
     return res.json({
       success: true,
@@ -272,7 +289,9 @@ export async function aiReserveTable(req, res) {
       speak: speakUr,
       speak_en: speakEn,
       speak_ur: speakUr,
-      message: speakUr,
+      message:
+        `CRITICAL: Reply ONLY in the caller's LOCKED language. READ speak EXACTLY once. ` +
+        `Never say order number or bill. Never invent failure. FORBIDDEN: afraad, tareekh, raabta, rabta, UUIDs, table numbers.`,
       reservation_id: reservation.id,
       _reservation_id: reservation.id,
       table_number: availableTable.table_number,
@@ -287,6 +306,14 @@ export async function aiReserveTable(req, res) {
     });
   } catch (e) {
     console.error("❌ Reserve Table Error:", e);
-    return res.status(500).json({ error: e.message || "Failed to create reservation" });
+    // Always return speak so the phone agent never invents "table reserve nahi ho raha".
+    return res.status(200).json({
+      success: false,
+      speak:
+        "Maazrat, abhi reservation complete nahi ho saki. Date, time, aur kitne persons hain, dobara bata dein?",
+      message:
+        "CRITICAL: Reply ONLY in the caller's LOCKED language. READ speak EXACTLY. Do not invent failure drama. Ask date, time, and party size once more, then call reserve_table again.",
+      error: e.message || "Failed to create reservation",
+    });
   }
 }

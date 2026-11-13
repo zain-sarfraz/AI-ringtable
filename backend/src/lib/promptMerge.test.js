@@ -92,7 +92,7 @@ Turn 1: Speak exactly: "Assalamualaikum"
     assert.doesNotMatch(fixed, /Apna Aapka/);
     assert.match(fixed, /kis phone number se place hua tha/);
     assert.match(fixed, /thora sa masla/);
-    assert.match(fixed, /Ji, aap kis naam se order note karwana chahengay\?/);
+    assert.match(fixed, /Aap kis naam se order note karwana chahengay\?/);
     assert.match(fixed, /Kya yeh order delivery ke liye hai ya pickup karein gay\?/);
     assert.match(fixed, /Teks include kar ke kul bill/);
     assert.match(fixed, /with branch_name none/);
@@ -101,10 +101,10 @@ Turn 1: Speak exactly: "Assalamualaikum"
 
   it("rewrites table reservation afraad/tareekh/rabta to persons/date/phone number", () => {
     const stale = `
-Ji zaroor, kitne afraad ke liye table chahengay?
-Ji, kis tareekh aur kis time ke liye table chahengay?
-Ji, apna Aapka rabta number share kar dein?
-Ji, aapki table confirm ho chuki hai, 5 person ke liye table mehfooz hai.
+Zaroor, kitne afraad ke liye table chahengay?
+kis tareekh aur kis time ke liye table chahengay?
+apna Aapka rabta number share kar dein?
+aapki table confirm ho chuki hai, 5 person ke liye table mehfooz hai.
 NEVER say "afraad", "tareekh", "raabta"
 Turn 1: Speak exactly: "Assalamualaikum"
 `.trim();
@@ -120,7 +120,7 @@ Turn 1: Speak exactly: "Assalamualaikum"
 
   it("rewrites single-item PHONE SCRIPT to explicit accept ask", () => {
     const stale = `
-SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Ji, Burger mein hamare paas Chicken Burger five hundred rupees hain. Aap konsa lena chahenge?
+SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Burger mein hamare paas Chicken Burger five hundred rupees hain. Aap konsa lena chahenge?
 `.trim();
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
     assert.match(fixed, /Kya aap Chicken Burger order karna chahengay\?/i);
@@ -131,7 +131,7 @@ SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Ji, Bu
 
   it("rewrites auto-continue single-item script to explicit accept", () => {
     const stale = `
-SUBCATEGORY PHONE SCRIPT for "Burger" (1 item — say it once, then continue): Acha ji, Chicken Burger five hundred rupees ka hai. Main yeh note kar leti hoon.
+SUBCATEGORY PHONE SCRIPT for "Burger" (1 item — say it once, then continue): Acha, Chicken Burger five hundred rupees ka hai. Main yeh note kar leti hoon.
 `.trim();
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
     assert.match(fixed, /Kya aap Chicken Burger order karna chahengay\?/i);

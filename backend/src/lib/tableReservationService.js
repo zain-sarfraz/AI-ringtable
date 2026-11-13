@@ -29,16 +29,23 @@ export function parseReservationDate(raw) {
   const s = rawStr.toLowerCase();
   const today = new Date();
 
-  // Relative dates
-  if (/^(today|tonight|now|aaj|aaj\s*ki|aaj\s*ka)$/i.test(s) || s === "aaj") {
+  // Relative dates (allow trailing time words: "kal shaam 5 baje", "tomorrow 5pm")
+  if (
+    /^(today|tonight|now|aaj|aaj\s*ki|aaj\s*ka)$/i.test(s) ||
+    s === "aaj" ||
+    (/\b(aaj|today|tonight)\b/i.test(s) && !/\b(kal|tomorrow|parson)\b/i.test(s))
+  ) {
     return localDateStr(today);
   }
-  if (/^(tomorrow|kal|agle\s*din|agli\s*subah)$/i.test(s) || (/\bkal\b/i.test(s) && !/\baaj\b/i.test(s))) {
+  if (
+    /^(tomorrow|kal|agle\s*din|agli\s*subah)$/i.test(s) ||
+    (/\b(kal|tomorrow|agle\s*din)\b/i.test(s) && !/\baaj\b/i.test(s))
+  ) {
     const d = new Date(today);
     d.setDate(d.getDate() + 1);
     return localDateStr(d);
   }
-  if (/^(parson|parso|day\s*after\s*tomorrow|tarson|tarso)$/i.test(s) || /\b(parson|parso)\b/i.test(s)) {
+  if (/^(parson|parso|day\s*after\s*tomorrow|tarson|tarso)$/i.test(s) || /\b(parson|parso|day\s*after\s*tomorrow)\b/i.test(s)) {
     const d = new Date(today);
     d.setDate(d.getDate() + 2);
     return localDateStr(d);
@@ -218,8 +225,9 @@ export function lastSpokenReservationTime(text) {
       String.raw`\b\d{1,2}[:.]\d{2}\s*(?:a\.?m\.?|p\.?m\.?)?\b`,
       String.raw`\b\d{1,2}\s*(?:a\.?m\.?|p\.?m\.?)\b`,
       String.raw`\b\d{1,2}\s*o'?clock\b`,
+      String.raw`\b\d{1,2}\s*baje?\b`,
       String.raw`\bat\s+\d{1,2}\b`,
-      String.raw`\b(?:${wordNames})\s*(?:o'?clock|a\.?m\.?|p\.?m\.?)\b`,
+      String.raw`\b(?:${wordNames})\s*(?:o'?clock|baje?|a\.?m\.?|p\.?m\.?)\b`,
       String.raw`\bat\s+(?:${wordNames})\b`,
       String.raw`\b(?:noon|midnight)\b`,
     ].join("|"),
@@ -388,10 +396,11 @@ export async function findAvailableTable(knex, { restaurantId, partySize, reserv
   const reqStart = timeToMins(startTime);
   const reqEnd = reqStart + duration * 60;
 
-  // Load all confirmed/pending/seated reservations for that date
+  // Load all confirmed/pending/seated reservations for that date.
+  // Cast ::date so timestamptz rows (UTC midnight shift) still match YYYY-MM-DD.
   const existing = await knex("table_reservations")
     .whereIn("restaurant_id", ids)
-    .andWhere({ reservation_date: reservationDate })
+    .whereRaw("reservation_date::date = ?::date", [reservationDate])
     .whereIn("status", ["pending", "confirmed", "seated"])
     .whereIn("table_id", tables.map((t) => t.id))
     .select("table_id", "start_time", "slot_duration_hours");

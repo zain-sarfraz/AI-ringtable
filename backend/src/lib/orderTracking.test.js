@@ -149,7 +149,7 @@ describe("aiOrderStatus user-friendly phone tracking & kitchen notes", () => {
       assert.equal(result.instruction_updated, true);
 
       // Speak order: status → name → items → bill
-      assert.match(result.speak, /^Ji, is waqt aapka order kitchen mein tayyar ho raha hai/i);
+      assert.match(result.speak, /^is waqt aapka order kitchen mein tayyar ho raha hai/i);
       assert.match(result.speak, new RegExp(testCustName, "i"), "Must mention customer name");
       assert.match(result.speak, /Chicken Fajita Pizza Large/i, "Must mention ordered items");
       assert.match(result.speak, /Cold Drink/i, "Must mention all items");

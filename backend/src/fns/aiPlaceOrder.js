@@ -68,7 +68,7 @@ export async function aiPlaceOrder(req, res) {
       console.error("❌ Validation Failed: Missing customer_name", { items: body.items });
       return res.status(200).json({
         success: false,
-        speak: "Ji, aap kis naam se order note karwana chahengay?",
+        speak: "Aap kis naam se order note karwana chahengay?",
         message:
           "customer_name missing. Ask for the name once, then continue. Do NOT invent an order number.",
       });

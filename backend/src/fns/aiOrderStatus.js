@@ -277,9 +277,9 @@ export async function aiOrderStatus(req, res) {
         found: false,
         phone_required: true,
         order_number_required: true,
-        speak: "Ji zaroor, aapka order kis phone number se place hua tha?",
+        speak: "Zaroor, aapka order kis phone number se place hua tha?",
         message:
-          "Respond ONLY in the caller's LOCKED language, softly and politely: Ask for the phone number the order was placed with (Urdu: \"Ji zaroor, aapka order kis phone number se place hua tha?\" | EN: \"Certainly, which phone number was your order placed with?\"). STOP and WAIT for their phone number, then call get_order_status again.",
+          "Respond ONLY in the caller's LOCKED language, softly and politely: Ask for the phone number the order was placed with (Urdu: \"Zaroor, aapka order kis phone number se place hua tha?\" | EN: \"Certainly, which phone number was your order placed with?\"). STOP and WAIT for their phone number, then call get_order_status again.",
       });
     }
 
@@ -294,8 +294,8 @@ export async function aiOrderStatus(req, res) {
 
     if (!order) {
       const notFoundSpeak = hasPhone
-        ? "Maazrat ji, is number par koi active order nahi mil saka. Meharbani karke apna durust phone number dobaara bata dijiye?"
-        : "Maazrat ji, yeh order number nahi mil saka. Meharbani karke apna mukammal order number aahista se bata dijiye?";
+        ? "Maazrat, is number par koi active order nahi mil saka. Meharbani karke apna durust phone number dobaara bata dijiye?"
+        : "Maazrat, yeh order number nahi mil saka. Meharbani karke apna mukammal order number aahista se bata dijiye?";
       const notFoundMsg = hasPhone
         ? "Respond ONLY in the caller's LOCKED language, softly and politely: Could not find any order with that phone number. Ask them to confirm their phone number once more."
         : "Respond ONLY in the caller's LOCKED language, softly and politely: I could not find that order number. Gently ask them to say the full number slowly once more.";
@@ -405,7 +405,7 @@ export async function aiOrderStatus(req, res) {
     const itemsPhraseUrdu = itemsUrdu ? ` Aapke order mein ${itemsUrdu} hain.` : "";
     const itemsPhraseEn = itemsEn ? ` Your order includes ${itemsEn}.` : "";
 
-    const spokenScript = `Ji, is waqt aapka order ${statusUr}. Yeh order ${order.customer_name} ke naam par hai.${itemsPhraseUrdu} Kul bill ${urduTotal} bana hai.${eta ? ` Taqreeban ${eta} tak deliver ho jayega.` : ""}${instructionMsgUr} Bohot shukriya.`;
+    const spokenScript = `is waqt aapka order ${statusUr}. Yeh order ${order.customer_name} ke naam par hai.${itemsPhraseUrdu} Kul bill ${urduTotal} bana hai.${eta ? ` Taqreeban ${eta} tak deliver ho jayega.` : ""}${instructionMsgUr} Bohot shukriya.`;
 
     const message = `Respond ONLY in the caller's LOCKED language: Order ${order.order_number} for ${order.customer_name}${tableBit}.${itemsPhraseEn} Total: ${enTotal} (Urdu: ${urduTotal}). Status: ${statusEn}.${eta ? ` Estimated delivery around ${eta}.` : ""}${instructionMsgEn}`;
 
