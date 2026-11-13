@@ -902,9 +902,11 @@ export default function RestaurantSettings() {
         success?: boolean;
         error?: string;
         message?: string;
+        warning?: string | null;
         phone?: string;
         dial_in_number?: string;
         skipped?: boolean;
+        local_orders_ready?: boolean;
       };
       if (error || d?.skipped || !d?.success) {
         const dialIn =
@@ -918,7 +920,8 @@ export default function RestaurantSettings() {
         );
       }
       toast({
-        title: "Test call started",
+        variant: d.local_orders_ready === false || d.warning ? "destructive" : "default",
+        title: d.local_orders_ready === false ? "Test call started — local orders blocked" : "Test call started",
         description: d.message || `The agent is calling ${d.phone || phone}. Answer to test the order flow.`,
       });
     } catch (e: unknown) {
@@ -1892,7 +1895,7 @@ export default function RestaurantSettings() {
               <Input
                 value={r.agent_voice_id || ""}
                 onChange={(e) => setR({ ...r, agent_voice_id: e.target.value })}
-                placeholder="EXAVITQu4vr4xnSDxMaL"
+                placeholder="wdXhcCmAYpPsryFWCtn2"
               />
             </div>
           </div>

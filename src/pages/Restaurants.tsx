@@ -844,7 +844,7 @@ export default function Restaurants() {
                     <Input
                       value={form.agent_voice_id}
                       onChange={(e) => setForm({ ...form, agent_voice_id: e.target.value })}
-                      placeholder="EXAVITQu4vr4xnSDxMaL"
+                      placeholder="wdXhcCmAYpPsryFWCtn2"
                     />
                   </div>
                 </div>

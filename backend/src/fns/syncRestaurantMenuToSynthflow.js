@@ -129,7 +129,7 @@ export async function syncRestaurantMenuToSynthflow(req, res) {
         greeting_message: greeting,
         language: lang,
         // Pizza Go / Urdu live voice (Sarah). Never fall back to Jessica — that mismatch is what Sir hears.
-        voice_id: r.agent_voice_id || "EXAVITQu4vr4xnSDxMaL",
+        voice_id: r.agent_voice_id || "wdXhcCmAYpPsryFWCtn2",
         voice_gender: voiceGender,
         voice_prompt: SYNTHFLOW_VOICE_PROMPT,
         voice_speed: 1.08,

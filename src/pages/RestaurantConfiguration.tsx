@@ -882,7 +882,7 @@ export default function RestaurantConfiguration() {
                     </div>
                     <div>
                       <Label>Voice ID (optional)</Label>
-                      <Input value={newAgent.voice_id} onChange={(e) => setNewAgent({ ...newAgent, voice_id: e.target.value })} placeholder="EXAVITQu4vr4xnSDxMaL" />
+                      <Input value={newAgent.voice_id} onChange={(e) => setNewAgent({ ...newAgent, voice_id: e.target.value })} placeholder="wdXhcCmAYpPsryFWCtn2" />
                     </div>
                   </div>
                   <div><Label>First message</Label>

@@ -5,6 +5,7 @@ import { getToken } from "@/lib/authStorage";
 
 // Available ElevenLabs voices
 export const ELEVENLABS_VOICES = {
+  urdu: { id: 'wdXhcCmAYpPsryFWCtn2', name: 'Urdu', description: 'Pakistani Urdu female voice' },
   george: { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', description: 'Professional male voice' },
   sarah: { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', description: 'Friendly female voice' },
   roger: { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger', description: 'Calm male voice' },

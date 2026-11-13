@@ -144,7 +144,7 @@ function duringCallVar(name, description, example) {
   return { name, description, example, type: "string" };
 }
 
-async function ensureLiveOrderActions(restaurantId, existingIds = [], identity = {}) {
+export async function ensureLiveOrderActions(restaurantId, existingIds = [], identity = {}) {
   const placeUrl = liveToolUrl("ai-place-order");
   const statusUrl = liveToolUrl("ai-order-status");
   const reserveUrl = liveToolUrl("ai-reserve-table");
@@ -156,10 +156,13 @@ async function ensureLiveOrderActions(restaurantId, existingIds = [], identity =
   const lookup = {};
   // Never bake a laptop restaurant UUID into tools when PUBLIC_API_URL is a tunnel —
   // that poisons shared live agents. Live resolves via synthflow_agent_id + Telnyx number.
+  // Outbound test twins are local-only — forceRestaurantId is required so place_order lands locally.
   const apiHost = String(process.env.PUBLIC_API_URL || "");
   const isTunnel =
     /trycloudflare|ngrok|loca\.lt|localhost|127\.0\.0\.1/i.test(apiHost);
-  if (restaurantId && !isTunnel) lookup.restaurant_id = restaurantId;
+  if (restaurantId && (!isTunnel || identity.forceRestaurantId)) {
+    lookup.restaurant_id = restaurantId;
+  }
   if (identity.synthflowAgentId) lookup.synthflow_agent_id = identity.synthflowAgentId;
   if (identity.phone) lookup.twilio_to = identity.phone;
 
@@ -590,7 +593,7 @@ export async function restaurantCreateSynthflowAgent(req, res) {
     ].filter(Boolean);
 
     // Synthflow → ElevenLabs path: only fields Synthflow documents are sent.
-    // Default = live Pizza Go Sarah (EXAVITQ…). Never Jessica — empty agent_voice_id used to swap voices on sync.
+    // Default = custom Pakistani Urdu voice (wdXhc…). Empty agent_voice_id falls back here on sync.
     // 1.08 keeps Urdu moving in one breath. 0.98 left audible gaps mid-sentence.
     const agentConfig = {
       name: agentName,
@@ -606,7 +609,7 @@ export async function restaurantCreateSynthflowAgent(req, res) {
       patience_level: "low",
       transcriber_keywords: menuKeywords,
       send_user_idle_reminders: false,
-      voice_id: voiceId || "EXAVITQu4vr4xnSDxMaL",
+      voice_id: voiceId || "wdXhcCmAYpPsryFWCtn2",
       voice_gender: voiceGender,
       voice_prompt: SYNTHFLOW_VOICE_PROMPT,
     };

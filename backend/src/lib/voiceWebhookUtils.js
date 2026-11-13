@@ -371,9 +371,15 @@ export async function resolveRestaurantIdForVoiceTools(knex, b) {
   const byDialed = await findRestaurantByDialedNumber(knex, dialed);
 
   if (b.synthflow_agent_id) {
-    const matching = await knex("restaurants")
-      .where({ synthflow_agent_id: String(b.synthflow_agent_id), is_active: true })
+    const agentKey = String(b.synthflow_agent_id);
+    let matching = await knex("restaurants")
+      .where({ synthflow_agent_id: agentKey, is_active: true })
       .select("id", "name");
+    if (!matching.length) {
+      matching = await knex("restaurants")
+        .where({ synthflow_outbound_agent_id: agentKey, is_active: true })
+        .select("id", "name");
+    }
     if (matching.length === 1) {
       // If dialed number didn't match, or dialed number matched a restaurant that has no synthflow agent configured,
       // the dedicated owner of this agent takes priority.

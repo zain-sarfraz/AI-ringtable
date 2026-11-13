@@ -323,8 +323,15 @@ async function resolveRestaurant(knex, payload) {
     (payload?.executed_actions && Object.values(payload.executed_actions)[0]?.model_id);
 
   if (modelId) {
-    const row = await knex("restaurants")
-      .where({ synthflow_agent_id: String(modelId) })
+    const id = String(modelId);
+    let row = await knex("restaurants")
+      .where({ synthflow_agent_id: id })
+      .orderBy("updated_at", "desc")
+      .first();
+    if (row) return row;
+    // Local "Place test call" uses a separate outbound twin agent.
+    row = await knex("restaurants")
+      .where({ synthflow_outbound_agent_id: id })
       .orderBy("updated_at", "desc")
       .first();
     if (row) return row;

@@ -4,11 +4,13 @@ import {
   createOutboundAgent,
   getAssistant,
   pickOutboundCallerId,
+  postCallWebhookUrl,
   startOutboundCall,
   updateAgent,
 } from "../lib/synthflowClient.js";
 import { normalizeE164 } from "../lib/voiceWebhookUtils.js";
 import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
+import { ensureLiveOrderActions } from "./restaurantCreateSynthflowAgent.js";
 
 function agentOutboundFromNumber(agent) {
   const direct = normalizeE164(agent?.phone_number || agent?.caller_id_number || "");
@@ -48,6 +50,53 @@ function canPlaceTestCall(user, restaurantId) {
   return Boolean(user.ownedParentIds?.length && user.restaurantIds?.includes(restaurantId));
 }
 
+async function syncOutboundTwinForLocalOrders(knex, restaurant, outboundId, inboundAgent) {
+  const src = inboundAgent?.agent || inboundAgent || {};
+  const voiceId = restaurant.agent_voice_id || src.voice_id || "wdXhcCmAYpPsryFWCtn2";
+  const webhookUrl = postCallWebhookUrl();
+  if (!webhookUrl) {
+    console.warn(
+      "Outbound twin: PUBLIC_API_URL missing — test-call orders cannot reach local API.",
+    );
+  }
+
+  await updateAgent(outboundId, {
+    ...(webhookUrl
+      ? { external_webhook_url: webhookUrl, inbound_call_webhook_url: webhookUrl }
+      : {}),
+    agent: {
+      prompt: src.prompt || inboundAgent?.prompt || "You are a restaurant order assistant.",
+      greeting_message:
+        src.greeting_message || inboundAgent?.greeting_message || "Assalamualaikum",
+      language: src.language || inboundAgent?.language || "hi",
+      llm: src.llm || "gpt-4.1-Mini",
+      voice_id: voiceId,
+      min_words_to_interrupt: 2,
+    },
+  });
+
+  // Bake restaurant_id into tools so place_order hits this local DB (tunnel-safe).
+  try {
+    const found = await getAssistant(outboundId);
+    const agent = unwrapAssistant(found);
+    const fromAgent = [
+      ...(Array.isArray(agent?.actions) ? agent.actions : []),
+      ...(Array.isArray(agent?.custom_actions) ? agent.custom_actions : []),
+      ...(Array.isArray(agent?.action_ids) ? agent.action_ids : []),
+    ]
+      .map((a) => (typeof a === "string" ? a : a?.action_id || a?.id))
+      .filter(Boolean);
+    const live = await ensureLiveOrderActions(restaurant.id, fromAgent, {
+      modelId: outboundId,
+      synthflowAgentId: outboundId,
+      forceRestaurantId: true,
+    });
+    if (live?.warning) console.warn("Outbound twin tools:", live.warning);
+  } catch (toolErr) {
+    console.warn("Outbound twin tool attach skipped:", toolErr?.message || toolErr);
+  }
+}
+
 /**
  * Restaurant voice agents are inbound (customers call in). Synthflow cannot dial out
  * from an inbound agent, so we keep a mirrored outbound twin for Place test call.
@@ -61,19 +110,8 @@ async function ensureOutboundTestAgent(knex, restaurant, inboundAgent) {
       const found = await getAssistant(outboundId);
       const agent = unwrapAssistant(found);
       if (String(agent?.type || "").toLowerCase() === "outbound") {
-        // Keep prompt/voice roughly in sync with inbound for realistic tests
-        const src = inboundAgent?.agent || {};
         try {
-          await updateAgent(outboundId, {
-            agent: {
-              prompt: src.prompt || inboundAgent?.prompt,
-              greeting_message: src.greeting_message || inboundAgent?.greeting_message,
-              language: src.language || inboundAgent?.language,
-              llm: src.llm,
-              voice_id: src.voice_id,
-              min_words_to_interrupt: 2,
-            },
-          });
+          await syncOutboundTwinForLocalOrders(knex, restaurant, outboundId, inboundAgent);
         } catch (syncErr) {
           console.warn("Outbound twin sync skipped:", syncErr?.message || syncErr);
         }
@@ -87,14 +125,18 @@ async function ensureOutboundTestAgent(knex, restaurant, inboundAgent) {
 
   if (!outboundId) {
     const src = inboundAgent?.agent || {};
+    const webhookUrl = postCallWebhookUrl();
     const created = await createOutboundAgent({
       name: `${restaurant.name || "Restaurant"} Test Outbound`.slice(0, 80),
+      ...(webhookUrl
+        ? { external_webhook_url: webhookUrl, inbound_call_webhook_url: webhookUrl }
+        : {}),
       agent: {
         prompt: src.prompt || "You are a restaurant order assistant.",
         greeting_message: src.greeting_message || "Hello, thanks for calling.",
         language: src.language || "hi",
         llm: src.llm || "gpt-4.1-Mini",
-        voice_id: src.voice_id || restaurant.agent_voice_id || "EXAVITQu4vr4xnSDxMaL",
+        voice_id: restaurant.agent_voice_id || src.voice_id || "wdXhcCmAYpPsryFWCtn2",
         min_words_to_interrupt: 2,
       },
     });
@@ -110,6 +152,11 @@ async function ensureOutboundTestAgent(knex, restaurant, inboundAgent) {
       synthflow_outbound_agent_id: outboundId,
       updated_at: knex.fn.now(),
     });
+    try {
+      await syncOutboundTwinForLocalOrders(knex, restaurant, outboundId, inboundAgent);
+    } catch (syncErr) {
+      console.warn("Outbound twin post-create sync skipped:", syncErr?.message || syncErr);
+    }
   }
 
   const outFound = await getAssistant(outboundId);
@@ -200,6 +247,19 @@ export async function synthflowTestCall(req, res) {
       });
     }
 
+    const publicApi = String(process.env.PUBLIC_API_URL || "").trim().replace(/\/$/, "");
+    let tunnelOk = false;
+    if (publicApi) {
+      try {
+        const health = await fetch(`${publicApi}/api/health`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        tunnelOk = health.ok;
+      } catch {
+        tunnelOk = false;
+      }
+    }
+
     try {
       const result = await startOutboundCall({
         modelId,
@@ -208,6 +268,10 @@ export async function synthflowTestCall(req, res) {
         fromPhoneNumber: fromNumber,
       });
 
+      const orderHint = tunnelOk
+        ? "Answer the phone to test the order flow — orders will land on this local dashboard."
+        : "Answer the phone to talk to the agent. WARNING: PUBLIC_API_URL tunnel is down, so place_order / post-call will NOT create a local order. Start cloudflared/ngrok to localhost:3033 and set PUBLIC_API_URL, then Place test call again.";
+
       return res.json({
         success: true,
         call_id: result.call_id,
@@ -215,7 +279,12 @@ export async function synthflowTestCall(req, res) {
         from_phone_number: fromNumber,
         agent_type: agentType,
         outbound_agent_id: modelId !== restaurant.synthflow_agent_id ? modelId : null,
-        message: `The agent is calling ${phone}. Answer the phone to test the order flow.`,
+        local_orders_ready: tunnelOk,
+        public_api_url: publicApi || null,
+        message: `The agent is calling ${phone}. ${orderHint}`,
+        warning: tunnelOk
+          ? null
+          : "PUBLIC_API_URL tunnel unreachable — local orders will not appear until the tunnel is fixed.",
       });
     } catch (dialErr) {
       // 200 + success:false so the browser console does not show a scary 502;
