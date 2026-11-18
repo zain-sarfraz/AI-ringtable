@@ -196,6 +196,16 @@ interface RestaurantTable {
     notes: string | null;
 }
 
+interface ReservationAiData {
+    duration_seconds?: number | null;
+    recording_url?: string | null;
+    transcript?: string | null;
+    call_summary?: string | null;
+    provider?: string | null;
+    synthflow_call_id?: string | null;
+    [key: string]: unknown;
+}
+
 interface Reservation {
     id: string;
     restaurant_id?: string | null;
@@ -214,7 +224,7 @@ interface Reservation {
     notes: string | null;
     source: string;
     call_id?: string | null;
-    ai_extracted_data?: any;
+    ai_extracted_data?: ReservationAiData | null;
     call_transcript?: string | null;
     call_recording_url?: string | null;
     call_notes?: string | null;
@@ -304,14 +314,14 @@ export default function TableReservations() {
                         .order("created_at", { ascending: false })
                         .limit(40);
                     if (Array.isArray(cList)) {
-                        const matches = cList.filter((c: any) => {
+                        const matches = cList.filter((c: { phone_number?: string; recording_url?: string; transcript?: string }) => {
                             const cTail = String(c.phone_number || "")
                                 .replace(/\D/g, "")
                                 .slice(-10);
                             return cTail && cTail === tail;
                         });
                         const withMedia = matches.find(
-                            (c: any) => c.recording_url || c.transcript,
+                            (c: { recording_url?: string; transcript?: string }) => c.recording_url || c.transcript,
                         );
                         if (withMedia) loadedCall = withMedia as CallData;
                         else if (matches[0])
@@ -339,24 +349,30 @@ export default function TableReservations() {
                     res.call_recording_url ||
                     res.ai_extracted_data)
             ) {
+                const aiData = res.ai_extracted_data || undefined;
                 loadedCall = {
                     id: res.call_id || res.id,
                     phone_number: res.customer_phone,
                     duration_seconds:
-                        res.call_duration_seconds ||
-                        res.ai_extracted_data?.duration_seconds,
+                        res.call_duration_seconds ??
+                        aiData?.duration_seconds ??
+                        null,
                     status: "completed",
                     recording_url:
                         res.call_recording_url ||
-                        res.ai_extracted_data?.recording_url,
+                        aiData?.recording_url ||
+                        null,
                     transcript:
                         res.call_transcript ||
-                        res.ai_extracted_data?.transcript,
+                        aiData?.transcript ||
+                        null,
                     notes:
-                        res.call_notes || res.ai_extracted_data?.call_summary,
-                    provider: res.ai_extracted_data?.provider || "synthflow",
+                        res.call_notes ||
+                        aiData?.call_summary ||
+                        null,
+                    provider: aiData?.provider || "synthflow",
                     metadata: res.ai_extracted_data,
-                    synthflow_call_id: res.ai_extracted_data?.synthflow_call_id,
+                    synthflow_call_id: aiData?.synthflow_call_id || null,
                 };
             }
         } catch (err) {
@@ -453,7 +469,7 @@ export default function TableReservations() {
             headers: authHeader(),
         });
         if (r.ok) setTables((await r.json()).tables || []);
-    }, [restaurantId]);
+    }, [restaurantId]); // eslint-disable-line react-hooks/exhaustive-deps -- API is a stable constant from getApiBase()
 
     const loadFloorTables = useCallback(async () => {
         if (!restaurantId) return;
@@ -499,7 +515,7 @@ export default function TableReservations() {
             }
         }
         setFloorTables(merged);
-    }, [restaurantId]);
+    }, [restaurantId]); // eslint-disable-line react-hooks/exhaustive-deps -- API is a stable constant from getApiBase()
 
     const loadReservations = useCallback(async () => {
         if (!restaurantId) return;
@@ -508,7 +524,7 @@ export default function TableReservations() {
         const r = await fetch(url, { headers: authHeader() });
         if (r.ok) setReservations((await r.json()).reservations || []);
         setLoading(false);
-    }, [restaurantId]);
+    }, [restaurantId]); // eslint-disable-line react-hooks/exhaustive-deps -- API is a stable constant from getApiBase()
 
     useEffect(() => {
         loadTables();
@@ -710,7 +726,7 @@ export default function TableReservations() {
         });
         if (r.ok) {
             loadReservations();
-            toast.success(`Marked as ${STATUS_LABELS[status]}`);
+            toast.success(`Marked as ${STATUS_LABELS[status] || status}`);
         } else toast.error("Update failed");
     };
 

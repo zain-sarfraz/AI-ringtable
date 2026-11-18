@@ -14,7 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { formatCurrency, formatDate } from "@/i18n/formatters";
+import { formatCurrency, formatDate, getDefaultCurrency } from "@/i18n/formatters";
 
 export interface UsageTransaction {
   id: string;
@@ -45,6 +45,7 @@ interface Props {
   rawMaterials: RawMaterialOption[];
   history: UsageTransaction[];
   selectedMaterialId: string;
+  currency?: string;
   onSelectMaterialId: (id: string) => void;
   summary: {
     total_purchased_qty: number;
@@ -57,9 +58,11 @@ export function PosUsageTraceability({
   rawMaterials,
   history,
   selectedMaterialId,
+  currency,
   onSelectMaterialId,
   summary,
 }: Props) {
+  const activeCurrency = currency || getDefaultCurrency();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "sale" | "purchase" | "adjustment">("all");
 
@@ -292,7 +295,7 @@ export function PosUsageTraceability({
                       </td>
 
                       <td className="py-2.5 px-3 text-right font-semibold text-foreground">
-                        {formatCurrency(item.approx_cost)}
+                        {formatCurrency(item.approx_cost, activeCurrency)}
                       </td>
                     </tr>
                   );

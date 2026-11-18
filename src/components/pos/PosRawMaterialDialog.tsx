@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Boxes, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getDefaultCurrency, getCurrencySymbol } from "@/i18n/formatters";
 import { getApiBase } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
 
@@ -39,6 +40,7 @@ interface Props {
   restaurantId: string;
   material: RawMaterial | null;
   suppliers: Supplier[];
+  currency?: string;
   onSaved: () => void;
 }
 
@@ -59,9 +61,12 @@ export function PosRawMaterialDialog({
   restaurantId,
   material,
   suppliers,
+  currency,
   onSaved,
 }: Props) {
   const { toast } = useToast();
+  const activeCurrency = currency || getDefaultCurrency();
+  const symbol = getCurrencySymbol(activeCurrency);
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [unit, setUnit] = useState("kg");
@@ -186,15 +191,19 @@ export function PosRawMaterialDialog({
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Cost Price (per unit)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={costPrice}
-                onChange={(e) => setCostPrice(e.target.value)}
-                className="h-8 text-xs"
-              />
+              <Label className="text-xs font-semibold">Cost Price ({symbol} / unit)</Label>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">{symbol}</span>
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="0.00"
+                  value={costPrice}
+                  onChange={(e) => setCostPrice(e.target.value)}
+                  className="h-8 text-xs pl-7"
+                />
+              </div>
             </div>
           </div>
 

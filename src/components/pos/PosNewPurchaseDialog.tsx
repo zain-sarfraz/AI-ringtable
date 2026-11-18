@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,7 @@ import { Plus, Trash2, Loader2, ShoppingCart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getApiBase } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
-import { formatCurrency } from "@/i18n/formatters";
+import { formatCurrency, getCurrencySymbol, getDefaultCurrency } from "@/i18n/formatters";
 
 interface RawMaterial {
   id: string;
@@ -42,6 +42,8 @@ interface Props {
   restaurantId: string;
   rawMaterials: RawMaterial[];
   suppliers: Supplier[];
+  currency?: string;
+  initialSupplierId?: string;
   onPurchaseCreated: () => void;
   onOpenAddSupplier?: () => void;
   onOpenAddMaterial?: () => void;
@@ -53,12 +55,22 @@ export function PosNewPurchaseDialog({
   restaurantId,
   rawMaterials,
   suppliers,
+  currency,
+  initialSupplierId,
   onPurchaseCreated,
   onOpenAddSupplier,
   onOpenAddMaterial,
 }: Props) {
   const { toast } = useToast();
+  const activeCurrency = currency || getDefaultCurrency();
+  const symbol = getCurrencySymbol(activeCurrency);
   const [supplierId, setSupplierId] = useState("");
+
+  useEffect(() => {
+    if (open && initialSupplierId) {
+      setSupplierId(initialSupplierId);
+    }
+  }, [open, initialSupplierId]);
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0]);
   const [status, setStatus] = useState<"received" | "pending">("received");
   const [notes, setNotes] = useState("");
@@ -134,7 +146,7 @@ export function PosNewPurchaseDialog({
 
       toast({
         title: "✅ Purchase Recorded",
-        description: `Successfully added purchase of ${formatCurrency(totalAmount)}. Raw material stock updated!`,
+        description: `Successfully added purchase of ${formatCurrency(totalAmount, activeCurrency)}. Raw material stock updated!`,
       });
 
       onOpenChange(false);
@@ -242,7 +254,7 @@ export function PosNewPurchaseDialog({
               <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-muted/40 text-[11px] font-semibold text-muted-foreground">
                 <div className="col-span-5">Raw Material</div>
                 <div className="col-span-2 text-center">Qty & Unit</div>
-                <div className="col-span-2 text-right">Cost Price</div>
+                <div className="col-span-2 text-right">Cost Price ({symbol})</div>
                 <div className="col-span-2 text-right">Line Total</div>
                 <div className="col-span-1 text-center"></div>
               </div>
@@ -297,7 +309,7 @@ export function PosNewPurchaseDialog({
                     </div>
 
                     <div className="col-span-2 text-right font-bold text-foreground">
-                      {formatCurrency(lineTotal)}
+                      {formatCurrency(lineTotal, activeCurrency)}
                     </div>
 
                     <div className="col-span-1 text-center">
@@ -328,7 +340,7 @@ export function PosNewPurchaseDialog({
 
                 <div className="flex items-center gap-2 text-sm font-bold">
                   <span className="text-muted-foreground text-xs uppercase font-semibold">Total Cost:</span>
-                  <span className="text-primary text-base font-extrabold">{formatCurrency(totalAmount)}</span>
+                  <span className="text-primary text-base font-extrabold">{formatCurrency(totalAmount, activeCurrency)}</span>
                 </div>
               </div>
             </div>

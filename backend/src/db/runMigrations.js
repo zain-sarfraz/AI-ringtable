@@ -33,7 +33,6 @@ export async function runMigrations(connectionString) {
       const filePath = path.join(migrationsDir, name);
       if (!fs.existsSync(filePath)) {
         console.warn(`[migration] File not found: ${filePath}`);
-        continue;
       }
       const sql = fs.readFileSync(filePath, "utf8");
       try {

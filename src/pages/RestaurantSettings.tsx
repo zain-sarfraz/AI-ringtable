@@ -1,1828 +1,2622 @@
-import { useCallback, useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import { Progress } from "@/components/ui/progress";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Store,
-  Phone,
-  Copy,
-  ExternalLink,
-  Bot,
-  RefreshCw,
-  Sparkles,
-  Mail,
-  MapPin,
-  Hash,
-  ImageIcon,
-  Images,
-  Clock,
-  Plus,
-  Trash2,
-  Gauge,
-} from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
+import { supabase } from "@/integrations/supabase/client";
 import { getApiBase, resolveMediaUrl } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
+import {
+    MINUTE_PACKS,
+    type MinutePackId,
+    type MinutesBalance,
+} from "@/lib/minutePacks";
 import { getCurrencySymbol, setDefaultCurrency } from "@/lib/restaurant";
-import { MINUTE_PACKS, type MinutesBalance, type MinutePackId } from "@/lib/minutePacks";
 import { syncRestaurantMenuToVoiceAgent } from "@/lib/syncRestaurantMenuToVoiceAgent";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
+import {
+    Bot,
+    Clock,
+    Copy,
+    ExternalLink,
+    Gauge,
+    Hash,
+    ImageIcon,
+    Images,
+    Mail,
+    MapPin,
+    Phone,
+    Plus,
+    RefreshCw,
+    Sparkles,
+    Store,
+    Trash2,
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 /** Row from `restaurants` (includes fields set when the tenant was created in super admin). */
 interface Restaurant {
-  id: string;
-  name: string;
-  slug: string;
-  currency?: string | null;
-  phone: string | null;
-  contact_email: string | null;
-  address: string | null;
-  logo_url: string | null;
-  cover_image_url: string | null;
-  twilio_phone_number: string | null;
-  elevenlabs_agent_id: string | null;
-  telnyx_phone_number: string | null;
-  telnyx_phone_number_id: string | null;
-  synthflow_agent_id: string | null;
-  voice_provider: string | null;
-  synthflow_synced_at: string | null;
-  agent_language: string | null;
-  agent_voice_id: string | null;
-  agent_first_message: string | null;
-  agent_system_prompt: string | null;
-  agent_knowledge_doc_id: string | null;
-  agent_menu_synced_at: string | null;
-  allows_delivery?: boolean;
-  allows_pickup?: boolean;
+    id: string;
+    name: string;
+    slug: string;
+    currency?: string | null;
+    phone: string | null;
+    contact_email: string | null;
+    address: string | null;
+    logo_url: string | null;
+    cover_image_url: string | null;
+    twilio_phone_number: string | null;
+    elevenlabs_agent_id: string | null;
+    telnyx_phone_number: string | null;
+    telnyx_phone_number_id: string | null;
+    synthflow_agent_id: string | null;
+    voice_provider: string | null;
+    synthflow_synced_at: string | null;
+    agent_language: string | null;
+    agent_voice_id: string | null;
+    agent_first_message: string | null;
+    agent_system_prompt: string | null;
+    agent_knowledge_doc_id: string | null;
+    agent_menu_synced_at: string | null;
+    allows_delivery?: boolean;
+    allows_pickup?: boolean;
 }
 
 interface WorkingHour {
-  id?: string;
-  restaurant_id?: string;
-  day_of_week: number;
-  open_time: string;
-  close_time: string;
-  is_closed: boolean;
-  [key: string]: unknown;
+    id?: string;
+    restaurant_id?: string;
+    day_of_week: number;
+    open_time: string;
+    close_time: string;
+    is_closed: boolean;
+    [key: string]: unknown;
 }
 
 /** From `check-integration-status` — server `VOICE_ROUTING` + `PUBLIC_API_URL`. */
 interface VoiceIntegrationInfo {
-  synthflow_available: boolean;
-  telnyx_available: boolean;
-  elevenlabs_available: boolean;
-  elevenlabs_configured: boolean;
-  twilio_configured: boolean;
-  livekit_configured: boolean;
-  deepgram_configured: boolean;
-  routing?: string;
-  urls?: {
-    twilio_inbound_webhook?: string;
-    ai_place_order?: string;
-    ai_order_status?: string;
-    elevenlabs_post_call_webhook?: string;
-    synthflow_post_call_webhook?: string;
-  };
+    synthflow_available: boolean;
+    telnyx_available: boolean;
+    elevenlabs_available: boolean;
+    elevenlabs_configured: boolean;
+    twilio_configured: boolean;
+    livekit_configured: boolean;
+    deepgram_configured: boolean;
+    routing?: string;
+    urls?: {
+        twilio_inbound_webhook?: string;
+        ai_place_order?: string;
+        ai_order_status?: string;
+        elevenlabs_post_call_webhook?: string;
+        synthflow_post_call_webhook?: string;
+    };
 }
 
-const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+const DAYS = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
+const DAY_KEYS = [
+    "sunday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+];
 
 const AGENT_LANGUAGES = [
-  { code: "en", label: "English (US / UK / Global)" },
-  { code: "es", label: "Spanish (Español)" },
-  { code: "fr", label: "French (Français)" },
-  { code: "de", label: "German (Deutsch)" },
-  { code: "it", label: "Italian (Italiano)" },
-  { code: "pt", label: "Portuguese (Português)" },
-  { code: "nl", label: "Dutch (Nederlands)" },
-  { code: "pl", label: "Polish (Polski)" },
-  { code: "ru", label: "Russian (Русский)" },
-  { code: "ar", label: "Arabic (العربية)" },
-  { code: "hi", label: "Hindi (हिन्दी)" },
-  { code: "ur", label: "Urdu (اردو)" },
-  { code: "pa", label: "Punjabi (ਪੰਜਾਬੀ)" },
-  { code: "ja", label: "Japanese (日本語)" },
-  { code: "ko", label: "Korean (한국어)" },
-  { code: "zh", label: "Chinese (中文)" },
-  { code: "tr", label: "Turkish (Türkçe)" },
-  { code: "multi", label: "Multilingual (Auto-detect)" },
+    { code: "en", label: "English (US / UK / Global)" },
+    { code: "es", label: "Spanish (Español)" },
+    { code: "fr", label: "French (Français)" },
+    { code: "de", label: "German (Deutsch)" },
+    { code: "it", label: "Italian (Italiano)" },
+    { code: "pt", label: "Portuguese (Português)" },
+    { code: "nl", label: "Dutch (Nederlands)" },
+    { code: "pl", label: "Polish (Polski)" },
+    { code: "ru", label: "Russian (Русский)" },
+    { code: "ar", label: "Arabic (العربية)" },
+    { code: "hi", label: "Hindi (हिन्दी)" },
+    { code: "ur", label: "Urdu (اردو)" },
+    { code: "pa", label: "Punjabi (ਪੰਜਾਬੀ)" },
+    { code: "ja", label: "Japanese (日本語)" },
+    { code: "ko", label: "Korean (한국어)" },
+    { code: "zh", label: "Chinese (中文)" },
+    { code: "tr", label: "Turkish (Türkçe)" },
+    { code: "multi", label: "Multilingual (Auto-detect)" },
 ];
 const LANGUAGES = AGENT_LANGUAGES;
 
 function isEmpty(v: unknown): boolean {
-  return v == null || String(v).trim() === "";
+    return v == null || String(v).trim() === "";
 }
 
 /** Prefer `restaurant_settings`; fill gaps from `restaurants` (where “Add restaurant” stores phone, email, address, images). */
 function mergeDisplaySettings(
-  settings: Record<string, unknown>,
-  restaurant: Record<string, unknown>,
+    settings: Record<string, unknown>,
+    restaurant: Record<string, unknown>,
 ): Record<string, unknown> {
-  const out = { ...settings };
-  if (isEmpty(out.phone)) out.phone = restaurant.phone ?? "";
-  if (isEmpty(out.email)) out.email = restaurant.contact_email ?? "";
-  if (isEmpty(out.address)) out.address = restaurant.address ?? "";
-  if (isEmpty(out.logo_url)) out.logo_url = restaurant.logo_url ?? "";
-  if (isEmpty(out.name)) out.name = restaurant.name ?? "";
-  if (isEmpty(out.currency)) out.currency = restaurant.currency ?? "USD";
-  return out;
+    const out = { ...settings };
+    if (isEmpty(out.phone)) out.phone = restaurant.phone ?? "";
+    if (isEmpty(out.email)) out.email = restaurant.contact_email ?? "";
+    if (isEmpty(out.address)) out.address = restaurant.address ?? "";
+    if (isEmpty(out.logo_url)) out.logo_url = restaurant.logo_url ?? "";
+    if (isEmpty(out.name)) out.name = restaurant.name ?? "";
+    if (isEmpty(out.currency)) out.currency = restaurant.currency ?? "USD";
+    return out;
 }
 
 const POPULAR_CURRENCIES = [
-  { code: "PKR", label: "PKR — Pakistani Rupee (Rs / rupay)" },
-  { code: "USD", label: "USD — US Dollar ($ / dollar)" },
-  { code: "AED", label: "AED — UAE Dirham (AED / dirham)" },
-  { code: "SAR", label: "SAR — Saudi Riyal (SAR / riyal)" },
-  { code: "GBP", label: "GBP — British Pound (£ / pound)" },
-  { code: "EUR", label: "EUR — Euro (€ / euro)" },
-  { code: "CAD", label: "CAD — Canadian Dollar (C$ / dollar)" },
-  { code: "AUD", label: "AUD — Australian Dollar (A$ / dollar)" },
-  { code: "INR", label: "INR — Indian Rupee (₹ / rupay)" },
-  { code: "QAR", label: "QAR — Qatari Riyal (QAR / riyal)" },
-  { code: "KWD", label: "KWD — Kuwaiti Dinar (KWD / dinar)" },
-  { code: "OMR", label: "OMR — Omani Rial (OMR / rial)" },
-  { code: "BHD", label: "BHD — Bahraini Dinar (BHD / dinar)" },
+    { code: "PKR", label: "PKR — Pakistani Rupee (Rs / rupay)" },
+    { code: "USD", label: "USD — US Dollar ($ / dollar)" },
+    { code: "AED", label: "AED — UAE Dirham (AED / dirham)" },
+    { code: "SAR", label: "SAR — Saudi Riyal (SAR / riyal)" },
+    { code: "GBP", label: "GBP — British Pound (£ / pound)" },
+    { code: "EUR", label: "EUR — Euro (€ / euro)" },
+    { code: "CAD", label: "CAD — Canadian Dollar (C$ / dollar)" },
+    { code: "AUD", label: "AUD — Australian Dollar (A$ / dollar)" },
+    { code: "INR", label: "INR — Indian Rupee (₹ / rupay)" },
+    { code: "QAR", label: "QAR — Qatari Riyal (QAR / riyal)" },
+    { code: "KWD", label: "KWD — Kuwaiti Dinar (KWD / dinar)" },
+    { code: "OMR", label: "OMR — Omani Rial (OMR / rial)" },
+    { code: "BHD", label: "BHD — Bahraini Dinar (BHD / dinar)" },
 ];
 
 const RESTAURANT_SELECT =
-  "id, name, slug, currency, phone, contact_email, address, logo_url, cover_image_url, twilio_phone_number, elevenlabs_agent_id, telnyx_phone_number, telnyx_phone_number_id, synthflow_agent_id, voice_provider, synthflow_synced_at, agent_language, agent_voice_id, agent_first_message, agent_system_prompt, agent_knowledge_doc_id, agent_menu_synced_at, allows_delivery, allows_pickup";
+    "id, name, slug, currency, phone, contact_email, address, logo_url, cover_image_url, twilio_phone_number, elevenlabs_agent_id, telnyx_phone_number, telnyx_phone_number_id, synthflow_agent_id, voice_provider, synthflow_synced_at, agent_language, agent_voice_id, agent_first_message, agent_system_prompt, agent_knowledge_doc_id, agent_menu_synced_at, allows_delivery, allows_pickup";
 
 export default function RestaurantSettings() {
-  const { t } = useTranslation(["restaurantSettings", "common"]);
-  const { toast } = useToast();
-  const { restaurantId, loading: activeRestaurantLoading, refreshRestaurants } = useActiveRestaurant();
-  const [s, setS] = useState<Record<string, unknown> | null>(null);
-  const [r, setR] = useState<Restaurant | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [hours, setHours] = useState<WorkingHour[]>([]);
-  const [agentBusy, setAgentBusy] = useState(false);
-  const [syncBusy, setSyncBusy] = useState(false);
-  const [voiceIntegration, setVoiceIntegration] = useState<VoiceIntegrationInfo | null>(null);
-  const [attachTwilioBusy, setAttachTwilioBusy] = useState(false);
-  const [telnyxSearchBusy, setTelnyxSearchBusy] = useState(false);
-  const [telnyxProvisionBusy, setTelnyxProvisionBusy] = useState(false);
-  const [synthflowBusy, setSynthflowBusy] = useState(false);
-  const [synthflowSyncBusy, setSynthflowSyncBusy] = useState(false);
-  /** Explicit full overwrite of the live agent prompt (default: merge / preserve). */
-  const [replaceFullPrompt, setReplaceFullPrompt] = useState(false);
-  const [testCallPhone, setTestCallPhone] = useState("");
-  const [testCallBusy, setTestCallBusy] = useState(false);
-  const [telnyxCandidates, setTelnyxCandidates] = useState<{ phone_number: string; locality?: string }[]>([]);
-  const [telnyxAreaCode, setTelnyxAreaCode] = useState("");
-  const [selectedTelnyxNumber, setSelectedTelnyxNumber] = useState("");
-  const [manualTelnyxNumber, setManualTelnyxNumber] = useState("");
-  const [unassigningNumberBusy, setUnassigningNumberBusy] = useState(false);
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [savingHours, setSavingHours] = useState(false);
-  const [savingFulfillment, setSavingFulfillment] = useState(false);
-  const [minutesBalance, setMinutesBalance] = useState<MinutesBalance | null>(null);
-  const [minutesLoading, setMinutesLoading] = useState(false);
-  const [buyingPackId, setBuyingPackId] = useState<string | null>(null);
-  const [linkAgentId, setLinkAgentId] = useState("");
-  const [linkingAgentBusy, setLinkingAgentBusy] = useState(false);
+    const { t } = useTranslation(["restaurantSettings", "common"]);
+    const { toast } = useToast();
+    const {
+        restaurantId,
+        loading: activeRestaurantLoading,
+        refreshRestaurants,
+    } = useActiveRestaurant();
+    const [s, setS] = useState<Record<string, unknown> | null>(null);
+    const [r, setR] = useState<Restaurant | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [hours, setHours] = useState<WorkingHour[]>([]);
+    const [agentBusy, setAgentBusy] = useState(false);
+    const [syncBusy, setSyncBusy] = useState(false);
+    const [voiceIntegration, setVoiceIntegration] =
+        useState<VoiceIntegrationInfo | null>(null);
+    const [attachTwilioBusy, setAttachTwilioBusy] = useState(false);
+    const [telnyxSearchBusy, setTelnyxSearchBusy] = useState(false);
+    const [telnyxProvisionBusy, setTelnyxProvisionBusy] = useState(false);
+    const [synthflowBusy, setSynthflowBusy] = useState(false);
+    const [synthflowSyncBusy, setSynthflowSyncBusy] = useState(false);
+    /** Explicit full overwrite of the live agent prompt (default: merge / preserve). */
+    const [replaceFullPrompt, setReplaceFullPrompt] = useState(false);
+    const [testCallPhone, setTestCallPhone] = useState("");
+    const [testCallBusy, setTestCallBusy] = useState(false);
+    const [telnyxCandidates, setTelnyxCandidates] = useState<
+        { phone_number: string; locality?: string }[]
+    >([]);
+    const [telnyxAreaCode, setTelnyxAreaCode] = useState("");
+    const [selectedTelnyxNumber, setSelectedTelnyxNumber] = useState("");
+    const [manualTelnyxNumber, setManualTelnyxNumber] = useState("");
+    const [unassigningNumberBusy, setUnassigningNumberBusy] = useState(false);
+    const [savingSettings, setSavingSettings] = useState(false);
+    const [savingHours, setSavingHours] = useState(false);
+    const [savingFulfillment, setSavingFulfillment] = useState(false);
+    const [minutesBalance, setMinutesBalance] = useState<MinutesBalance | null>(
+        null,
+    );
+    const [minutesLoading, setMinutesLoading] = useState(false);
+    const [buyingPackId, setBuyingPackId] = useState<string | null>(null);
+    const [linkAgentId, setLinkAgentId] = useState("");
+    const [linkingAgentBusy, setLinkingAgentBusy] = useState(false);
 
-  /** Soft voice sync after settings changes — never blocks or looks like a failed save. */
-  const quietVoiceSync = useCallback(async (rid: string) => {
-    try {
-      const result = await syncRestaurantMenuToVoiceAgent(rid);
-      if (!result.success && result.provider !== "none") {
-        console.warn("Soft voice sync note:", result.error);
-      }
-    } catch (e) {
-      console.warn("Quiet voice sync error:", e);
-    }
-  }, []);
+    /** Soft voice sync after settings changes — never blocks or looks like a failed save. */
+    const quietVoiceSync = useCallback(async (rid: string) => {
+        try {
+            const result = await syncRestaurantMenuToVoiceAgent(rid);
+            if (!result.success && result.provider !== "none") {
+                console.warn("Soft voice sync note:", result.error);
+            }
+        } catch (e) {
+            console.warn("Quiet voice sync error:", e);
+        }
+    }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data, error } = await supabase.functions.invoke("check-integration-status");
-      if (cancelled || error || !data) return;
-      const v = (data as { voice?: VoiceIntegrationInfo }).voice;
-      if (v) setVoiceIntegration(v);
-    })();
-    return () => {
-      cancelled = true;
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const { data, error } = await supabase.functions.invoke(
+                "check-integration-status",
+            );
+            if (cancelled || error || !data) return;
+            const v = (data as { voice?: VoiceIntegrationInfo }).voice;
+            if (v) setVoiceIntegration(v);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const loadRestaurantData = useCallback(async () => {
+        if (!restaurantId) return;
+        setLoading(true);
+        const [settingsRes, restRes, hoursRes] = await Promise.all([
+            supabase
+                .from("restaurant_settings")
+                .select("*")
+                .eq("restaurant_id", restaurantId)
+                .maybeSingle(),
+            supabase
+                .from("restaurants")
+                .select(RESTAURANT_SELECT)
+                .eq("id", restaurantId)
+                .maybeSingle(),
+            supabase
+                .from("restaurant_hours")
+                .select("*")
+                .eq("restaurant_id", restaurantId)
+                .order("open_time", { ascending: true }),
+        ]);
+
+        if (settingsRes.error || restRes.error || hoursRes.error) {
+            toast({
+                variant: "destructive",
+                title: "Could not load data",
+                description: "Error loading settings or hours",
+            });
+            setLoading(false);
+            return;
+        }
+
+        const restaurant = restRes.data as Restaurant | null;
+        if (!restaurant?.id) {
+            setS(null);
+            setR(null);
+            setHours([]);
+            setLoading(false);
+            return;
+        }
+
+        setHours((hoursRes.data as WorkingHour[]) || []);
+
+        let settings = settingsRes.data as Record<string, unknown> | null;
+        if (!settings) {
+            const ins = await supabase
+                .from("restaurant_settings")
+                .insert({
+                    restaurant_id: restaurantId,
+                    name: restaurant.name || "My Restaurant",
+                    address: restaurant.address ?? null,
+                    phone: restaurant.phone ?? null,
+                    email: restaurant.contact_email ?? null,
+                    logo_url: restaurant.logo_url ?? null,
+                })
+                .select()
+                .maybeSingle();
+            if (ins.error) {
+                toast({
+                    variant: "destructive",
+                    title: "Could not create settings",
+                    description:
+                        (ins.error as { message?: string })?.message ??
+                        String(ins.error),
+                });
+                setS(null);
+                setR(null);
+                setLoading(false);
+                return;
+            }
+            settings = ins.data as Record<string, unknown> | null;
+        }
+
+        setS(
+            mergeDisplaySettings(
+                settings || {},
+                (restaurant as unknown as Record<string, unknown>) || {},
+            ),
+        );
+        setR(restaurant);
+        setLoading(false);
+    }, [restaurantId, toast]);
+
+    const loadMinutesBalance = useCallback(async () => {
+        if (!restaurantId) return;
+        setMinutesLoading(true);
+        try {
+            const token = getToken();
+            const res = await fetch(
+                `${getApiBase()}/api/billing/minutes/${encodeURIComponent(restaurantId)}`,
+                {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok)
+                throw new Error(data.error || "Could not load minutes");
+            setMinutesBalance(data as MinutesBalance);
+        } catch (err) {
+            console.warn("Minutes balance:", err);
+            setMinutesBalance(null);
+        } finally {
+            setMinutesLoading(false);
+        }
+    }, [restaurantId]);
+
+    const buyMinutePack = async (packId: MinutePackId) => {
+        if (!restaurantId) return;
+        setBuyingPackId(packId);
+        try {
+            const token = getToken();
+            const res = await fetch(
+                `${getApiBase()}/api/billing/minutes/checkout`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({
+                        restaurant_id: restaurantId,
+                        pack_id: packId,
+                    }),
+                },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Purchase failed");
+
+            if (data.checkout_url && data.mode === "stripe") {
+                window.location.href = data.checkout_url;
+                return;
+            }
+
+            if (data.balance) setMinutesBalance(data.balance as MinutesBalance);
+            else await loadMinutesBalance();
+
+            toast({
+                title: "Minutes added",
+                description:
+                    data.message || "Your AI minute balance was updated.",
+            });
+        } catch (err) {
+            toast({
+                variant: "destructive",
+                title: "Could not buy minutes",
+                description: err instanceof Error ? err.message : "Try again",
+            });
+        } finally {
+            setBuyingPackId(null);
+        }
     };
-  }, []);
 
-  const loadRestaurantData = useCallback(async () => {
-    if (!restaurantId) return;
-    setLoading(true);
-    const [settingsRes, restRes, hoursRes] = await Promise.all([
-      supabase.from("restaurant_settings").select("*").eq("restaurant_id", restaurantId).maybeSingle(),
-      supabase.from("restaurants").select(RESTAURANT_SELECT).eq("id", restaurantId).maybeSingle(),
-      supabase.from("restaurant_hours").select("*").eq("restaurant_id", restaurantId).order("open_time", { ascending: true }),
+    const addHourSlot = (day: number) => {
+        if (!restaurantId) return;
+        const newSlot: WorkingHour = {
+            restaurant_id: restaurantId,
+            day_of_week: day,
+            open_time: "09:00",
+            close_time: "22:00",
+            is_closed: false,
+        };
+        setHours([...hours, newSlot]);
+    };
+
+    const removeHourSlot = (index: number) => {
+        const newHours = [...hours];
+        newHours.splice(index, 1);
+        setHours(newHours);
+    };
+
+    const updateHourSlot = (index: number, updates: Partial<WorkingHour>) => {
+        const newHours = [...hours];
+        newHours[index] = { ...newHours[index], ...updates };
+        setHours(newHours);
+    };
+
+    const saveHours = async () => {
+        if (!restaurantId) return;
+        setSavingHours(true);
+        try {
+            const invalid = hours.find(
+                (h) =>
+                    !h.is_closed &&
+                    (!String(h.open_time || "").trim() ||
+                        !String(h.close_time || "").trim()),
+            );
+            if (invalid) {
+                toast({
+                    variant: "destructive",
+                    title: "Unable to update hours",
+                    description:
+                        "Open and close times are required for every open day.",
+                });
+                return;
+            }
+
+            const { error: delError } = await supabase
+                .from("restaurant_hours")
+                .delete()
+                .eq("restaurant_id", restaurantId);
+            if (delError) {
+                toast({
+                    variant: "destructive",
+                    title: "Unable to update hours",
+                    description:
+                        (delError as { message?: string })?.message ??
+                        String(delError),
+                });
+                return;
+            }
+
+            const payload = hours.map(
+                ({ day_of_week, open_time, close_time, is_closed }) => ({
+                    restaurant_id: restaurantId,
+                    day_of_week,
+                    open_time: is_closed ? open_time || "00:00" : open_time,
+                    close_time: is_closed ? close_time || "00:00" : close_time,
+                    is_closed: Boolean(is_closed),
+                }),
+            );
+
+            if (payload.length > 0) {
+                const { error } = await supabase
+                    .from("restaurant_hours")
+                    .insert(payload);
+                if (error) {
+                    toast({
+                        variant: "destructive",
+                        title: "Unable to update hours",
+                        description:
+                            (error as { message?: string })?.message ??
+                            String(error),
+                    });
+                    return;
+                }
+            }
+
+            toast({ title: "Working hours saved" });
+            const { data } = await supabase
+                .from("restaurant_hours")
+                .select("*")
+                .eq("restaurant_id", restaurantId)
+                .order("open_time", { ascending: true });
+            setHours((data as WorkingHour[]) || []);
+            void quietVoiceSync(restaurantId);
+        } finally {
+            setSavingHours(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeRestaurantLoading) return;
+        if (!restaurantId) {
+            setS(null);
+            setR(null);
+            setLoading(false);
+            return;
+        }
+        void loadRestaurantData();
+        void loadMinutesBalance();
+    }, [
+        restaurantId,
+        activeRestaurantLoading,
+        loadRestaurantData,
+        loadMinutesBalance,
     ]);
 
-    if (settingsRes.error || restRes.error || hoursRes.error) {
-      toast({
-        variant: "destructive",
-        title: "Could not load data",
-        description: "Error loading settings or hours",
-      });
-      setLoading(false);
-      return;
-    }
+    /** After Stripe Checkout return: claim paid minutes and clean the URL. */
+    useEffect(() => {
+        if (typeof window === "undefined" || !restaurantId) return;
+        const params = new URLSearchParams(window.location.search);
+        const purchaseId = params.get("minutes_paid");
+        const cancelled = params.get("minutes_cancel");
+        if (!purchaseId && !cancelled) return;
 
-    const restaurant = restRes.data as Restaurant | null;
-    if (!restaurant?.id) {
-      setS(null);
-      setR(null);
-      setHours([]);
-      setLoading(false);
-      return;
-    }
+        const cleanUrl = () => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("minutes_paid");
+            url.searchParams.delete("minutes_cancel");
+            window.history.replaceState({}, "", url.pathname + url.search);
+        };
 
-    setHours((hoursRes.data as WorkingHour[]) || []);
-
-    let settings = settingsRes.data as Record<string, unknown> | null;
-    if (!settings) {
-      const ins = await supabase
-        .from("restaurant_settings")
-        .insert({
-          restaurant_id: restaurantId,
-          name: restaurant.name || "My Restaurant",
-          address: restaurant.address ?? null,
-          phone: restaurant.phone ?? null,
-          email: restaurant.contact_email ?? null,
-          logo_url: restaurant.logo_url ?? null,
-        })
-        .select()
-        .maybeSingle();
-      if (ins.error) {
-        toast({
-          variant: "destructive",
-          title: "Could not create settings",
-          description: (ins.error as { message?: string })?.message ?? String(ins.error),
-        });
-        setS(null);
-        setR(null);
-        setLoading(false);
-        return;
-      }
-      settings = ins.data as Record<string, unknown> | null;
-    }
-
-    setS(mergeDisplaySettings(settings || {}, (restaurant as any) || {}) as any);
-    setR(restaurant);
-    setLoading(false);
-  }, [restaurantId, toast]);
-
-  const loadMinutesBalance = useCallback(async () => {
-    if (!restaurantId) return;
-    setMinutesLoading(true);
-    try {
-      const token = getToken();
-      const res = await fetch(`${getApiBase()}/api/billing/minutes/${encodeURIComponent(restaurantId)}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Could not load minutes");
-      setMinutesBalance(data as MinutesBalance);
-    } catch (err) {
-      console.warn("Minutes balance:", err);
-      setMinutesBalance(null);
-    } finally {
-      setMinutesLoading(false);
-    }
-  }, [restaurantId]);
-
-  const buyMinutePack = async (packId: MinutePackId) => {
-    if (!restaurantId) return;
-    setBuyingPackId(packId);
-    try {
-      const token = getToken();
-      const res = await fetch(`${getApiBase()}/api/billing/minutes/checkout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ restaurant_id: restaurantId, pack_id: packId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Purchase failed");
-
-      if (data.checkout_url && data.mode === "stripe") {
-        window.location.href = data.checkout_url;
-        return;
-      }
-
-      if (data.balance) setMinutesBalance(data.balance as MinutesBalance);
-      else await loadMinutesBalance();
-
-      toast({
-        title: "Minutes added",
-        description: data.message || "Your AI minute balance was updated.",
-      });
-    } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Could not buy minutes",
-        description: err instanceof Error ? err.message : "Try again",
-      });
-    } finally {
-      setBuyingPackId(null);
-    }
-  };
-
-  const addHourSlot = (day: number) => {
-    if (!restaurantId) return;
-    const newSlot: WorkingHour = {
-      restaurant_id: restaurantId,
-      day_of_week: day,
-      open_time: "09:00",
-      close_time: "22:00",
-      is_closed: false,
-    };
-    setHours([...hours, newSlot]);
-  };
-
-  const removeHourSlot = (index: number) => {
-    const newHours = [...hours];
-    newHours.splice(index, 1);
-    setHours(newHours);
-  };
-
-  const updateHourSlot = (index: number, updates: Partial<WorkingHour>) => {
-    const newHours = [...hours];
-    newHours[index] = { ...newHours[index], ...updates };
-    setHours(newHours);
-  };
-
-  const saveHours = async () => {
-    if (!restaurantId) return;
-    setSavingHours(true);
-    try {
-      const invalid = hours.find(
-        (h) => !h.is_closed && (!String(h.open_time || "").trim() || !String(h.close_time || "").trim()),
-      );
-      if (invalid) {
-        toast({
-          variant: "destructive",
-          title: "Unable to update hours",
-          description: "Open and close times are required for every open day.",
-        });
-        return;
-      }
-
-      const { error: delError } = await supabase
-        .from("restaurant_hours")
-        .delete()
-        .eq("restaurant_id", restaurantId);
-      if (delError) {
-        toast({
-          variant: "destructive",
-          title: "Unable to update hours",
-          description: (delError as { message?: string })?.message ?? String(delError),
-        });
-        return;
-      }
-
-      const payload = hours.map(({ day_of_week, open_time, close_time, is_closed }) => ({
-        restaurant_id: restaurantId,
-        day_of_week,
-        open_time: is_closed ? open_time || "00:00" : open_time,
-        close_time: is_closed ? close_time || "00:00" : close_time,
-        is_closed: Boolean(is_closed),
-      }));
-
-      if (payload.length > 0) {
-        const { error } = await supabase.from("restaurant_hours").insert(payload);
-        if (error) {
-          toast({
-            variant: "destructive",
-            title: "Unable to update hours",
-            description: (error as { message?: string })?.message ?? String(error),
-          });
-          return;
+        if (cancelled) {
+            cleanUrl();
+            toast({
+                title: "Purchase cancelled",
+                description: "No minutes were added.",
+            });
+            return;
         }
-      }
 
-      toast({ title: "Working hours saved" });
-      const { data } = await supabase
-        .from("restaurant_hours")
-        .select("*")
-        .eq("restaurant_id", restaurantId)
-        .order("open_time", { ascending: true });
-      setHours((data as WorkingHour[]) || []);
-      void quietVoiceSync(restaurantId);
-    } finally {
-      setSavingHours(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeRestaurantLoading) return;
-    if (!restaurantId) {
-      setS(null);
-      setR(null);
-      setLoading(false);
-      return;
-    }
-    void loadRestaurantData();
-    void loadMinutesBalance();
-  }, [restaurantId, activeRestaurantLoading, loadRestaurantData, loadMinutesBalance]);
-
-  /** After Stripe Checkout return: claim paid minutes and clean the URL. */
-  useEffect(() => {
-    if (typeof window === "undefined" || !restaurantId) return;
-    const params = new URLSearchParams(window.location.search);
-    const purchaseId = params.get("minutes_paid");
-    const cancelled = params.get("minutes_cancel");
-    if (!purchaseId && !cancelled) return;
-
-    const cleanUrl = () => {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("minutes_paid");
-      url.searchParams.delete("minutes_cancel");
-      window.history.replaceState({}, "", url.pathname + url.search);
-    };
-
-    if (cancelled) {
-      cleanUrl();
-      toast({ title: "Purchase cancelled", description: "No minutes were added." });
-      return;
-    }
-
-    let cancelledFetch = false;
-    (async () => {
-      try {
-        const token = getToken();
-        const res = await fetch(`${getApiBase()}/api/billing/minutes/claim`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ purchase_id: purchaseId }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (cancelledFetch) return;
-        if (!res.ok) throw new Error(data.error || "Could not confirm purchase");
-        if (data.balance) setMinutesBalance(data.balance as MinutesBalance);
-        else await loadMinutesBalance();
-        toast({
-          title: "Minutes added",
-          description: "Your AI minute pack payment was confirmed.",
-        });
-      } catch (err) {
-        if (!cancelledFetch) {
-          toast({
-            variant: "destructive",
-            title: "Could not confirm minutes",
-            description: err instanceof Error ? err.message : "Refresh and try again",
-          });
-          void loadMinutesBalance();
-        }
-      } finally {
-        cleanUrl();
-      }
-    })();
-
-    return () => {
-      cancelledFetch = true;
-    };
-  }, [restaurantId, loadMinutesBalance, toast]);
-
-  const saveSettings = async () => {
-    if (!s || !r || !restaurantId) return;
-
-    const name = String(s.name ?? "").trim() || r.name;
-    const address = String(s.address ?? "").trim() || null;
-    const phone = String(s.phone ?? "").trim() || null;
-    const contactEmail = String(s.email ?? "").trim() || null;
-    const logoUrl = String(s.logo_url ?? "").trim() || null;
-    const coverUrl = String(r.cover_image_url ?? "").trim() || null;
-    const currency = String(s.currency ?? "USD").trim().toUpperCase() || "USD";
-    const taxRate = Math.min(999.99, Math.max(0, Number(s.tax_rate) || 0));
-    const deliveryFee = Math.max(0, Number(s.delivery_fee) || 0);
-    const minOrder = Math.max(0, Number(s.min_order_amount) || 0);
-    const isOpen = Boolean(s.is_open);
-
-    setSavingSettings(true);
-    try {
-      const settingsUpdate = {
-        name,
-        address,
-        phone,
-        email: contactEmail,
-        currency,
-        tax_rate: taxRate,
-        delivery_fee: deliveryFee,
-        min_order_amount: minOrder,
-        is_open: isOpen,
-        logo_url: logoUrl,
-      };
-
-      // Prefer restaurant_id (unique) — id-only filters silently no-op when row is missing/out of scope
-      const settingsQuery = s.id
-        ? supabase.from("restaurant_settings").update(settingsUpdate).eq("id", s.id).eq("restaurant_id", restaurantId)
-        : supabase.from("restaurant_settings").update(settingsUpdate).eq("restaurant_id", restaurantId);
-
-      const [settingsRes, restaurantRes] = await Promise.all([
-        settingsQuery.select("id"),
-        supabase
-          .from("restaurants")
-          .update({
-            name,
-            address,
-            phone,
-            contact_email: contactEmail,
-            logo_url: logoUrl,
-            cover_image_url: coverUrl,
-            is_accepting_orders: isOpen,
-            currency,
-          })
-          .eq("id", r.id)
-          .select("id"),
-      ]);
-
-      if (settingsRes.error || restaurantRes.error) {
-        toast({
-          variant: "destructive",
-          title: "Unable to update restaurant settings",
-          description:
-            (settingsRes.error as { message?: string })?.message ||
-            (restaurantRes.error as { message?: string })?.message ||
-            "Save failed",
-        });
-        return;
-      }
-
-      const settingsRows = Array.isArray(settingsRes.data) ? settingsRes.data : settingsRes.data ? [settingsRes.data] : [];
-      const restaurantRows = Array.isArray(restaurantRes.data) ? restaurantRes.data : restaurantRes.data ? [restaurantRes.data] : [];
-
-      if (!settingsRows.length || !restaurantRows.length) {
-        toast({
-          variant: "destructive",
-          title: "Unable to update restaurant settings",
-          description: "No matching restaurant was updated. Check you have access to this restaurant.",
-        });
-        return;
-      }
-
-      setDefaultCurrency(currency);
-      await refreshRestaurants();
-      toast({ title: "Settings saved" });
-      await loadRestaurantData();
-      void quietVoiceSync(restaurantId);
-    } finally {
-      setSavingSettings(false);
-    }
-  };
-
-  const saveTelephony = async () => {
-    if (!r) return;
-    const { error } = await supabase
-      .from("restaurants")
-      .update({
-        twilio_phone_number: r.twilio_phone_number?.trim() || null,
-        elevenlabs_agent_id: r.elevenlabs_agent_id?.trim() || null,
-        agent_language: r.agent_language || "ur",
-        agent_voice_id: r.agent_voice_id?.trim() || null,
-        agent_first_message: r.agent_first_message?.trim() || null,
-        agent_system_prompt: r.agent_system_prompt?.trim() || null,
-      })
-      .eq("id", r.id);
-    if (error) toast({ variant: "destructive", title: "Failed", description: (error as any)?.message });
-    else {
-      toast({ title: "Telephony settings saved" });
-      await loadRestaurantData();
-    }
-  };
-
-  const attachTwilioInElevenLabs = async () => {
-    if (!r?.id) return;
-    if (!r.twilio_phone_number?.trim() || !r.elevenlabs_agent_id?.trim()) {
-      toast({
-        variant: "destructive",
-        title: "Missing fields",
-        description: "Enter and save a Twilio E.164 number and ElevenLabs agent ID before linking in ElevenLabs.",
-      });
-      return;
-    }
-    setAttachTwilioBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("attach-twilio-to-agent", {
-        body: { restaurant_id: r.id },
-      });
-      if (error) throw new Error(error.message);
-      const d = data as { success?: boolean; error?: string; phone_number_id?: string };
-      if (!d?.success) throw new Error(d?.error || "Failed to attach");
-      toast({
-        title: "Twilio linked in ElevenLabs",
-        description: d.phone_number_id ? `ElevenLabs phone_number_id: ${d.phone_number_id}` : "Number assigned to your agent.",
-      });
-    } catch (e: unknown) {
-      toast({
-        variant: "destructive",
-        title: "Attach failed",
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setAttachTwilioBusy(false);
-    }
-  };
-
-  const searchTelnyxNumbers = async () => {
-    setTelnyxSearchBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("restaurant-telnyx-search", {
-        body: {
-          area_code: telnyxAreaCode.trim() || undefined,
-          limit: 10,
-        },
-      });
-      if (error) throw new Error(error.message);
-      const d = data as { success?: boolean; error?: string; numbers?: { phone_number: string; locality?: string }[] };
-      if (!d?.success) throw new Error(d?.error || "Search failed");
-      setTelnyxCandidates(d.numbers || []);
-      if (!(d.numbers || []).length) {
-        toast({ title: "No numbers found", description: "Try another area code or locality." });
-      }
-    } catch (e: unknown) {
-      toast({
-        variant: "destructive",
-        title: "Telnyx search failed",
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setTelnyxSearchBusy(false);
-    }
-  };
-
-  const provisionTelnyxNumber = async (opts?: { skipPurchase?: boolean; phone?: string }) => {
-    if (!r?.id) return;
-    const raw = (opts?.phone || selectedTelnyxNumber || manualTelnyxNumber).trim();
-    const digits = raw.replace(/\D/g, "");
-    const phone = raw.startsWith("+")
-      ? "+" + digits
-      : digits.length === 11 && digits.startsWith("1")
-        ? "+" + digits
-        : digits.length === 10
-          ? "+1" + digits
-          : "+" + digits;
-    if (!/^\+\d{7,15}$/.test(phone)) {
-      toast({
-        variant: "destructive",
-        title: "Invalid number",
-        description: "Please enter a valid phone number, e.g. +12202650290",
-      });
-      return;
-    }
-    setTelnyxProvisionBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("restaurant-provision-telnyx-number", {
-        body: {
-          restaurant_id: r.id,
-          phone_number: phone,
-          skip_purchase: !!opts?.skipPurchase,
-          reassign: true,
-        },
-      });
-      if (error) throw new Error(error.message);
-      const d = data as { success?: boolean; error?: string; telnyx_phone_number?: string; warning?: string };
-      if (!d?.success) throw new Error(d?.error || "Provision failed");
-      toast({
-        title: "Telnyx number ready",
-        description: d.warning
-          ? `${d.telnyx_phone_number} saved. Note: ${d.warning}`
-          : `${d.telnyx_phone_number} provisioned and imported to Synthflow.`,
-      });
-      await loadRestaurantData();
-    } catch (e: unknown) {
-      toast({
-        variant: "destructive",
-        title: "Provision failed",
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setTelnyxProvisionBusy(false);
-    }
-  };
-
-  const unassignTelnyxNumber = async () => {
-    if (!r?.id || !r.telnyx_phone_number) return;
-    const confirmed = window.confirm(
-      `Remove phone number ${r.telnyx_phone_number} from ${r.name}? You can re-assign it to another restaurant anytime.`,
-    );
-    if (!confirmed) return;
-    setUnassigningNumberBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("restaurant-unassign-telnyx-number", {
-        body: { restaurant_id: r.id },
-      });
-      if (error) throw new Error(error.message);
-      const d = data as { success?: boolean; error?: string; message?: string };
-      if (!d?.success) throw new Error(d?.error || "Failed to remove number");
-      toast({
-        title: "Number removed",
-        description: d.message || "Phone number removed successfully.",
-      });
-      await loadRestaurantData();
-    } catch (e: unknown) {
-      toast({
-        variant: "destructive",
-        title: "Remove failed",
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setUnassigningNumberBusy(false);
-    }
-  };
-
-  const createOrUpdateSynthflowAgent = async () => {
-    if (!r?.id) return;
-    setSynthflowBusy(true);
-    try {
-      // Do NOT write agent_system_prompt to DB before Synthflow succeeds — empty/partial
-      // editor text must not clear the saved prompt. Backend merges and persists after API OK.
-      await supabase
-        .from("restaurants")
-        .update({
-          agent_language: r.agent_language || "ur",
-          agent_voice_id: r.agent_voice_id?.trim() || null,
-          agent_first_message: r.agent_first_message?.trim() || null,
-        })
-        .eq("id", r.id);
-
-      const { data, error } = await supabase.functions.invoke("restaurant-create-synthflow-agent", {
-        body: {
-          restaurant_id: r.id,
-          synthflow_agent_id: r.synthflow_agent_id || undefined,
-          language: r.agent_language || "ur",
-          voice_id: r.agent_voice_id?.trim() || undefined,
-          first_message: r.agent_first_message?.trim() || undefined,
-          system_prompt: r.agent_system_prompt?.trim() || undefined,
-          replace_full_prompt: replaceFullPrompt,
-          expected_synced_at: r.synthflow_synced_at || undefined,
-        },
-      });
-      if (error) {
-        let errMsg = error.message;
-        try {
-          const body = await (error as any).context?.json();
-          if (body?.error) errMsg = body.error;
-        } catch {}
-        throw new Error(errMsg);
-      }
-      const d = data as {
-        success?: boolean;
-        skipped?: boolean;
-        code?: string;
-        error?: string;
-        warning?: string;
-        message?: string;
-        synthflow_agent_id?: string;
-        action?: string;
-        orders_land_on?: string;
-      };
-      if (d?.skipped || d?.code === "VOICE_SYNC_DISABLED") {
-        toast({
-          title: "Voice sync skipped (local development)",
-          description:
-            d.warning ||
-            d.message ||
-            "Outbound Synthflow updates are disabled on this laptop so live agents are not overwritten. Sync from the production server instead.",
-        });
-        return;
-      }
-      if (!d?.success) {
-        await loadRestaurantData();
-        throw new Error(d?.error || "Failed");
-      }
-      setReplaceFullPrompt(false);
-      toast({
-        title: "Synthflow agent updated",
-        description:
-          d.message ||
-          (d.orders_land_on === "local"
-            ? "Test-call orders will show on this LOCAL dashboard (localhost), not ringtable.io."
-            : d.synthflow_agent_id
-              ? `Agent ID: ${d.synthflow_agent_id}. Phone was not changed.`
-              : "Agent configured."),
-      });
-      await loadRestaurantData();
-    } catch (e: unknown) {
-      toast({
-        variant: "destructive",
-        title: "Synthflow agent error",
-        description: e instanceof Error ? e.message : String(e),
-      });
-      await loadRestaurantData().catch(() => {});
-    } finally {
-      setSynthflowBusy(false);
-    }
-  };
-
-  const syncMenuToSynthflow = async () => {
-    if (!r?.id) return;
-    setSynthflowSyncBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("sync-restaurant-menu-to-synthflow", {
-        body: { restaurant_id: r.id },
-      });
-      if (error) throw new Error(error.message);
-      const d = data as {
-        success?: boolean;
-        skipped?: boolean;
-        code?: string;
-        error?: string;
-        warning?: string;
-        message?: string;
-        orders_land_on?: string;
-      };
-      if (d?.skipped || d?.code === "VOICE_SYNC_DISABLED") {
-        toast({
-          title: "Menu saved locally — live voice sync skipped",
-          description:
-            d.warning ||
-            d.message ||
-            "Development mode does not push menu changes to Synthflow. To update the live phone agent, sync from the production server (APP_ENV=production).",
-        });
-        return;
-      }
-      if (!d?.success) throw new Error(d?.error || "Sync failed");
-      toast({
-        title: "Menu & coupons synced to Synthflow",
-        description:
-          d.message ||
-          (d.orders_land_on === "local"
-            ? "Test-call orders will appear on localhost Orders — not ringtable.io."
-            : undefined),
-      });
-      await loadRestaurantData();
-    } catch (e: unknown) {
-      toast({
-        variant: "destructive",
-        title: "Synthflow sync failed",
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setSynthflowSyncBusy(false);
-    }
-  };
-
-  const placeTestCall = async () => {
-    if (!r?.id) return;
-    const phone = testCallPhone.trim();
-    if (phone.replace(/\D/g, "").length < 10) {
-      toast({
-        variant: "destructive",
-        title: "Phone number needed",
-        description: "Enter the number the agent should call, with country code. Example: +923001234567",
-      });
-      return;
-    }
-    setTestCallBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("synthflow-test-call", {
-        body: { restaurant_id: r.id, phone, name: "Test call" },
-      });
-      const d = (data || {}) as {
-        success?: boolean;
-        error?: string;
-        message?: string;
-        warning?: string | null;
-        phone?: string;
-        dial_in_number?: string;
-        skipped?: boolean;
-        local_orders_ready?: boolean;
-      };
-      if (error || d?.skipped || !d?.success) {
-        const dialIn =
-          d.dial_in_number || r.telnyx_phone_number || r.twilio_phone_number || r.phone || null;
-        throw new Error(
-          d.error ||
-            error?.message ||
-            (dialIn
-              ? `Outbound dial failed. Call ${dialIn} from your phone to test instead.`
-              : "Test call failed"),
-        );
-      }
-      toast({
-        variant: d.local_orders_ready === false || d.warning ? "destructive" : "default",
-        title: d.local_orders_ready === false ? "Test call started — local orders blocked" : "Test call started",
-        description: d.message || `The agent is calling ${d.phone || phone}. Answer to test the order flow.`,
-      });
-    } catch (e: unknown) {
-      toast({
-        variant: "destructive",
-        title: "Test call failed",
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setTestCallBusy(false);
-    }
-  };
-
-  const createOrUpdateAgent = async () => {
-    if (!r) return;
-    setAgentBusy(true);
-    try {
-      await supabase
-        .from("restaurants")
-        .update({
-          agent_language: r.agent_language || "ur",
-          agent_voice_id: r.agent_voice_id?.trim() || null,
-          agent_first_message: r.agent_first_message?.trim() || null,
-          agent_system_prompt: r.agent_system_prompt?.trim() || null,
-        })
-        .eq("id", r.id);
-
-      const { data, error } = await supabase.functions.invoke("create-restaurant-agent", {
-        body: { restaurant_id: r.id },
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Failed");
-      const agentId = (data as { elevenlabs_agent_id?: string | null }).elevenlabs_agent_id ?? r.elevenlabs_agent_id;
-      setR({ ...r, elevenlabs_agent_id: agentId ?? null });
-      const w = (data as { warning?: string }).warning;
-      if (w) {
-        toast({
-          title: "AI agent",
-          description: w,
-        });
-      } else {
-        toast({
-          title: data.action === "created" ? "AI agent created" : "AI agent updated",
-          description: agentId ? `ElevenLabs agent ID: ${agentId}` : "Configuration updated.",
-        });
-      }
-      await loadRestaurantData();
-    } catch (e: unknown) {
-      toast({ variant: "destructive", title: "Agent error", description: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setAgentBusy(false);
-    }
-  };
-
-  const syncMenu = async () => {
-    if (!r) return;
-    setSyncBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("sync-restaurant-menu-to-agent", {
-        body: { restaurant_id: r.id },
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Failed");
-      setR({ ...r, agent_menu_synced_at: new Date().toISOString(), agent_knowledge_doc_id: data.doc_id });
-      toast({
-        title: "Menu synced to agent",
-        description: `${data.doc_chars} characters uploaded to ElevenLabs knowledge base`,
-      });
-      await loadRestaurantData();
-    } catch (e: unknown) {
-      toast({ variant: "destructive", title: "Sync error", description: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setSyncBusy(false);
-    }
-  };
-
-  const apiBase = getApiBase();
-  const integUrls = voiceIntegration?.urls;
-  const inboundWebhookUrl = integUrls?.twilio_inbound_webhook ?? `${apiBase}/api/functions/twilio-inbound-webhook`;
-  const placeOrderToolUrl = integUrls?.ai_place_order ?? `${apiBase}/api/functions/ai-place-order`;
-  const orderStatusToolUrl = integUrls?.ai_order_status ?? `${apiBase}/api/functions/ai-order-status`;
-  const postCallWebhookUrl =
-    integUrls?.elevenlabs_post_call_webhook ?? `${apiBase}/api/functions/elevenlabs-conversation-webhook`;
-  const synthflowWebhookUrl =
-    integUrls?.synthflow_post_call_webhook ?? `${apiBase}/api/functions/synthflow-post-call-webhook`;
-  const voiceRouting = voiceIntegration?.routing ?? "twilio_webhook";
-  const isSynthflowMode = voiceRouting === "synthflow_telnyx" || r?.voice_provider === "synthflow_telnyx";
-
-  const copy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({ title: "Copied" });
-  };
-
-  if (activeRestaurantLoading || loading) {
-    return (
-      <div className="max-w-4xl mx-auto space-y-6 p-6 pb-16">
-        <Skeleton className="h-9 w-64" />
-        <Skeleton className="h-4 w-96" />
-        <Skeleton className="h-48 w-full rounded-xl" />
-        <Skeleton className="h-40 w-full rounded-xl" />
-      </div>
-    );
-  }
-
-  if (!restaurantId || !s || !r) {
-    return (
-      <p className="text-muted-foreground p-6 max-w-4xl mx-auto">
-        No restaurant is linked to your account. Ask a super admin to add you as the restaurant owner.
-      </p>
-    );
-  }
-
-  const logoPreview = resolveMediaUrl(String(s.logo_url ?? "")) ?? undefined;
-  const coverPreview = resolveMediaUrl(String(r.cover_image_url ?? "")) ?? undefined;
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-8 p-6 pb-16">
-      <header className="space-y-1">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Store className="h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">{t("restaurantSettings:title", "Restaurant settings")}</h1>
-              <p className="text-muted-foreground text-sm">
-                {t("restaurantSettings:subtitle", "Public-facing details, pricing, and phone AI — kept in sync with your live restaurant record.")}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            <Hash className="h-4 w-4 shrink-0" />
-            <span className="font-mono text-xs sm:text-sm">{r.slug}</span>
-          </div>
-        </div>
-      </header>
-
-      <Card className="overflow-hidden border shadow-sm">
-        <CardHeader className="border-b bg-muted/30 pb-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1.5">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Gauge className="h-5 w-5 text-primary" />
-                {t("restaurantSettings:aiMinutes", "AI call minutes")}
-              </CardTitle>
-              <CardDescription>
-                {t(
-                  "restaurantSettings:aiMinutesDesc",
-                  "Minutes included in your plan for this billing period, plus any top-ups you buy. Remaining = included + purchased − used.",
-                )}
-              </CardDescription>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="shrink-0"
-              disabled={minutesLoading}
-              onClick={() => void loadMinutesBalance()}
-              title="Refresh minutes"
-            >
-              <RefreshCw className={`h-4 w-4 ${minutesLoading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-5 pt-6">
-          {minutesLoading && !minutesBalance ? (
-            <div className="space-y-3">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-20 w-full" />
-            </div>
-          ) : minutesBalance ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary" className="capitalize">
-                  {minutesBalance.plan || "growth"} plan
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  Period {new Date(minutesBalance.period_start).toLocaleDateString()} –{" "}
-                  {new Date(minutesBalance.period_end).toLocaleDateString()}
-                </span>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-4">
-                <div className="rounded-lg border bg-muted/20 p-3">
-                  <div className="text-xs text-muted-foreground">Included</div>
-                  <div className="text-xl font-semibold tabular-nums">
-                    {minutesBalance.included_minutes.toLocaleString()}
-                  </div>
-                </div>
-                <div className="rounded-lg border bg-muted/20 p-3">
-                  <div className="text-xs text-muted-foreground">Purchased</div>
-                  <div className="text-xl font-semibold tabular-nums">
-                    {minutesBalance.purchased_minutes.toLocaleString()}
-                  </div>
-                </div>
-                <div className="rounded-lg border bg-muted/20 p-3">
-                  <div className="text-xs text-muted-foreground">Used</div>
-                  <div className="text-xl font-semibold tabular-nums">
-                    {minutesBalance.used_minutes.toLocaleString()}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-                  <div className="text-xs text-muted-foreground">Remaining</div>
-                  <div className="text-xl font-semibold tabular-nums text-primary">
-                    {minutesBalance.remaining_minutes.toLocaleString()}
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Usage this period</span>
-                  <span>
-                    {minutesBalance.used_minutes.toLocaleString()} /{" "}
-                    {minutesBalance.allowance_minutes.toLocaleString()} min
-                  </span>
-                </div>
-                <Progress
-                  value={
-                    minutesBalance.allowance_minutes > 0
-                      ? Math.min(
-                          100,
-                          (minutesBalance.used_minutes / minutesBalance.allowance_minutes) * 100,
-                        )
-                      : 0
-                  }
-                />
-              </div>
-              <div>
-                <p className="text-sm font-medium mb-3">
-                  {t("restaurantSettings:buyMoreMinutes", "Need more minutes? Buy a top-up pack")}
-                </p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {(minutesBalance.packs?.length ? minutesBalance.packs : MINUTE_PACKS).map((pack) => (
-                    <Button
-                      key={pack.id}
-                      type="button"
-                      variant="outline"
-                      className="h-auto justify-between py-3 px-4"
-                      disabled={!!buyingPackId}
-                      onClick={() => void buyMinutePack(pack.id as MinutePackId)}
-                    >
-                      <span className="text-left">
-                        <span className="block font-semibold">{pack.label}</span>
-                        <span className="text-xs text-muted-foreground font-normal">One-time top-up</span>
-                      </span>
-                      <span className="font-bold text-primary">
-                        {buyingPackId === pack.id ? "…" : pack.priceLabel}
-                      </span>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Minutes balance unavailable. Ensure the API is running and you are signed in.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="overflow-hidden border shadow-sm">
-        <CardHeader className="border-b bg-muted/30 pb-4">
-          <CardTitle className="text-lg">{t("restaurantSettings:general", "General")}</CardTitle>
-          <CardDescription>
-            {t("restaurantSettings:generalDesc", "Name, location, and contact info. Values you entered when the restaurant was created appear here automatically (we merge them from your main restaurant record if a field was left empty in storefront settings).")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6 pt-6">
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="rs-name">{t("restaurantSettings:restaurantName", "Restaurant name")}</Label>
-              <Input
-                id="rs-name"
-                value={String(s.name ?? "")}
-                onChange={(e) => setS({ ...s, name: e.target.value })}
-                className="max-w-xl"
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="rs-address" className="flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5" />
-                {t("restaurantSettings:address", "Address")}
-              </Label>
-              <Textarea
-                id="rs-address"
-                rows={3}
-                value={String(s.address ?? "")}
-                onChange={(e) => setS({ ...s, address: e.target.value })}
-                placeholder={t("restaurantSettings:addressPlaceholder", "Street, city, postal code…")}
-                className="resize-y min-h-[80px]"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="rs-phone" className="flex items-center gap-1.5">
-                <Phone className="h-3.5 w-3.5" />
-                {t("restaurantSettings:phone", "Phone")}
-              </Label>
-              <Input
-                id="rs-phone"
-                value={String(s.phone ?? "")}
-                onChange={(e) => setS({ ...s, phone: e.target.value })}
-                placeholder="+1…"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="rs-email" className="flex items-center gap-1.5">
-                <Mail className="h-3.5 w-3.5" />
-                {t("restaurantSettings:contactEmail", "Contact email")}
-              </Label>
-              <Input
-                id="rs-email"
-                type="email"
-                value={String(s.email ?? "")}
-                onChange={(e) => setS({ ...s, email: e.target.value })}
-                placeholder="hello@restaurant.com"
-              />
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <ImageIcon className="h-4 w-4 text-muted-foreground" />
-              {t("restaurantSettings:branding", "Branding")}
-            </div>
-            <div className="grid gap-6 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="rs-logo">{t("restaurantSettings:logoUrl", "Logo URL")}</Label>
-                <Input
-                  id="rs-logo"
-                  value={String(s.logo_url ?? "")}
-                  onChange={(e) => setS({ ...s, logo_url: e.target.value })}
-                  placeholder={t("restaurantSettings:logoUrlPlaceholder", "https://… or path from upload")}
-                  className="font-mono text-xs sm:text-sm"
-                />
-                {logoPreview ? (
-                  <div className="mt-2 overflow-hidden rounded-lg border bg-muted/30 p-2 w-fit">
-                    <img src={logoPreview} alt={t("restaurantSettings:logoPreview", "Logo preview")} className="h-20 w-20 rounded-md object-cover" />
-                  </div>
-                ) : null}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="rs-cover" className="flex items-center gap-1.5">
-                  <Images className="h-3.5 w-3.5" />
-                  {t("restaurantSettings:coverImageUrl", "Cover image URL")}
-                </Label>
-                <Input
-                  id="rs-cover"
-                  value={String(r.cover_image_url ?? "")}
-                  onChange={(e) => setR({ ...r, cover_image_url: e.target.value })}
-                  placeholder={t("restaurantSettings:coverImagePlaceholder", "Banner image URL")}
-                  className="font-mono text-xs sm:text-sm"
-                />
-                {coverPreview ? (
-                  <div className="mt-2 overflow-hidden rounded-lg border bg-muted/30 p-2 max-w-xs">
-                    <img src={coverPreview} alt={t("restaurantSettings:coverPreview", "Cover preview")} className="h-20 w-full max-w-xs rounded-md object-cover" />
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-lg border bg-muted/20 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <Switch id="rs-open" checked={Boolean(s.is_open)} onCheckedChange={(v) => setS({ ...s, is_open: v })} />
-              <div>
-                <Label htmlFor="rs-open" className="text-base font-medium cursor-pointer">
-                  {t("restaurantSettings:acceptingOrders", "Accepting orders")}
-                </Label>
-                <p className="text-xs text-muted-foreground">{t("restaurantSettings:acceptingOrdersDesc", "When off, customers may see you as closed.")}</p>
-              </div>
-            </div>
-            <Button onClick={() => void saveSettings()} disabled={savingSettings} className="shrink-0 sm:w-auto w-full">
-              {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
-              {t("restaurantSettings:saveGeneral", "Save general")}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="overflow-hidden border shadow-sm">
-        <CardHeader className="border-b bg-muted/30 pb-4">
-          <CardTitle className="text-lg">{t("restaurantSettings:pricing", "Pricing")}</CardTitle>
-          <CardDescription>{t("restaurantSettings:pricingDesc", "Currency, tax, delivery fee, and minimum order for quotes and checkout.")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6 pt-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="rs-currency">{t("restaurantSettings:currencyIso", "Restaurant Currency")}</Label>
-              <Select
-                value={
-                  POPULAR_CURRENCIES.some((c) => c.code === String(s.currency || "USD").toUpperCase())
-                    ? String(s.currency || "USD").toUpperCase()
-                    : "CUSTOM"
-                }
-                onValueChange={(val) => {
-                  if (val !== "CUSTOM") {
-                    setS({ ...s, currency: val });
-                  }
-                }}
-              >
-                <SelectTrigger id="rs-currency" className="w-full">
-                  <SelectValue placeholder="Select currency" />
-                </SelectTrigger>
-                <SelectContent>
-                  {POPULAR_CURRENCIES.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>
-                      {c.label}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="CUSTOM">Custom currency code...</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                id="rs-currency-custom"
-                value={String(s.currency || "USD")}
-                onChange={(e) => setS({ ...s, currency: e.target.value.toUpperCase() })}
-                maxLength={8}
-                placeholder="USD / PKR / AED"
-                className="mt-1 font-mono uppercase tracking-wider text-xs"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                All voice orders, Urdu pricing, menu quotes, and dashboard reports will strictly use this currency.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="rs-tax">{t("restaurantSettings:taxRate", "Tax rate (%)")}</Label>
-              <div className="relative">
-                <Input
-                  id="rs-tax"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={s.tax_rate ?? ""}
-                  onChange={(e) => setS({ ...s, tax_rate: e.target.value })}
-                  className="pr-8"
-                  placeholder="0.00"
-                />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
-                  %
-                </span>
-              </div>
-            </div>
-            {(() => {
-              const currencySymbol = getCurrencySymbol(String(s.currency || "USD"));
-              const paddingLeft = `${Math.max(2.5, currencySymbol.length * 0.75 + 1.25)}rem`;
-              return (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="rs-delivery-fee">
-                      {t("restaurantSettings:deliveryFee", "Delivery fee")} ({currencySymbol})
-                    </Label>
-                    <div className="relative">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
-                        {currencySymbol}
-                      </span>
-                      <Input
-                        id="rs-delivery-fee"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={s.delivery_fee ?? ""}
-                        onChange={(e) => setS({ ...s, delivery_fee: e.target.value })}
-                        style={{ paddingLeft }}
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="rs-min-order">
-                      {t("restaurantSettings:minimumOrder", "Minimum order amount")} ({currencySymbol})
-                    </Label>
-                    <div className="relative">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
-                        {currencySymbol}
-                      </span>
-                      <Input
-                        id="rs-min-order"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={s.min_order_amount ?? ""}
-                        onChange={(e) => setS({ ...s, min_order_amount: e.target.value })}
-                        style={{ paddingLeft }}
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {t("restaurantSettings:minimumOrderDesc", "Orders below this amount cannot be placed by customers.")}
-                    </p>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-          <Button variant="secondary" onClick={() => void saveSettings()} disabled={savingSettings}>
-            {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
-            {t("restaurantSettings:savePricing", "Save pricing")}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card className="overflow-hidden border shadow-sm">
-        <CardHeader className="border-b bg-muted/30 pb-4">
-          <CardTitle className="text-lg">{t("restaurantSettings:fulfillmentOptions", "Fulfillment Options")}</CardTitle>
-          <CardDescription>{t("restaurantSettings:fulfillmentDesc", "Choose how you want to serve your customers.")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6 pt-6">
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div className="flex flex-col gap-4 p-4 rounded-lg border bg-muted/10">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-base">{t("restaurantSettings:allowsDelivery", "Allows Delivery")}</Label>
-                  <p className="text-xs text-muted-foreground">{t("restaurantSettings:allowsDeliveryDesc", "Customers can request delivery to their address.")}</p>
-                </div>
-                <Switch 
-                  checked={r.allows_delivery} 
-                  onCheckedChange={(v) => setR({ ...r, allows_delivery: v })} 
-                />
-              </div>
-            </div>
-            <div className="flex flex-col gap-4 p-4 rounded-lg border bg-muted/10">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-base">{t("restaurantSettings:allowsPickup", "Allows Self Pickup")}</Label>
-                  <p className="text-xs text-muted-foreground">{t("restaurantSettings:allowsPickupDesc", "Customers can come and collect their order.")}</p>
-                </div>
-                <Switch 
-                  checked={r.allows_pickup} 
-                  onCheckedChange={(v) => setR({ ...r, allows_pickup: v })} 
-                />
-              </div>
-            </div>
-          </div>
-          <Button
-            variant="secondary"
-            disabled={savingFulfillment}
-            onClick={async () => {
-              setSavingFulfillment(true);
-              try {
-                const { data, error } = await supabase
-                  .from("restaurants")
-                  .update({
-                    allows_delivery: r.allows_delivery,
-                    allows_pickup: r.allows_pickup,
-                  })
-                  .eq("id", r.id)
-                  .select("id");
-                if (error) {
-                  toast({
-                    variant: "destructive",
-                    title: "Unable to update fulfillment",
-                    description: (error as { message?: string })?.message,
-                  });
-                  return;
-                }
-                const rows = Array.isArray(data) ? data : data ? [data] : [];
-                if (!rows.length) {
-                  toast({
-                    variant: "destructive",
-                    title: "Unable to update fulfillment",
-                    description: "No matching restaurant was updated.",
-                  });
-                  return;
-                }
-                toast({ title: t("restaurantSettings:fulfillmentSaved", "Fulfillment options saved") });
-                if (restaurantId) void quietVoiceSync(restaurantId);
-              } finally {
-                setSavingFulfillment(false);
-              }
-            }}
-          >
-            {savingFulfillment ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
-            {t("restaurantSettings:saveFulfillment", "Save fulfillment")}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card className="overflow-hidden border shadow-sm">
-        <CardHeader className="border-b bg-muted/30 pb-4 flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Clock className="h-5 w-5" /> {t("restaurantSettings:operatingHours", "Operating Hours")}
-            </CardTitle>
-            <CardDescription>{t("restaurantSettings:operatingHoursDesc", "Set when your restaurant is open for orders.")}</CardDescription>
-          </div>
-          <Button onClick={() => void saveHours()} disabled={savingHours || loading} size="sm">
-            {savingHours ? <RefreshCw className="h-4 w-4 animate-spin" /> : t("restaurantSettings:saveHours", "Save Hours")}
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-6 pt-6">
-          {DAY_KEYS.map((dayKey, dayIdx) => {
-            const daySlots = hours.filter(h => h.day_of_week === dayIdx);
-            return (
-              <div key={dayIdx} className="space-y-3 pb-4 border-b last:border-0">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-bold">{t(`restaurantSettings:days.${dayKey}`, DAYS[dayIdx])}</Label>
-                  <Button variant="outline" size="sm" onClick={() => addHourSlot(dayIdx)} className="h-8">
-                    <Plus className="h-4 w-4 mr-1" /> {t("restaurantSettings:addSlot", "Add Slot")}
-                  </Button>
-                </div>
-                
-                {daySlots.length === 0 ? (
-                  <div className="p-3 rounded-lg border border-dashed text-center bg-muted/5">
-                    <p className="text-xs text-muted-foreground italic">{t("restaurantSettings:closedAllDay", "Closed all day")}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {hours.map((h, globalIdx) => {
-                      if (h.day_of_week !== dayIdx) return null;
-                      return (
-                        <div key={globalIdx} className="flex items-center gap-3 bg-muted/20 p-2 rounded-lg border">
-                          <div className="flex-1 grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <span className="text-[10px] uppercase font-bold opacity-50 block ml-1">{t("restaurantSettings:openTimeLabel", "Open")}</span>
-                              <Input 
-                                type="time" 
-                                value={h.open_time} 
-                                onChange={(e) => updateHourSlot(globalIdx, { open_time: e.target.value })}
-                                className="h-9 text-xs"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <span className="text-[10px] uppercase font-bold opacity-50 block ml-1">{t("restaurantSettings:closeTimeLabel", "Close")}</span>
-                              <Input 
-                                type="time" 
-                                value={h.close_time} 
-                                onChange={(e) => updateHourSlot(globalIdx, { close_time: e.target.value })}
-                                className="h-9 text-xs"
-                              />
-                            </div>
-                          </div>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-9 w-9 text-destructive hover:bg-destructive/10"
-                            onClick={() => removeHourSlot(globalIdx)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      <Card className="overflow-hidden border shadow-sm border-primary/20">
-        <CardHeader className="border-b bg-muted/30 pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Phone className="h-5 w-5" />
-            {t("restaurantSettings:telnyxTitle", "Telnyx + Synthflow (recommended)")}
-          </CardTitle>
-          <CardDescription className="space-y-2">
-            <span className="block">
-              {t("restaurantSettings:telnyxDesc", "Dedicated Telnyx number per restaurant. Synthflow AI answers calls, explains menu and coupons, takes the order, then posts results to our webhook so the order is created automatically.")}
-            </span>
-            <span className="block text-muted-foreground">
-              {t("restaurantSettings:serverMode", "Server mode:")}{" "}
-              <span className="font-mono text-foreground">{voiceRouting}</span>
-              {isSynthflowMode ? t("restaurantSettings:usesSynthflow", " — this restaurant uses Synthflow.") : null}
-            </span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5 pt-6">
-          <div className="rounded-lg border bg-muted/15 px-4 py-3 text-xs text-muted-foreground space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                {t("restaurantSettings:telnyxNumber", "Telnyx number:")}{" "}
-                <span className="font-mono text-foreground font-semibold">
-                  {r.telnyx_phone_number || t("restaurantSettings:notAssigned", "not assigned")}
-                </span>
-              </div>
-              {r.telnyx_phone_number ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs px-2.5 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
-                  disabled={unassigningNumberBusy}
-                  onClick={() => void unassignTelnyxNumber()}
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1" />
-                  {unassigningNumberBusy ? "Removing…" : "Remove number"}
-                </Button>
-              ) : null}
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                {t("restaurantSettings:synthflowAgent", "Synthflow agent:")}{" "}
-                <span className="font-mono text-foreground">{r.synthflow_agent_id || t("restaurantSettings:notCreated", "not created")}</span>
-              </div>
-              {r.synthflow_agent_id ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground border border-border/50"
-                  onClick={async () => {
-                    await supabase.from("restaurants").update({ synthflow_agent_id: null }).eq("id", r.id);
-                    toast({ title: "Agent reset", description: "Agent ID cleared. You can now link a valid Agent ID." });
-                    await loadRestaurantData();
-                  }}
-                >
-                  Reset / Clear
-                </Button>
-              ) : null}
-            </div>
-            {r.synthflow_synced_at ? (
-              <div>{t("restaurantSettings:lastSynced", "Last synced:")} {new Date(r.synthflow_synced_at).toLocaleString()}</div>
-            ) : null}
-          </div>
-
-          <div className="space-y-3 rounded-lg border p-4">
-            <p className="text-sm font-medium">{t("restaurantSettings:step1Title", "1. Search & assign a Telnyx number")}</p>
-            <div className="flex flex-wrap gap-2 items-end">
-              <div className="space-y-1">
-                <Label className="text-xs">{t("restaurantSettings:areaCode", "Area code (optional)")}</Label>
-                <Input
-                  value={telnyxAreaCode}
-                  onChange={(e) => setTelnyxAreaCode(e.target.value)}
-                  placeholder="415"
-                  className="w-28"
-                />
-              </div>
-              <Button type="button" variant="secondary" disabled={telnyxSearchBusy} onClick={() => void searchTelnyxNumbers()}>
-                {telnyxSearchBusy ? t("restaurantSettings:searching", "Searching…") : t("restaurantSettings:searchTelnyx", "Search Telnyx")}
-              </Button>
-            </div>
-
-            {telnyxCandidates.length > 0 ? (
-              <div className="space-y-2">
-                <Label>{t("restaurantSettings:availableNumbers", "Available numbers")}</Label>
-                <Select value={selectedTelnyxNumber} onValueChange={setSelectedTelnyxNumber}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("restaurantSettings:selectNumberPlaceholder", "Select a number to purchase")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {telnyxCandidates.map((n) => (
-                      <SelectItem key={n.phone_number} value={n.phone_number}>
-                        {n.phone_number}
-                        {n.locality ? ` — ${n.locality}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  disabled={telnyxProvisionBusy || !selectedTelnyxNumber}
-                  onClick={() => void provisionTelnyxNumber({ phone: selectedTelnyxNumber })}
-                >
-                  {telnyxProvisionBusy ? t("restaurantSettings:provisioning", "Provisioning…") : t("restaurantSettings:purchaseAssign", "Purchase & assign number")}
-                </Button>
-              </div>
-            ) : null}
-
-            <div className="space-y-2 pt-2 border-t">
-              <Label>{t("restaurantSettings:attachExistingTelnyx", "Or attach an existing Telnyx number (E.164)")}</Label>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  value={manualTelnyxNumber}
-                  onChange={(e) => setManualTelnyxNumber(e.target.value)}
-                  placeholder="+15551234567"
-                  className="max-w-xs font-mono"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={telnyxProvisionBusy}
-                  onClick={() => void provisionTelnyxNumber({ skipPurchase: true, phone: manualTelnyxNumber })}
-                >
-                  {t("restaurantSettings:assignExisting", "Assign existing")}
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3 rounded-lg border p-4">
-            <p className="text-sm font-medium">{t("restaurantSettings:step2Title", "2. Sync Synthflow AI order assistant")}</p>
-            <p className="text-xs text-muted-foreground">
-              Link your existing Synthflow agent and keep menu, coupons, and phone settings synchronized.
-            </p>
-
-            <div className="space-y-1.5 pt-1">
-              <Label className="text-xs">Link an existing Synthflow Agent ID</Label>
-              <p className="text-[11px] text-muted-foreground">
-                Agents are never auto-created. Copy a real model_id from Synthflow → paste here → Link → then Update.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  value={linkAgentId}
-                  onChange={(e) => setLinkAgentId(e.target.value)}
-                  placeholder="Paste model_id from Synthflow (e.g. 8294235e-...)"
-                  className="max-w-md font-mono text-xs"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!linkAgentId.trim() || linkingAgentBusy || !r?.id}
-                  onClick={async () => {
-                    const id = linkAgentId.trim();
-                    if (!id || !r?.id) return;
-                    setLinkingAgentBusy(true);
-                    try {
-                      const { data, error } = await supabase.functions.invoke("restaurant-create-synthflow-agent", {
-                        body: {
-                          restaurant_id: r.id,
-                          synthflow_agent_id: id,
-                          link_only: true,
-                          action: "link",
+        let cancelledFetch = false;
+        (async () => {
+            try {
+                const token = getToken();
+                const res = await fetch(
+                    `${getApiBase()}/api/billing/minutes/claim`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...(token
+                                ? { Authorization: `Bearer ${token}` }
+                                : {}),
                         },
-                      });
-                      if (error) throw new Error(error.message);
-                      const d = data as {
-                        success?: boolean;
-                        error?: string;
-                        message?: string;
-                        synthflow_agent_id?: string;
-                        available_agents?: { model_id: string; name: string }[];
-                      };
-                      if (!d?.success) {
-                        const suggestions = (d.available_agents || [])
-                          .slice(0, 5)
-                          .map((a) => `${a.name}: ${a.model_id}`)
-                          .join(" · ");
-                        throw new Error(
-                          [d?.error || "Link failed — agent not found in Synthflow", suggestions ? `Try: ${suggestions}` : ""]
-                            .filter(Boolean)
-                            .join(" "),
-                        );
-                      }
-                      toast({
-                        title: "Agent linked",
-                        description: d.message || `Verified and linked ${d.synthflow_agent_id || id}. Now click Update.`,
-                      });
-                      setLinkAgentId("");
-                      await loadRestaurantData();
-                    } catch (e: unknown) {
-                      toast({
+                        body: JSON.stringify({ purchase_id: purchaseId }),
+                    },
+                );
+                const data = await res.json().catch(() => ({}));
+                if (cancelledFetch) return;
+                if (!res.ok)
+                    throw new Error(data.error || "Could not confirm purchase");
+                if (data.balance)
+                    setMinutesBalance(data.balance as MinutesBalance);
+                else await loadMinutesBalance();
+                toast({
+                    title: "Minutes added",
+                    description: "Your AI minute pack payment was confirmed.",
+                });
+            } catch (err) {
+                if (!cancelledFetch) {
+                    toast({
                         variant: "destructive",
-                        title: "Link failed",
-                        description: e instanceof Error ? e.message : String(e),
-                      });
-                    } finally {
-                      setLinkingAgentBusy(false);
-                    }
-                  }}
-                >
-                  {linkingAgentBusy ? "Linking…" : "Link Agent"}
-                </Button>
-              </div>
-            </div>
+                        title: "Could not confirm minutes",
+                        description:
+                            err instanceof Error
+                                ? err.message
+                                : "Refresh and try again",
+                    });
+                    void loadMinutesBalance();
+                }
+            } finally {
+                cleanUrl();
+            }
+        })();
 
-            <div className="flex flex-wrap gap-2 pt-2 border-t">
-              <Button type="button" disabled={synthflowBusy || !r.synthflow_agent_id} onClick={() => void createOrUpdateSynthflowAgent()}>
-                <Sparkles className="h-4 w-4 mr-2" />
-                {synthflowBusy
-                  ? t("restaurantSettings:updating", "Updating…")
-                  : t("restaurantSettings:updateSynthflowAgent", "Update Synthflow agent")}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={synthflowSyncBusy || !r.synthflow_agent_id}
-                onClick={() => void syncMenuToSynthflow()}
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${synthflowSyncBusy ? "animate-spin" : ""}`} />
-                {synthflowSyncBusy ? t("restaurantSettings:syncing", "Syncing…") : t("restaurantSettings:syncMenuCoupons", "Sync menu & coupons")}
-              </Button>
-            </div>
-          </div>
+        return () => {
+            cancelledFetch = true;
+        };
+    }, [restaurantId, loadMinutesBalance, toast]);
 
-          <div className="space-y-2 rounded-lg border bg-muted/15 p-4">
-            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-              {t("restaurantSettings:postCallWebhook", "Post-call webhook (configured on the agent automatically)")}
-            </Label>
-            <div className="flex gap-2">
-              <Input value={synthflowWebhookUrl} readOnly className="font-mono text-xs" />
-              <Button type="button" variant="outline" size="icon" onClick={() => copy(synthflowWebhookUrl)}>
-                <Copy className="h-4 w-4" />
-              </Button>
+    const saveSettings = async () => {
+        if (!s || !r || !restaurantId) return;
+
+        const name = String(s.name ?? "").trim() || r.name;
+        const address = String(s.address ?? "").trim() || null;
+        const phone = String(s.phone ?? "").trim() || null;
+        const contactEmail = String(s.email ?? "").trim() || null;
+        const logoUrl = String(s.logo_url ?? "").trim() || null;
+        const coverUrl = String(r.cover_image_url ?? "").trim() || null;
+        const currency =
+            String(s.currency ?? "USD")
+                .trim()
+                .toUpperCase() || "USD";
+        const taxRate = Math.min(999.99, Math.max(0, Number(s.tax_rate) || 0));
+        const deliveryFee = Math.max(0, Number(s.delivery_fee) || 0);
+        const minOrder = Math.max(0, Number(s.min_order_amount) || 0);
+        const isOpen = Boolean(s.is_open);
+
+        setSavingSettings(true);
+        try {
+            const settingsUpdate = {
+                name,
+                address,
+                phone,
+                email: contactEmail,
+                currency,
+                tax_rate: taxRate,
+                delivery_fee: deliveryFee,
+                min_order_amount: minOrder,
+                is_open: isOpen,
+                logo_url: logoUrl,
+            };
+
+            // Prefer restaurant_id (unique) — id-only filters silently no-op when row is missing/out of scope
+            const settingsQuery = s.id
+                ? supabase
+                      .from("restaurant_settings")
+                      .update(settingsUpdate)
+                      .eq("id", s.id)
+                      .eq("restaurant_id", restaurantId)
+                : supabase
+                      .from("restaurant_settings")
+                      .update(settingsUpdate)
+                      .eq("restaurant_id", restaurantId);
+
+            const [settingsRes, restaurantRes] = await Promise.all([
+                settingsQuery.select("id"),
+                supabase
+                    .from("restaurants")
+                    .update({
+                        name,
+                        address,
+                        phone,
+                        contact_email: contactEmail,
+                        logo_url: logoUrl,
+                        cover_image_url: coverUrl,
+                        is_accepting_orders: isOpen,
+                        currency,
+                    })
+                    .eq("id", r.id)
+                    .select("id"),
+            ]);
+
+            if (settingsRes.error || restaurantRes.error) {
+                toast({
+                    variant: "destructive",
+                    title: "Unable to update restaurant settings",
+                    description:
+                        (settingsRes.error as { message?: string })?.message ||
+                        (restaurantRes.error as { message?: string })
+                            ?.message ||
+                        "Save failed",
+                });
+                return;
+            }
+
+            const settingsRows = Array.isArray(settingsRes.data)
+                ? settingsRes.data
+                : settingsRes.data
+                  ? [settingsRes.data]
+                  : [];
+            const restaurantRows = Array.isArray(restaurantRes.data)
+                ? restaurantRes.data
+                : restaurantRes.data
+                  ? [restaurantRes.data]
+                  : [];
+
+            if (!settingsRows.length || !restaurantRows.length) {
+                toast({
+                    variant: "destructive",
+                    title: "Unable to update restaurant settings",
+                    description:
+                        "No matching restaurant was updated. Check you have access to this restaurant.",
+                });
+                return;
+            }
+
+            setDefaultCurrency(currency);
+            await refreshRestaurants();
+            toast({ title: "Settings saved" });
+            await loadRestaurantData();
+            void quietVoiceSync(restaurantId);
+        } finally {
+            setSavingSettings(false);
+        }
+    };
+
+    const saveTelephony = async () => {
+        if (!r) return;
+        const { error } = await supabase
+            .from("restaurants")
+            .update({
+                twilio_phone_number: r.twilio_phone_number?.trim() || null,
+                elevenlabs_agent_id: r.elevenlabs_agent_id?.trim() || null,
+                agent_language: r.agent_language || "ur",
+                agent_voice_id: r.agent_voice_id?.trim() || null,
+                agent_first_message: r.agent_first_message?.trim() || null,
+                agent_system_prompt: r.agent_system_prompt?.trim() || null,
+            })
+            .eq("id", r.id);
+        if (error)
+            toast({
+                variant: "destructive",
+                title: "Failed",
+                description: (error as { message?: string })?.message,
+            });
+        else {
+            toast({ title: "Telephony settings saved" });
+            await loadRestaurantData();
+        }
+    };
+
+    const attachTwilioInElevenLabs = async () => {
+        if (!r?.id) return;
+        if (!r.twilio_phone_number?.trim() || !r.elevenlabs_agent_id?.trim()) {
+            toast({
+                variant: "destructive",
+                title: "Missing fields",
+                description:
+                    "Enter and save a Twilio E.164 number and ElevenLabs agent ID before linking in ElevenLabs.",
+            });
+            return;
+        }
+        setAttachTwilioBusy(true);
+        try {
+            const { data, error } = await supabase.functions.invoke(
+                "attach-twilio-to-agent",
+                {
+                    body: { restaurant_id: r.id },
+                },
+            );
+            if (error) throw new Error(error.message);
+            const d = data as {
+                success?: boolean;
+                error?: string;
+                phone_number_id?: string;
+            };
+            if (!d?.success) throw new Error(d?.error || "Failed to attach");
+            toast({
+                title: "Twilio linked in ElevenLabs",
+                description: d.phone_number_id
+                    ? `ElevenLabs phone_number_id: ${d.phone_number_id}`
+                    : "Number assigned to your agent.",
+            });
+        } catch (e: unknown) {
+            toast({
+                variant: "destructive",
+                title: "Attach failed",
+                description: e instanceof Error ? e.message : String(e),
+            });
+        } finally {
+            setAttachTwilioBusy(false);
+        }
+    };
+
+    const searchTelnyxNumbers = async () => {
+        setTelnyxSearchBusy(true);
+        try {
+            const { data, error } = await supabase.functions.invoke(
+                "restaurant-telnyx-search",
+                {
+                    body: {
+                        area_code: telnyxAreaCode.trim() || undefined,
+                        limit: 10,
+                    },
+                },
+            );
+            if (error) throw new Error(error.message);
+            const d = data as {
+                success?: boolean;
+                error?: string;
+                numbers?: { phone_number: string; locality?: string }[];
+            };
+            if (!d?.success) throw new Error(d?.error || "Search failed");
+            setTelnyxCandidates(d.numbers || []);
+            if (!(d.numbers || []).length) {
+                toast({
+                    title: "No numbers found",
+                    description: "Try another area code or locality.",
+                });
+            }
+        } catch (e: unknown) {
+            toast({
+                variant: "destructive",
+                title: "Telnyx search failed",
+                description: e instanceof Error ? e.message : String(e),
+            });
+        } finally {
+            setTelnyxSearchBusy(false);
+        }
+    };
+
+    const provisionTelnyxNumber = async (opts?: {
+        skipPurchase?: boolean;
+        phone?: string;
+    }) => {
+        if (!r?.id) return;
+        const raw = (
+            opts?.phone ||
+            selectedTelnyxNumber ||
+            manualTelnyxNumber
+        ).trim();
+        const digits = raw.replace(/\D/g, "");
+        const phone = raw.startsWith("+")
+            ? "+" + digits
+            : digits.length === 11 && digits.startsWith("1")
+              ? "+" + digits
+              : digits.length === 10
+                ? "+1" + digits
+                : "+" + digits;
+        if (!/^\+\d{7,15}$/.test(phone)) {
+            toast({
+                variant: "destructive",
+                title: "Invalid number",
+                description:
+                    "Please enter a valid phone number, e.g. +12202650290",
+            });
+            return;
+        }
+        setTelnyxProvisionBusy(true);
+        try {
+            const { data, error } = await supabase.functions.invoke(
+                "restaurant-provision-telnyx-number",
+                {
+                    body: {
+                        restaurant_id: r.id,
+                        phone_number: phone,
+                        skip_purchase: !!opts?.skipPurchase,
+                        reassign: true,
+                    },
+                },
+            );
+            if (error) throw new Error(error.message);
+            const d = data as {
+                success?: boolean;
+                error?: string;
+                telnyx_phone_number?: string;
+                warning?: string;
+            };
+            if (!d?.success) throw new Error(d?.error || "Provision failed");
+            toast({
+                title: "Telnyx number ready",
+                description: d.warning
+                    ? `${d.telnyx_phone_number} saved. Note: ${d.warning}`
+                    : `${d.telnyx_phone_number} provisioned and imported to Synthflow.`,
+            });
+            await loadRestaurantData();
+        } catch (e: unknown) {
+            toast({
+                variant: "destructive",
+                title: "Provision failed",
+                description: e instanceof Error ? e.message : String(e),
+            });
+        } finally {
+            setTelnyxProvisionBusy(false);
+        }
+    };
+
+    const unassignTelnyxNumber = async () => {
+        if (!r?.id || !r.telnyx_phone_number) return;
+        const confirmed = window.confirm(
+            `Remove phone number ${r.telnyx_phone_number} from ${r.name}? You can re-assign it to another restaurant anytime.`,
+        );
+        if (!confirmed) return;
+        setUnassigningNumberBusy(true);
+        try {
+            const { data, error } = await supabase.functions.invoke(
+                "restaurant-unassign-telnyx-number",
+                {
+                    body: { restaurant_id: r.id },
+                },
+            );
+            if (error) throw new Error(error.message);
+            const d = data as {
+                success?: boolean;
+                error?: string;
+                message?: string;
+            };
+            if (!d?.success)
+                throw new Error(d?.error || "Failed to remove number");
+            toast({
+                title: "Number removed",
+                description: d.message || "Phone number removed successfully.",
+            });
+            await loadRestaurantData();
+        } catch (e: unknown) {
+            toast({
+                variant: "destructive",
+                title: "Remove failed",
+                description: e instanceof Error ? e.message : String(e),
+            });
+        } finally {
+            setUnassigningNumberBusy(false);
+        }
+    };
+
+    const createOrUpdateSynthflowAgent = async () => {
+        if (!r?.id) return;
+        setSynthflowBusy(true);
+        try {
+            // Do NOT write agent_system_prompt to DB before Synthflow succeeds — empty/partial
+            // editor text must not clear the saved prompt. Backend merges and persists after API OK.
+            await supabase
+                .from("restaurants")
+                .update({
+                    agent_language: r.agent_language || "ur",
+                    agent_voice_id: r.agent_voice_id?.trim() || null,
+                    agent_first_message: r.agent_first_message?.trim() || null,
+                })
+                .eq("id", r.id);
+
+            const { data, error } = await supabase.functions.invoke(
+                "restaurant-create-synthflow-agent",
+                {
+                    body: {
+                        restaurant_id: r.id,
+                        synthflow_agent_id: r.synthflow_agent_id || undefined,
+                        language: r.agent_language || "ur",
+                        voice_id: r.agent_voice_id?.trim() || undefined,
+                        first_message:
+                            r.agent_first_message?.trim() || undefined,
+                        system_prompt:
+                            r.agent_system_prompt?.trim() || undefined,
+                        replace_full_prompt: replaceFullPrompt,
+                        expected_synced_at: r.synthflow_synced_at || undefined,
+                    },
+                },
+            );
+            if (error) {
+                let errMsg = error.message;
+                try {
+                    const body = await (
+                        error as {
+                            context?: {
+                                json?: () => Promise<{ error?: string }>;
+                            };
+                        }
+                    ).context?.json();
+                    if (body?.error) errMsg = body.error;
+                } catch (_e) {
+                    /* non-fatal, body parsing failed */
+                }
+                throw new Error(errMsg);
+            }
+            const d = data as {
+                success?: boolean;
+                skipped?: boolean;
+                code?: string;
+                error?: string;
+                warning?: string;
+                message?: string;
+                synthflow_agent_id?: string;
+                action?: string;
+                orders_land_on?: string;
+            };
+            if (d?.skipped || d?.code === "VOICE_SYNC_DISABLED") {
+                toast({
+                    title: "Voice sync skipped (local development)",
+                    description:
+                        d.warning ||
+                        d.message ||
+                        "Outbound Synthflow updates are disabled on this laptop so live agents are not overwritten. Sync from the production server instead.",
+                });
+                return;
+            }
+            if (!d?.success) {
+                await loadRestaurantData();
+                throw new Error(d?.error || "Failed");
+            }
+            setReplaceFullPrompt(false);
+            toast({
+                title: "Synthflow agent updated",
+                description:
+                    d.message ||
+                    (d.orders_land_on === "local"
+                        ? "Test-call orders will show on this LOCAL dashboard (localhost), not ringtable.io."
+                        : d.synthflow_agent_id
+                          ? `Agent ID: ${d.synthflow_agent_id}. Phone was not changed.`
+                          : "Agent configured."),
+            });
+            await loadRestaurantData();
+        } catch (e: unknown) {
+            toast({
+                variant: "destructive",
+                title: "Synthflow agent error",
+                description: e instanceof Error ? e.message : String(e),
+            });
+            await loadRestaurantData().catch(() => {});
+        } finally {
+            setSynthflowBusy(false);
+        }
+    };
+
+    const syncMenuToSynthflow = async () => {
+        if (!r?.id) return;
+        setSynthflowSyncBusy(true);
+        try {
+            const { data, error } = await supabase.functions.invoke(
+                "sync-restaurant-menu-to-synthflow",
+                {
+                    body: { restaurant_id: r.id },
+                },
+            );
+            if (error) throw new Error(error.message);
+            const d = data as {
+                success?: boolean;
+                skipped?: boolean;
+                code?: string;
+                error?: string;
+                warning?: string;
+                message?: string;
+                orders_land_on?: string;
+            };
+            if (d?.skipped || d?.code === "VOICE_SYNC_DISABLED") {
+                toast({
+                    title: "Menu saved locally — live voice sync skipped",
+                    description:
+                        d.warning ||
+                        d.message ||
+                        "Development mode does not push menu changes to Synthflow. To update the live phone agent, sync from the production server (APP_ENV=production).",
+                });
+                return;
+            }
+            if (!d?.success) throw new Error(d?.error || "Sync failed");
+            toast({
+                title: "Menu & coupons synced to Synthflow",
+                description:
+                    d.message ||
+                    (d.orders_land_on === "local"
+                        ? "Test-call orders will appear on localhost Orders — not ringtable.io."
+                        : undefined),
+            });
+            await loadRestaurantData();
+        } catch (e: unknown) {
+            toast({
+                variant: "destructive",
+                title: "Synthflow sync failed",
+                description: e instanceof Error ? e.message : String(e),
+            });
+        } finally {
+            setSynthflowSyncBusy(false);
+        }
+    };
+
+    const placeTestCall = async () => {
+        if (!r?.id) return;
+        const phone = testCallPhone.trim();
+        if (phone.replace(/\D/g, "").length < 10) {
+            toast({
+                variant: "destructive",
+                title: "Phone number needed",
+                description:
+                    "Enter the number the agent should call, with country code. Example: +923001234567",
+            });
+            return;
+        }
+        setTestCallBusy(true);
+        try {
+            const { data, error } = await supabase.functions.invoke(
+                "synthflow-test-call",
+                {
+                    body: { restaurant_id: r.id, phone, name: "Test call" },
+                },
+            );
+            const d = (data || {}) as {
+                success?: boolean;
+                error?: string;
+                message?: string;
+                warning?: string | null;
+                phone?: string;
+                dial_in_number?: string;
+                skipped?: boolean;
+                local_orders_ready?: boolean;
+            };
+            if (error || d?.skipped || !d?.success) {
+                const dialIn =
+                    d.dial_in_number ||
+                    r.telnyx_phone_number ||
+                    r.twilio_phone_number ||
+                    r.phone ||
+                    null;
+                throw new Error(
+                    d.error ||
+                        error?.message ||
+                        (dialIn
+                            ? `Outbound dial failed. Call ${dialIn} from your phone to test instead.`
+                            : "Test call failed"),
+                );
+            }
+            toast({
+                variant:
+                    d.local_orders_ready === false || d.warning
+                        ? "destructive"
+                        : "default",
+                title:
+                    d.local_orders_ready === false
+                        ? "Test call started — local orders blocked"
+                        : "Test call started",
+                description:
+                    d.message ||
+                    `The agent is calling ${d.phone || phone}. Answer to test the order flow.`,
+            });
+        } catch (e: unknown) {
+            toast({
+                variant: "destructive",
+                title: "Test call failed",
+                description: e instanceof Error ? e.message : String(e),
+            });
+        } finally {
+            setTestCallBusy(false);
+        }
+    };
+
+    const createOrUpdateAgent = async () => {
+        if (!r) return;
+        setAgentBusy(true);
+        try {
+            await supabase
+                .from("restaurants")
+                .update({
+                    agent_language: r.agent_language || "ur",
+                    agent_voice_id: r.agent_voice_id?.trim() || null,
+                    agent_first_message: r.agent_first_message?.trim() || null,
+                    agent_system_prompt: r.agent_system_prompt?.trim() || null,
+                })
+                .eq("id", r.id);
+
+            const { data, error } = await supabase.functions.invoke(
+                "create-restaurant-agent",
+                {
+                    body: { restaurant_id: r.id },
+                },
+            );
+            if (error) throw error;
+            if (!data?.success) throw new Error(data?.error || "Failed");
+            const agentId =
+                (data as { elevenlabs_agent_id?: string | null })
+                    .elevenlabs_agent_id ?? r.elevenlabs_agent_id;
+            setR({ ...r, elevenlabs_agent_id: agentId ?? null });
+            const w = (data as { warning?: string }).warning;
+            if (w) {
+                toast({
+                    title: "AI agent",
+                    description: w,
+                });
+            } else {
+                toast({
+                    title:
+                        data.action === "created"
+                            ? "AI agent created"
+                            : "AI agent updated",
+                    description: agentId
+                        ? `ElevenLabs agent ID: ${agentId}`
+                        : "Configuration updated.",
+                });
+            }
+            await loadRestaurantData();
+        } catch (e: unknown) {
+            toast({
+                variant: "destructive",
+                title: "Agent error",
+                description: e instanceof Error ? e.message : String(e),
+            });
+        } finally {
+            setAgentBusy(false);
+        }
+    };
+
+    const syncMenu = async () => {
+        if (!r) return;
+        setSyncBusy(true);
+        try {
+            const { data, error } = await supabase.functions.invoke(
+                "sync-restaurant-menu-to-agent",
+                {
+                    body: { restaurant_id: r.id },
+                },
+            );
+            if (error) throw error;
+            if (!data?.success) throw new Error(data?.error || "Failed");
+            setR({
+                ...r,
+                agent_menu_synced_at: new Date().toISOString(),
+                agent_knowledge_doc_id: data.doc_id,
+            });
+            toast({
+                title: "Menu synced to agent",
+                description: `${data.doc_chars} characters uploaded to ElevenLabs knowledge base`,
+            });
+            await loadRestaurantData();
+        } catch (e: unknown) {
+            toast({
+                variant: "destructive",
+                title: "Sync error",
+                description: e instanceof Error ? e.message : String(e),
+            });
+        } finally {
+            setSyncBusy(false);
+        }
+    };
+
+    const apiBase = getApiBase();
+    const integUrls = voiceIntegration?.urls;
+    const inboundWebhookUrl =
+        integUrls?.twilio_inbound_webhook ??
+        `${apiBase}/api/functions/twilio-inbound-webhook`;
+    const placeOrderToolUrl =
+        integUrls?.ai_place_order ?? `${apiBase}/api/functions/ai-place-order`;
+    const orderStatusToolUrl =
+        integUrls?.ai_order_status ??
+        `${apiBase}/api/functions/ai-order-status`;
+    const postCallWebhookUrl =
+        integUrls?.elevenlabs_post_call_webhook ??
+        `${apiBase}/api/functions/elevenlabs-conversation-webhook`;
+    const synthflowWebhookUrl =
+        integUrls?.synthflow_post_call_webhook ??
+        `${apiBase}/api/functions/synthflow-post-call-webhook`;
+    const voiceRouting = voiceIntegration?.routing ?? "twilio_webhook";
+    const isSynthflowMode =
+        voiceRouting === "synthflow_telnyx" ||
+        r?.voice_provider === "synthflow_telnyx";
+
+    const copy = (text: string) => {
+        navigator.clipboard.writeText(text);
+        toast({ title: "Copied" });
+    };
+
+    if (activeRestaurantLoading || loading) {
+        return (
+            <div className="max-w-4xl mx-auto space-y-6 p-6 pb-16">
+                <Skeleton className="h-9 w-64" />
+                <Skeleton className="h-4 w-96" />
+                <Skeleton className="h-48 w-full rounded-xl" />
+                <Skeleton className="h-40 w-full rounded-xl" />
             </div>
-            <p className="text-xs text-muted-foreground">
-              {t("restaurantSettings:postCallWebhookDesc", "Requires PUBLIC_API_URL to be a public HTTPS URL Synthflow can reach. After each call, order details are extracted and the order is created here.")}
+        );
+    }
+
+    if (!restaurantId || !s || !r) {
+        return (
+            <p className="text-muted-foreground p-6 max-w-4xl mx-auto">
+                No restaurant is linked to your account. Ask a super admin to
+                add you as the restaurant owner.
             </p>
-          </div>
-        </CardContent>
-      </Card>
+        );
+    }
 
-      {/* Legacy Twilio UI — hidden while Synthflow/Telnyx is primary */}
-      {false && (
+    const logoPreview = resolveMediaUrl(String(s.logo_url ?? "")) ?? undefined;
+    const coverPreview =
+        resolveMediaUrl(String(r.cover_image_url ?? "")) ?? undefined;
+
+    return (
+        <div className="max-w-4xl mx-auto space-y-8 p-6 pb-16">
+            <header className="space-y-1">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                            <Store className="h-6 w-6" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight">
+                                {t(
+                                    "restaurantSettings:title",
+                                    "Restaurant settings",
+                                )}
+                            </h1>
+                            <p className="text-muted-foreground text-sm">
+                                {t(
+                                    "restaurantSettings:subtitle",
+                                    "Public-facing details, pricing, and phone AI — kept in sync with your live restaurant record.",
+                                )}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                        <Hash className="h-4 w-4 shrink-0" />
+                        <span className="font-mono text-xs sm:text-sm">
+                            {r.slug}
+                        </span>
+                    </div>
+                </div>
+            </header>
+
+            <Card className="overflow-hidden border shadow-sm">
+                <CardHeader className="border-b bg-muted/30 pb-4">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1.5">
+                            <CardTitle className="text-lg flex items-center gap-2">
+                                <Gauge className="h-5 w-5 text-primary" />
+                                {t(
+                                    "restaurantSettings:aiMinutes",
+                                    "AI call minutes",
+                                )}
+                            </CardTitle>
+                            <CardDescription>
+                                {t(
+                                    "restaurantSettings:aiMinutesDesc",
+                                    "Minutes included in your plan for this billing period, plus any top-ups you buy. Remaining = included + purchased − used.",
+                                )}
+                            </CardDescription>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="shrink-0"
+                            disabled={minutesLoading}
+                            onClick={() => void loadMinutesBalance()}
+                            title="Refresh minutes"
+                        >
+                            <RefreshCw
+                                className={`h-4 w-4 ${minutesLoading ? "animate-spin" : ""}`}
+                            />
+                        </Button>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-5 pt-6">
+                    {minutesLoading && !minutesBalance ? (
+                        <div className="space-y-3">
+                            <Skeleton className="h-4 w-40" />
+                            <Skeleton className="h-3 w-full" />
+                            <Skeleton className="h-20 w-full" />
+                        </div>
+                    ) : minutesBalance ? (
+                        <>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                    variant="secondary"
+                                    className="capitalize"
+                                >
+                                    {minutesBalance.plan || "growth"} plan
+                                </Badge>
+                                <span className="text-sm text-muted-foreground">
+                                    Period{" "}
+                                    {new Date(
+                                        minutesBalance.period_start,
+                                    ).toLocaleDateString()}{" "}
+                                    –{" "}
+                                    {new Date(
+                                        minutesBalance.period_end,
+                                    ).toLocaleDateString()}
+                                </span>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-4">
+                                <div className="rounded-lg border bg-muted/20 p-3">
+                                    <div className="text-xs text-muted-foreground">
+                                        Included
+                                    </div>
+                                    <div className="text-xl font-semibold tabular-nums">
+                                        {minutesBalance.included_minutes.toLocaleString()}
+                                    </div>
+                                </div>
+                                <div className="rounded-lg border bg-muted/20 p-3">
+                                    <div className="text-xs text-muted-foreground">
+                                        Purchased
+                                    </div>
+                                    <div className="text-xl font-semibold tabular-nums">
+                                        {minutesBalance.purchased_minutes.toLocaleString()}
+                                    </div>
+                                </div>
+                                <div className="rounded-lg border bg-muted/20 p-3">
+                                    <div className="text-xs text-muted-foreground">
+                                        Used
+                                    </div>
+                                    <div className="text-xl font-semibold tabular-nums">
+                                        {minutesBalance.used_minutes.toLocaleString()}
+                                    </div>
+                                </div>
+                                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                                    <div className="text-xs text-muted-foreground">
+                                        Remaining
+                                    </div>
+                                    <div className="text-xl font-semibold tabular-nums text-primary">
+                                        {minutesBalance.remaining_minutes.toLocaleString()}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                    <span>Usage this period</span>
+                                    <span>
+                                        {minutesBalance.used_minutes.toLocaleString()}{" "}
+                                        /{" "}
+                                        {minutesBalance.allowance_minutes.toLocaleString()}{" "}
+                                        min
+                                    </span>
+                                </div>
+                                <Progress
+                                    value={
+                                        minutesBalance.allowance_minutes > 0
+                                            ? Math.min(
+                                                  100,
+                                                  (minutesBalance.used_minutes /
+                                                      minutesBalance.allowance_minutes) *
+                                                      100,
+                                              )
+                                            : 0
+                                    }
+                                />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium mb-3">
+                                    {t(
+                                        "restaurantSettings:buyMoreMinutes",
+                                        "Need more minutes? Buy a top-up pack",
+                                    )}
+                                </p>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    {(minutesBalance.packs?.length
+                                        ? minutesBalance.packs
+                                        : MINUTE_PACKS
+                                    ).map((pack) => (
+                                        <Button
+                                            key={pack.id}
+                                            type="button"
+                                            variant="outline"
+                                            className="h-auto justify-between py-3 px-4"
+                                            disabled={!!buyingPackId}
+                                            onClick={() =>
+                                                void buyMinutePack(
+                                                    pack.id as MinutePackId,
+                                                )
+                                            }
+                                        >
+                                            <span className="text-left">
+                                                <span className="block font-semibold">
+                                                    {pack.label}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground font-normal">
+                                                    One-time top-up
+                                                </span>
+                                            </span>
+                                            <span className="font-bold text-primary">
+                                                {buyingPackId === pack.id
+                                                    ? "…"
+                                                    : pack.priceLabel}
+                                            </span>
+                                        </Button>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">
+                            Minutes balance unavailable. Ensure the API is
+                            running and you are signed in.
+                        </p>
+                    )}
+                </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden border shadow-sm">
+                <CardHeader className="border-b bg-muted/30 pb-4">
+                    <CardTitle className="text-lg">
+                        {t("restaurantSettings:general", "General")}
+                    </CardTitle>
+                    <CardDescription>
+                        {t(
+                            "restaurantSettings:generalDesc",
+                            "Name, location, and contact info. Values you entered when the restaurant was created appear here automatically (we merge them from your main restaurant record if a field was left empty in storefront settings).",
+                        )}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6 pt-6">
+                    <div className="grid gap-6 sm:grid-cols-2">
+                        <div className="space-y-2 sm:col-span-2">
+                            <Label htmlFor="rs-name">
+                                {t(
+                                    "restaurantSettings:restaurantName",
+                                    "Restaurant name",
+                                )}
+                            </Label>
+                            <Input
+                                id="rs-name"
+                                value={String(s.name ?? "")}
+                                onChange={(e) =>
+                                    setS({ ...s, name: e.target.value })
+                                }
+                                className="max-w-xl"
+                            />
+                        </div>
+                        <div className="space-y-2 sm:col-span-2">
+                            <Label
+                                htmlFor="rs-address"
+                                className="flex items-center gap-1.5"
+                            >
+                                <MapPin className="h-3.5 w-3.5" />
+                                {t("restaurantSettings:address", "Address")}
+                            </Label>
+                            <Textarea
+                                id="rs-address"
+                                rows={3}
+                                value={String(s.address ?? "")}
+                                onChange={(e) =>
+                                    setS({ ...s, address: e.target.value })
+                                }
+                                placeholder={t(
+                                    "restaurantSettings:addressPlaceholder",
+                                    "Street, city, postal code…",
+                                )}
+                                className="resize-y min-h-[80px]"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label
+                                htmlFor="rs-phone"
+                                className="flex items-center gap-1.5"
+                            >
+                                <Phone className="h-3.5 w-3.5" />
+                                {t("restaurantSettings:phone", "Phone")}
+                            </Label>
+                            <Input
+                                id="rs-phone"
+                                value={String(s.phone ?? "")}
+                                onChange={(e) =>
+                                    setS({ ...s, phone: e.target.value })
+                                }
+                                placeholder="+1…"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label
+                                htmlFor="rs-email"
+                                className="flex items-center gap-1.5"
+                            >
+                                <Mail className="h-3.5 w-3.5" />
+                                {t(
+                                    "restaurantSettings:contactEmail",
+                                    "Contact email",
+                                )}
+                            </Label>
+                            <Input
+                                id="rs-email"
+                                type="email"
+                                value={String(s.email ?? "")}
+                                onChange={(e) =>
+                                    setS({ ...s, email: e.target.value })
+                                }
+                                placeholder="hello@restaurant.com"
+                            />
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                            {t("restaurantSettings:branding", "Branding")}
+                        </div>
+                        <div className="grid gap-6 sm:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label htmlFor="rs-logo">
+                                    {t(
+                                        "restaurantSettings:logoUrl",
+                                        "Logo URL",
+                                    )}
+                                </Label>
+                                <Input
+                                    id="rs-logo"
+                                    value={String(s.logo_url ?? "")}
+                                    onChange={(e) =>
+                                        setS({ ...s, logo_url: e.target.value })
+                                    }
+                                    placeholder={t(
+                                        "restaurantSettings:logoUrlPlaceholder",
+                                        "https://… or path from upload",
+                                    )}
+                                    className="font-mono text-xs sm:text-sm"
+                                />
+                                {logoPreview ? (
+                                    <div className="mt-2 overflow-hidden rounded-lg border bg-muted/30 p-2 w-fit">
+                                        <img
+                                            src={logoPreview}
+                                            alt={t(
+                                                "restaurantSettings:logoPreview",
+                                                "Logo preview",
+                                            )}
+                                            className="h-20 w-20 rounded-md object-cover"
+                                        />
+                                    </div>
+                                ) : null}
+                            </div>
+                            <div className="space-y-2">
+                                <Label
+                                    htmlFor="rs-cover"
+                                    className="flex items-center gap-1.5"
+                                >
+                                    <Images className="h-3.5 w-3.5" />
+                                    {t(
+                                        "restaurantSettings:coverImageUrl",
+                                        "Cover image URL",
+                                    )}
+                                </Label>
+                                <Input
+                                    id="rs-cover"
+                                    value={String(r.cover_image_url ?? "")}
+                                    onChange={(e) =>
+                                        setR({
+                                            ...r,
+                                            cover_image_url: e.target.value,
+                                        })
+                                    }
+                                    placeholder={t(
+                                        "restaurantSettings:coverImagePlaceholder",
+                                        "Banner image URL",
+                                    )}
+                                    className="font-mono text-xs sm:text-sm"
+                                />
+                                {coverPreview ? (
+                                    <div className="mt-2 overflow-hidden rounded-lg border bg-muted/30 p-2 max-w-xs">
+                                        <img
+                                            src={coverPreview}
+                                            alt={t(
+                                                "restaurantSettings:coverPreview",
+                                                "Cover preview",
+                                            )}
+                                            className="h-20 w-full max-w-xs rounded-md object-cover"
+                                        />
+                                    </div>
+                                ) : null}
+                            </div>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-lg border bg-muted/20 px-4 py-3">
+                        <div className="flex items-center gap-3">
+                            <Switch
+                                id="rs-open"
+                                checked={Boolean(s.is_open)}
+                                onCheckedChange={(v) =>
+                                    setS({ ...s, is_open: v })
+                                }
+                            />
+                            <div>
+                                <Label
+                                    htmlFor="rs-open"
+                                    className="text-base font-medium cursor-pointer"
+                                >
+                                    {t(
+                                        "restaurantSettings:acceptingOrders",
+                                        "Accepting orders",
+                                    )}
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    {t(
+                                        "restaurantSettings:acceptingOrdersDesc",
+                                        "When off, customers may see you as closed.",
+                                    )}
+                                </p>
+                            </div>
+                        </div>
+                        <Button
+                            onClick={() => void saveSettings()}
+                            disabled={savingSettings}
+                            className="shrink-0 sm:w-auto w-full"
+                        >
+                            {savingSettings ? (
+                                <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                            ) : null}
+                            {t(
+                                "restaurantSettings:saveGeneral",
+                                "Save general",
+                            )}
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden border shadow-sm">
+                <CardHeader className="border-b bg-muted/30 pb-4">
+                    <CardTitle className="text-lg">
+                        {t("restaurantSettings:pricing", "Pricing")}
+                    </CardTitle>
+                    <CardDescription>
+                        {t(
+                            "restaurantSettings:pricingDesc",
+                            "Currency, tax, delivery fee, and minimum order for quotes and checkout.",
+                        )}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6 pt-6">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="rs-currency">
+                                {t(
+                                    "restaurantSettings:currencyIso",
+                                    "Restaurant Currency",
+                                )}
+                            </Label>
+                            <Select
+                                value={
+                                    POPULAR_CURRENCIES.some(
+                                        (c) =>
+                                            c.code ===
+                                            String(
+                                                s.currency || "USD",
+                                            ).toUpperCase(),
+                                    )
+                                        ? String(
+                                              s.currency || "USD",
+                                          ).toUpperCase()
+                                        : "CUSTOM"
+                                }
+                                onValueChange={(val) => {
+                                    if (val !== "CUSTOM") {
+                                        setS({ ...s, currency: val });
+                                    }
+                                }}
+                            >
+                                <SelectTrigger
+                                    id="rs-currency"
+                                    className="w-full"
+                                >
+                                    <SelectValue placeholder="Select currency" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {POPULAR_CURRENCIES.map((c) => (
+                                        <SelectItem key={c.code} value={c.code}>
+                                            {c.label}
+                                        </SelectItem>
+                                    ))}
+                                    <SelectItem value="CUSTOM">
+                                        Custom currency code...
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Input
+                                id="rs-currency-custom"
+                                value={String(s.currency || "USD")}
+                                onChange={(e) =>
+                                    setS({
+                                        ...s,
+                                        currency: e.target.value.toUpperCase(),
+                                    })
+                                }
+                                maxLength={8}
+                                placeholder="USD / PKR / AED"
+                                className="mt-1 font-mono uppercase tracking-wider text-xs"
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                                All voice orders, Urdu pricing, menu quotes, and
+                                dashboard reports will strictly use this
+                                currency.
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="rs-tax">
+                                {t(
+                                    "restaurantSettings:taxRate",
+                                    "Tax rate (%)",
+                                )}
+                            </Label>
+                            <div className="relative">
+                                <Input
+                                    id="rs-tax"
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={s.tax_rate ?? ""}
+                                    onChange={(e) =>
+                                        setS({ ...s, tax_rate: e.target.value })
+                                    }
+                                    className="pr-8"
+                                    placeholder="0.00"
+                                />
+                                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
+                                    %
+                                </span>
+                            </div>
+                        </div>
+                        {(() => {
+                            const currencySymbol = getCurrencySymbol(
+                                String(s.currency || "USD"),
+                            );
+                            const paddingLeft = `${Math.max(2.5, currencySymbol.length * 0.75 + 1.25)}rem`;
+                            return (
+                                <>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="rs-delivery-fee">
+                                            {t(
+                                                "restaurantSettings:deliveryFee",
+                                                "Delivery fee",
+                                            )}{" "}
+                                            ({currencySymbol})
+                                        </Label>
+                                        <div className="relative">
+                                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
+                                                {currencySymbol}
+                                            </span>
+                                            <Input
+                                                id="rs-delivery-fee"
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={s.delivery_fee ?? ""}
+                                                onChange={(e) =>
+                                                    setS({
+                                                        ...s,
+                                                        delivery_fee:
+                                                            e.target.value,
+                                                    })
+                                                }
+                                                style={{ paddingLeft }}
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="rs-min-order">
+                                            {t(
+                                                "restaurantSettings:minimumOrder",
+                                                "Minimum order amount",
+                                            )}{" "}
+                                            ({currencySymbol})
+                                        </Label>
+                                        <div className="relative">
+                                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground select-none">
+                                                {currencySymbol}
+                                            </span>
+                                            <Input
+                                                id="rs-min-order"
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={s.min_order_amount ?? ""}
+                                                onChange={(e) =>
+                                                    setS({
+                                                        ...s,
+                                                        min_order_amount:
+                                                            e.target.value,
+                                                    })
+                                                }
+                                                style={{ paddingLeft }}
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            {t(
+                                                "restaurantSettings:minimumOrderDesc",
+                                                "Orders below this amount cannot be placed by customers.",
+                                            )}
+                                        </p>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+                    <Button
+                        variant="secondary"
+                        onClick={() => void saveSettings()}
+                        disabled={savingSettings}
+                    >
+                        {savingSettings ? (
+                            <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                        ) : null}
+                        {t("restaurantSettings:savePricing", "Save pricing")}
+                    </Button>
+                </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden border shadow-sm">
+                <CardHeader className="border-b bg-muted/30 pb-4">
+                    <CardTitle className="text-lg">
+                        {t(
+                            "restaurantSettings:fulfillmentOptions",
+                            "Fulfillment Options",
+                        )}
+                    </CardTitle>
+                    <CardDescription>
+                        {t(
+                            "restaurantSettings:fulfillmentDesc",
+                            "Choose how you want to serve your customers.",
+                        )}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6 pt-6">
+                    <div className="grid gap-6 sm:grid-cols-2">
+                        <div className="flex flex-col gap-4 p-4 rounded-lg border bg-muted/10">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <Label className="text-base">
+                                        {t(
+                                            "restaurantSettings:allowsDelivery",
+                                            "Allows Delivery",
+                                        )}
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        {t(
+                                            "restaurantSettings:allowsDeliveryDesc",
+                                            "Customers can request delivery to their address.",
+                                        )}
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={r.allows_delivery}
+                                    onCheckedChange={(v) =>
+                                        setR({ ...r, allows_delivery: v })
+                                    }
+                                />
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-4 p-4 rounded-lg border bg-muted/10">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <Label className="text-base">
+                                        {t(
+                                            "restaurantSettings:allowsPickup",
+                                            "Allows Self Pickup",
+                                        )}
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        {t(
+                                            "restaurantSettings:allowsPickupDesc",
+                                            "Customers can come and collect their order.",
+                                        )}
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={r.allows_pickup}
+                                    onCheckedChange={(v) =>
+                                        setR({ ...r, allows_pickup: v })
+                                    }
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <Button
+                        variant="secondary"
+                        disabled={savingFulfillment}
+                        onClick={async () => {
+                            setSavingFulfillment(true);
+                            try {
+                                const { data, error } = await supabase
+                                    .from("restaurants")
+                                    .update({
+                                        allows_delivery: r.allows_delivery,
+                                        allows_pickup: r.allows_pickup,
+                                    })
+                                    .eq("id", r.id)
+                                    .select("id");
+                                if (error) {
+                                    toast({
+                                        variant: "destructive",
+                                        title: "Unable to update fulfillment",
+                                        description: (
+                                            error as { message?: string }
+                                        )?.message,
+                                    });
+                                    return;
+                                }
+                                const rows = Array.isArray(data)
+                                    ? data
+                                    : data
+                                      ? [data]
+                                      : [];
+                                if (!rows.length) {
+                                    toast({
+                                        variant: "destructive",
+                                        title: "Unable to update fulfillment",
+                                        description:
+                                            "No matching restaurant was updated.",
+                                    });
+                                    return;
+                                }
+                                toast({
+                                    title: t(
+                                        "restaurantSettings:fulfillmentSaved",
+                                        "Fulfillment options saved",
+                                    ),
+                                });
+                                if (restaurantId)
+                                    void quietVoiceSync(restaurantId);
+                            } finally {
+                                setSavingFulfillment(false);
+                            }
+                        }}
+                    >
+                        {savingFulfillment ? (
+                            <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                        ) : null}
+                        {t(
+                            "restaurantSettings:saveFulfillment",
+                            "Save fulfillment",
+                        )}
+                    </Button>
+                </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden border shadow-sm">
+                <CardHeader className="border-b bg-muted/30 pb-4 flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Clock className="h-5 w-5" />{" "}
+                            {t(
+                                "restaurantSettings:operatingHours",
+                                "Operating Hours",
+                            )}
+                        </CardTitle>
+                        <CardDescription>
+                            {t(
+                                "restaurantSettings:operatingHoursDesc",
+                                "Set when your restaurant is open for orders.",
+                            )}
+                        </CardDescription>
+                    </div>
+                    <Button
+                        onClick={() => void saveHours()}
+                        disabled={savingHours || loading}
+                        size="sm"
+                    >
+                        {savingHours ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                            t("restaurantSettings:saveHours", "Save Hours")
+                        )}
+                    </Button>
+                </CardHeader>
+                <CardContent className="space-y-6 pt-6">
+                    {DAY_KEYS.map((dayKey, dayIdx) => {
+                        const daySlots = hours.filter(
+                            (h) => h.day_of_week === dayIdx,
+                        );
+                        return (
+                            <div
+                                key={dayIdx}
+                                className="space-y-3 pb-4 border-b last:border-0"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-base font-bold">
+                                        {t(
+                                            `restaurantSettings:days.${dayKey}`,
+                                            DAYS[dayIdx],
+                                        )}
+                                    </Label>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => addHourSlot(dayIdx)}
+                                        className="h-8"
+                                    >
+                                        <Plus className="h-4 w-4 mr-1" />{" "}
+                                        {t(
+                                            "restaurantSettings:addSlot",
+                                            "Add Slot",
+                                        )}
+                                    </Button>
+                                </div>
+
+                                {daySlots.length === 0 ? (
+                                    <div className="p-3 rounded-lg border border-dashed text-center bg-muted/5">
+                                        <p className="text-xs text-muted-foreground italic">
+                                            {t(
+                                                "restaurantSettings:closedAllDay",
+                                                "Closed all day",
+                                            )}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {hours.map((h, globalIdx) => {
+                                            if (h.day_of_week !== dayIdx)
+                                                return null;
+                                            return (
+                                                <div
+                                                    key={globalIdx}
+                                                    className="flex items-center gap-3 bg-muted/20 p-2 rounded-lg border"
+                                                >
+                                                    <div className="flex-1 grid grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                            <span className="text-[10px] uppercase font-bold opacity-50 block ml-1">
+                                                                {t(
+                                                                    "restaurantSettings:openTimeLabel",
+                                                                    "Open",
+                                                                )}
+                                                            </span>
+                                                            <Input
+                                                                type="time"
+                                                                value={
+                                                                    h.open_time
+                                                                }
+                                                                onChange={(e) =>
+                                                                    updateHourSlot(
+                                                                        globalIdx,
+                                                                        {
+                                                                            open_time:
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                        },
+                                                                    )
+                                                                }
+                                                                className="h-9 text-xs"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <span className="text-[10px] uppercase font-bold opacity-50 block ml-1">
+                                                                {t(
+                                                                    "restaurantSettings:closeTimeLabel",
+                                                                    "Close",
+                                                                )}
+                                                            </span>
+                                                            <Input
+                                                                type="time"
+                                                                value={
+                                                                    h.close_time
+                                                                }
+                                                                onChange={(e) =>
+                                                                    updateHourSlot(
+                                                                        globalIdx,
+                                                                        {
+                                                                            close_time:
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                        },
+                                                                    )
+                                                                }
+                                                                className="h-9 text-xs"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-9 w-9 text-destructive hover:bg-destructive/10"
+                                                        onClick={() =>
+                                                            removeHourSlot(
+                                                                globalIdx,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden border shadow-sm border-primary/20">
+                <CardHeader className="border-b bg-muted/30 pb-4">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                        <Phone className="h-5 w-5" />
+                        {t(
+                            "restaurantSettings:telnyxTitle",
+                            "Telnyx + Synthflow (recommended)",
+                        )}
+                    </CardTitle>
+                    <CardDescription className="space-y-2">
+                        <span className="block">
+                            {t(
+                                "restaurantSettings:telnyxDesc",
+                                "Dedicated Telnyx number per restaurant. Synthflow AI answers calls, explains menu and coupons, takes the order, then posts results to our webhook so the order is created automatically.",
+                            )}
+                        </span>
+                        <span className="block text-muted-foreground">
+                            {t("restaurantSettings:serverMode", "Server mode:")}{" "}
+                            <span className="font-mono text-foreground">
+                                {voiceRouting}
+                            </span>
+                            {isSynthflowMode
+                                ? t(
+                                      "restaurantSettings:usesSynthflow",
+                                      " — this restaurant uses Synthflow.",
+                                  )
+                                : null}
+                        </span>
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5 pt-6">
+                    <div className="rounded-lg border bg-muted/15 px-4 py-3 text-xs text-muted-foreground space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                            <div>
+                                {t(
+                                    "restaurantSettings:telnyxNumber",
+                                    "Telnyx number:",
+                                )}{" "}
+                                <span className="font-mono text-foreground font-semibold">
+                                    {r.telnyx_phone_number ||
+                                        t(
+                                            "restaurantSettings:notAssigned",
+                                            "not assigned",
+                                        )}
+                                </span>
+                            </div>
+                            {r.telnyx_phone_number ? (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs px-2.5 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                                    disabled={unassigningNumberBusy}
+                                    onClick={() => void unassignTelnyxNumber()}
+                                >
+                                    <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                    {unassigningNumberBusy
+                                        ? "Removing…"
+                                        : "Remove number"}
+                                </Button>
+                            ) : null}
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                            <div>
+                                {t(
+                                    "restaurantSettings:synthflowAgent",
+                                    "Synthflow agent:",
+                                )}{" "}
+                                <span className="font-mono text-foreground">
+                                    {r.synthflow_agent_id ||
+                                        t(
+                                            "restaurantSettings:notCreated",
+                                            "not created",
+                                        )}
+                                </span>
+                            </div>
+                            {r.synthflow_agent_id ? (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground border border-border/50"
+                                    onClick={async () => {
+                                        await supabase
+                                            .from("restaurants")
+                                            .update({
+                                                synthflow_agent_id: null,
+                                            })
+                                            .eq("id", r.id);
+                                        toast({
+                                            title: "Agent reset",
+                                            description:
+                                                "Agent ID cleared. You can now link a valid Agent ID.",
+                                        });
+                                        await loadRestaurantData();
+                                    }}
+                                >
+                                    Reset / Clear
+                                </Button>
+                            ) : null}
+                        </div>
+                        {r.synthflow_synced_at ? (
+                            <div>
+                                {t(
+                                    "restaurantSettings:lastSynced",
+                                    "Last synced:",
+                                )}{" "}
+                                {new Date(
+                                    r.synthflow_synced_at,
+                                ).toLocaleString()}
+                            </div>
+                        ) : null}
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border p-4">
+                        <p className="text-sm font-medium">
+                            {t(
+                                "restaurantSettings:step1Title",
+                                "1. Search & assign a Telnyx number",
+                            )}
+                        </p>
+                        <div className="flex flex-wrap gap-2 items-end">
+                            <div className="space-y-1">
+                                <Label className="text-xs">
+                                    {t(
+                                        "restaurantSettings:areaCode",
+                                        "Area code (optional)",
+                                    )}
+                                </Label>
+                                <Input
+                                    value={telnyxAreaCode}
+                                    onChange={(e) =>
+                                        setTelnyxAreaCode(e.target.value)
+                                    }
+                                    placeholder="415"
+                                    className="w-28"
+                                />
+                            </div>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                disabled={telnyxSearchBusy}
+                                onClick={() => void searchTelnyxNumbers()}
+                            >
+                                {telnyxSearchBusy
+                                    ? t(
+                                          "restaurantSettings:searching",
+                                          "Searching…",
+                                      )
+                                    : t(
+                                          "restaurantSettings:searchTelnyx",
+                                          "Search Telnyx",
+                                      )}
+                            </Button>
+                        </div>
+
+                        {telnyxCandidates.length > 0 ? (
+                            <div className="space-y-2">
+                                <Label>
+                                    {t(
+                                        "restaurantSettings:availableNumbers",
+                                        "Available numbers",
+                                    )}
+                                </Label>
+                                <Select
+                                    value={selectedTelnyxNumber}
+                                    onValueChange={setSelectedTelnyxNumber}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue
+                                            placeholder={t(
+                                                "restaurantSettings:selectNumberPlaceholder",
+                                                "Select a number to purchase",
+                                            )}
+                                        />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {telnyxCandidates.map((n) => (
+                                            <SelectItem
+                                                key={n.phone_number}
+                                                value={n.phone_number}
+                                            >
+                                                {n.phone_number}
+                                                {n.locality
+                                                    ? ` — ${n.locality}`
+                                                    : ""}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Button
+                                    type="button"
+                                    disabled={
+                                        telnyxProvisionBusy ||
+                                        !selectedTelnyxNumber
+                                    }
+                                    onClick={() =>
+                                        void provisionTelnyxNumber({
+                                            phone: selectedTelnyxNumber,
+                                        })
+                                    }
+                                >
+                                    {telnyxProvisionBusy
+                                        ? t(
+                                              "restaurantSettings:provisioning",
+                                              "Provisioning…",
+                                          )
+                                        : t(
+                                              "restaurantSettings:purchaseAssign",
+                                              "Purchase & assign number",
+                                          )}
+                                </Button>
+                            </div>
+                        ) : null}
+
+                        <div className="space-y-2 pt-2 border-t">
+                            <Label>
+                                {t(
+                                    "restaurantSettings:attachExistingTelnyx",
+                                    "Or attach an existing Telnyx number (E.164)",
+                                )}
+                            </Label>
+                            <div className="flex flex-wrap gap-2">
+                                <Input
+                                    value={manualTelnyxNumber}
+                                    onChange={(e) =>
+                                        setManualTelnyxNumber(e.target.value)
+                                    }
+                                    placeholder="+15551234567"
+                                    className="max-w-xs font-mono"
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={telnyxProvisionBusy}
+                                    onClick={() =>
+                                        void provisionTelnyxNumber({
+                                            skipPurchase: true,
+                                            phone: manualTelnyxNumber,
+                                        })
+                                    }
+                                >
+                                    {t(
+                                        "restaurantSettings:assignExisting",
+                                        "Assign existing",
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border p-4">
+                        <p className="text-sm font-medium">
+                            {t(
+                                "restaurantSettings:step2Title",
+                                "2. Sync Synthflow AI order assistant",
+                            )}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            Link your existing Synthflow agent and keep menu,
+                            coupons, and phone settings synchronized.
+                        </p>
+
+                        <div className="space-y-1.5 pt-1">
+                            <Label className="text-xs">
+                                Link an existing Synthflow Agent ID
+                            </Label>
+                            <p className="text-[11px] text-muted-foreground">
+                                Agents are never auto-created. Copy a real
+                                model_id from Synthflow → paste here → Link →
+                                then Update.
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                <Input
+                                    value={linkAgentId}
+                                    onChange={(e) =>
+                                        setLinkAgentId(e.target.value)
+                                    }
+                                    placeholder="Paste model_id from Synthflow (e.g. 8294235e-...)"
+                                    className="max-w-md font-mono text-xs"
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={
+                                        !linkAgentId.trim() ||
+                                        linkingAgentBusy ||
+                                        !r?.id
+                                    }
+                                    onClick={async () => {
+                                        const id = linkAgentId.trim();
+                                        if (!id || !r?.id) return;
+                                        setLinkingAgentBusy(true);
+                                        try {
+                                            const { data, error } =
+                                                await supabase.functions.invoke(
+                                                    "restaurant-create-synthflow-agent",
+                                                    {
+                                                        body: {
+                                                            restaurant_id: r.id,
+                                                            synthflow_agent_id:
+                                                                id,
+                                                            link_only: true,
+                                                            action: "link",
+                                                        },
+                                                    },
+                                                );
+                                            if (error)
+                                                throw new Error(error.message);
+                                            const d = data as {
+                                                success?: boolean;
+                                                error?: string;
+                                                message?: string;
+                                                synthflow_agent_id?: string;
+                                                available_agents?: {
+                                                    model_id: string;
+                                                    name: string;
+                                                }[];
+                                            };
+                                            if (!d?.success) {
+                                                const suggestions = (
+                                                    d.available_agents || []
+                                                )
+                                                    .slice(0, 5)
+                                                    .map(
+                                                        (a) =>
+                                                            `${a.name}: ${a.model_id}`,
+                                                    )
+                                                    .join(" · ");
+                                                throw new Error(
+                                                    [
+                                                        d?.error ||
+                                                            "Link failed — agent not found in Synthflow",
+                                                        suggestions
+                                                            ? `Try: ${suggestions}`
+                                                            : "",
+                                                    ]
+                                                        .filter(Boolean)
+                                                        .join(" "),
+                                                );
+                                            }
+                                            toast({
+                                                title: "Agent linked",
+                                                description:
+                                                    d.message ||
+                                                    `Verified and linked ${d.synthflow_agent_id || id}. Now click Update.`,
+                                            });
+                                            setLinkAgentId("");
+                                            await loadRestaurantData();
+                                        } catch (e: unknown) {
+                                            toast({
+                                                variant: "destructive",
+                                                title: "Link failed",
+                                                description:
+                                                    e instanceof Error
+                                                        ? e.message
+                                                        : String(e),
+                                            });
+                                        } finally {
+                                            setLinkingAgentBusy(false);
+                                        }
+                                    }}
+                                >
+                                    {linkingAgentBusy
+                                        ? "Linking…"
+                                        : "Link Agent"}
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 pt-2 border-t">
+                            <Button
+                                type="button"
+                                disabled={
+                                    synthflowBusy || !r.synthflow_agent_id
+                                }
+                                onClick={() =>
+                                    void createOrUpdateSynthflowAgent()
+                                }
+                            >
+                                <Sparkles className="h-4 w-4 mr-2" />
+                                {synthflowBusy
+                                    ? t(
+                                          "restaurantSettings:updating",
+                                          "Updating…",
+                                      )
+                                    : t(
+                                          "restaurantSettings:updateSynthflowAgent",
+                                          "Update Synthflow agent",
+                                      )}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={
+                                    synthflowSyncBusy || !r.synthflow_agent_id
+                                }
+                                onClick={() => void syncMenuToSynthflow()}
+                            >
+                                <RefreshCw
+                                    className={`h-4 w-4 mr-2 ${synthflowSyncBusy ? "animate-spin" : ""}`}
+                                />
+                                {synthflowSyncBusy
+                                    ? t(
+                                          "restaurantSettings:syncing",
+                                          "Syncing…",
+                                      )
+                                    : t(
+                                          "restaurantSettings:syncMenuCoupons",
+                                          "Sync menu & coupons",
+                                      )}
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2 rounded-lg border bg-muted/15 p-4">
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                            {t(
+                                "restaurantSettings:postCallWebhook",
+                                "Post-call webhook (configured on the agent automatically)",
+                            )}
+                        </Label>
+                        <div className="flex gap-2">
+                            <Input
+                                value={synthflowWebhookUrl}
+                                readOnly
+                                className="font-mono text-xs"
+                            />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => copy(synthflowWebhookUrl)}
+                            >
+                                <Copy className="h-4 w-4" />
+                            </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            {t(
+                                "restaurantSettings:postCallWebhookDesc",
+                                "Requires PUBLIC_API_URL to be a public HTTPS URL Synthflow can reach. After each call, order details are extracted and the order is created here.",
+                            )}
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Legacy Twilio UI — hidden while Synthflow/Telnyx is primary */}
+            {/* LEGACY_TWILIO_START
       <Card className="overflow-hidden border shadow-sm">
         <CardHeader className="border-b bg-muted/30 pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -1860,155 +2654,245 @@ export default function RestaurantSettings() {
           <Button onClick={saveTelephony}>Save telephony</Button>
         </CardContent>
       </Card>
-      )}
+      LEGACY_TWILIO_END */}
 
-      {/* AI Voice Agent Configuration (Prompt, Language, Greeting) */}
-      <Card className="overflow-hidden border shadow-sm">
-        <CardHeader className="border-b bg-muted/30 pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Bot className="h-5 w-5" />
-            {t("restaurantSettings:aiAgentTitle", "AI agent (Synthflow)")}
-          </CardTitle>
-          <CardDescription>
-            {t("restaurantSettings:aiAgentDesc", "Configure language, voice greeting, and custom system prompt for your AI phone agent.")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5 pt-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>{t("restaurantSettings:language", "Agent Language")}</Label>
-              <Select value={r.agent_language || "ur"} onValueChange={(v) => setR({ ...r, agent_language: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LANGUAGES.map((l) => (
-                    <SelectItem key={l.code} value={l.code}>
-                      {l.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>{t("restaurantSettings:voiceId", "Voice ID (optional)")}</Label>
-              <Input
-                value={r.agent_voice_id || ""}
-                onChange={(e) => setR({ ...r, agent_voice_id: e.target.value })}
-                placeholder="wdXhcCmAYpPsryFWCtn2"
-              />
-            </div>
-          </div>
+            {/* AI Voice Agent Configuration (Prompt, Language, Greeting) */}
+            <Card className="overflow-hidden border shadow-sm">
+                <CardHeader className="border-b bg-muted/30 pb-4">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                        <Bot className="h-5 w-5" />
+                        {t(
+                            "restaurantSettings:aiAgentTitle",
+                            "AI agent (Synthflow)",
+                        )}
+                    </CardTitle>
+                    <CardDescription>
+                        {t(
+                            "restaurantSettings:aiAgentDesc",
+                            "Configure language, voice greeting, and custom system prompt for your AI phone agent.",
+                        )}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5 pt-6">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label>
+                                {t(
+                                    "restaurantSettings:language",
+                                    "Agent Language",
+                                )}
+                            </Label>
+                            <Select
+                                value={r.agent_language || "ur"}
+                                onValueChange={(v) =>
+                                    setR({ ...r, agent_language: v })
+                                }
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {LANGUAGES.map((l) => (
+                                        <SelectItem key={l.code} value={l.code}>
+                                            {l.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>
+                                {t(
+                                    "restaurantSettings:voiceId",
+                                    "Voice ID (optional)",
+                                )}
+                            </Label>
+                            <Input
+                                value={r.agent_voice_id || ""}
+                                onChange={(e) =>
+                                    setR({
+                                        ...r,
+                                        agent_voice_id: e.target.value,
+                                    })
+                                }
+                                placeholder="wdXhcCmAYpPsryFWCtn2"
+                            />
+                        </div>
+                    </div>
 
-          <div className="space-y-2">
-            <Label>{t("restaurantSettings:firstMessage", "First message / Greeting (optional)")}</Label>
-            <Input
-              value={r.agent_first_message || ""}
-              onChange={(e) => setR({ ...r, agent_first_message: e.target.value })}
-              placeholder={`Hi, thanks for calling ${r.name}!`}
-            />
-          </div>
+                    <div className="space-y-2">
+                        <Label>
+                            {t(
+                                "restaurantSettings:firstMessage",
+                                "First message / Greeting (optional)",
+                            )}
+                        </Label>
+                        <Input
+                            value={r.agent_first_message || ""}
+                            onChange={(e) =>
+                                setR({
+                                    ...r,
+                                    agent_first_message: e.target.value,
+                                })
+                            }
+                            placeholder={`Hi, thanks for calling ${r.name}!`}
+                        />
+                    </div>
 
-          <div className="space-y-2">
-            <Label>{t("restaurantSettings:systemPrompt", "System prompt (optional)")}</Label>
-            <Textarea
-              rows={12}
-              value={r.agent_system_prompt || ""}
-              onChange={(e) => setR({ ...r, agent_system_prompt: e.target.value })}
-              placeholder="Full current agent prompt loads here. Leave blank to keep the saved prompt and only refresh menu / branch / place_order sections."
-              className="resize-y min-h-[200px] font-mono text-xs"
-            />
-            <p className="text-xs text-muted-foreground">
-              Updates merge with the latest saved prompt (menu, branch ordering, cash-only, and place_order rules are refreshed). Empty field keeps the existing prompt. Check the box below only if you intend to replace the entire prompt.
-            </p>
-            <label className="flex items-start gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={replaceFullPrompt}
-                onChange={(e) => setReplaceFullPrompt(e.target.checked)}
-              />
-              <span>
-                Replace full prompt (overwrite saved instructions with the editor text). Leave unchecked to preserve existing rules.
-              </span>
-            </label>
-          </div>
+                    <div className="space-y-2">
+                        <Label>
+                            {t(
+                                "restaurantSettings:systemPrompt",
+                                "System prompt (optional)",
+                            )}
+                        </Label>
+                        <Textarea
+                            rows={12}
+                            value={r.agent_system_prompt || ""}
+                            onChange={(e) =>
+                                setR({
+                                    ...r,
+                                    agent_system_prompt: e.target.value,
+                                })
+                            }
+                            placeholder="Full current agent prompt loads here. Leave blank to keep the saved prompt and only refresh menu / branch / place_order sections."
+                            className="resize-y min-h-[200px] font-mono text-xs"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Updates merge with the latest saved prompt (menu,
+                            branch ordering, cash-only, and place_order rules
+                            are refreshed). Empty field keeps the existing
+                            prompt. Check the box below only if you intend to
+                            replace the entire prompt.
+                        </p>
+                        <label className="flex items-start gap-2 text-sm cursor-pointer">
+                            <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={replaceFullPrompt}
+                                onChange={(e) =>
+                                    setReplaceFullPrompt(e.target.checked)
+                                }
+                            />
+                            <span>
+                                Replace full prompt (overwrite saved
+                                instructions with the editor text). Leave
+                                unchecked to preserve existing rules.
+                            </span>
+                        </label>
+                    </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              disabled={synthflowBusy || !r.telnyx_phone_number}
-              onClick={() => void createOrUpdateSynthflowAgent()}
-            >
-              <Sparkles className="h-4 w-4 mr-2" />
-              {synthflowBusy ? t("restaurantSettings:updating", "Updating…") : t("restaurantSettings:updateSynthflowAgent", "Update Synthflow Agent")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={synthflowSyncBusy || !r.synthflow_agent_id}
-              onClick={() => void syncMenuToSynthflow()}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${synthflowSyncBusy ? "animate-spin" : ""}`} />
-              {synthflowSyncBusy ? t("restaurantSettings:syncing", "Syncing…") : t("restaurantSettings:syncMenuCoupons", "Sync Menu & Coupons")}
-            </Button>
-          </div>
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            type="button"
+                            disabled={synthflowBusy || !r.telnyx_phone_number}
+                            onClick={() => void createOrUpdateSynthflowAgent()}
+                        >
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            {synthflowBusy
+                                ? t("restaurantSettings:updating", "Updating…")
+                                : t(
+                                      "restaurantSettings:updateSynthflowAgent",
+                                      "Update Synthflow Agent",
+                                  )}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={
+                                synthflowSyncBusy || !r.synthflow_agent_id
+                            }
+                            onClick={() => void syncMenuToSynthflow()}
+                        >
+                            <RefreshCw
+                                className={`h-4 w-4 mr-2 ${synthflowSyncBusy ? "animate-spin" : ""}`}
+                            />
+                            {synthflowSyncBusy
+                                ? t("restaurantSettings:syncing", "Syncing…")
+                                : t(
+                                      "restaurantSettings:syncMenuCoupons",
+                                      "Sync Menu & Coupons",
+                                  )}
+                        </Button>
+                    </div>
 
-          <div className="space-y-3 rounded-lg border p-4">
-            <p className="text-sm font-medium">{t("restaurantSettings:testCallTitle", "Test call")}</p>
-            <p className="text-xs text-muted-foreground">
-              {t(
-                "restaurantSettings:testCallDesc",
-                "Place test call dials your phone via a Synthflow outbound twin. If dialing fails, call the restaurant number below to test inbound.",
-              )}
-            </p>
-            {(r.telnyx_phone_number || r.twilio_phone_number || r.phone) ? (
-              <p className="text-sm">
-                Call to test:{" "}
-                <span className="font-mono font-medium text-foreground">
-                  {r.telnyx_phone_number || r.twilio_phone_number || r.phone}
-                </span>
-              </p>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Input
-                value={testCallPhone}
-                onChange={(e) => setTestCallPhone(e.target.value)}
-                placeholder="+923001234567"
-                className="max-w-xs font-mono"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={testCallBusy || !r.synthflow_agent_id}
-                onClick={() => void placeTestCall()}
-              >
-                <Phone className="h-4 w-4 mr-2" />
-                {testCallBusy
-                  ? t("restaurantSettings:testCallBusy", "Calling…")
-                  : t("restaurantSettings:testCallButton", "Place test call")}
-              </Button>
-            </div>
-          </div>
+                    <div className="space-y-3 rounded-lg border p-4">
+                        <p className="text-sm font-medium">
+                            {t("restaurantSettings:testCallTitle", "Test call")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            {t(
+                                "restaurantSettings:testCallDesc",
+                                "Place test call dials your phone via a Synthflow outbound twin. If dialing fails, call the restaurant number below to test inbound.",
+                            )}
+                        </p>
+                        {r.telnyx_phone_number ||
+                        r.twilio_phone_number ||
+                        r.phone ? (
+                            <p className="text-sm">
+                                Call to test:{" "}
+                                <span className="font-mono font-medium text-foreground">
+                                    {r.telnyx_phone_number ||
+                                        r.twilio_phone_number ||
+                                        r.phone}
+                                </span>
+                            </p>
+                        ) : null}
+                        <div className="flex flex-wrap gap-2">
+                            <Input
+                                value={testCallPhone}
+                                onChange={(e) =>
+                                    setTestCallPhone(e.target.value)
+                                }
+                                placeholder="+923001234567"
+                                className="max-w-xs font-mono"
+                            />
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                disabled={testCallBusy || !r.synthflow_agent_id}
+                                onClick={() => void placeTestCall()}
+                            >
+                                <Phone className="h-4 w-4 mr-2" />
+                                {testCallBusy
+                                    ? t(
+                                          "restaurantSettings:testCallBusy",
+                                          "Calling…",
+                                      )
+                                    : t(
+                                          "restaurantSettings:testCallButton",
+                                          "Place test call",
+                                      )}
+                            </Button>
+                        </div>
+                    </div>
 
-          {r.synthflow_agent_id ? (
-            <div className="rounded-lg border bg-muted/15 px-4 py-3 text-xs text-muted-foreground space-y-1">
-              <div>
-                Synthflow Agent ID: <span className="font-mono text-foreground">{r.synthflow_agent_id}</span>
-              </div>
-              {r.synthflow_synced_at ? (
-                <div>Last synced: {new Date(r.synthflow_synced_at).toLocaleString()}</div>
-              ) : null}
-              <div>
-                {t(
-                  "restaurantSettings:concurrentCallsHint",
-                  "Multiple customers can call at the same time — one agent opens a separate session per caller (limited by your Synthflow workspace concurrency). Orders stay isolated by call ID.",
-                )}
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-    </div>
-  );
+                    {r.synthflow_agent_id ? (
+                        <div className="rounded-lg border bg-muted/15 px-4 py-3 text-xs text-muted-foreground space-y-1">
+                            <div>
+                                Synthflow Agent ID:{" "}
+                                <span className="font-mono text-foreground">
+                                    {r.synthflow_agent_id}
+                                </span>
+                            </div>
+                            {r.synthflow_synced_at ? (
+                                <div>
+                                    Last synced:{" "}
+                                    {new Date(
+                                        r.synthflow_synced_at,
+                                    ).toLocaleString()}
+                                </div>
+                            ) : null}
+                            <div>
+                                {t(
+                                    "restaurantSettings:concurrentCallsHint",
+                                    "Multiple customers can call at the same time — one agent opens a separate session per caller (limited by your Synthflow workspace concurrency). Orders stay isolated by call ID.",
+                                )}
+                            </div>
+                        </div>
+                    ) : null}
+                </CardContent>
+            </Card>
+        </div>
+    );
 }

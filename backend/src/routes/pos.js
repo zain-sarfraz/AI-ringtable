@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { getKnex } from "../db.js";
-import { optionalAuth, requireAuth } from "../middleware/auth.js";
 import { nextOrderNumber } from "../lib/orderNumbers.js";
 import { deductStockForOrder } from "../lib/stockDeduction.js";
+import { optionalAuth, requireAuth } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -19,6 +19,7 @@ function checkRestaurantAccess(req, restaurantId) {
 
 /**
  * Auto-heal multi-tenant columns on live databases where migration 060 hasn't executed yet.
+ * Uses DO $$ BEGIN...EXCEPTION WHEN OTHERS THEN NULL END $$ so each ALTER runs independently.
  */
 let columnsEnsured = false;
 export async function ensureInventoryRestaurantColumns(knex) {
@@ -31,24 +32,27 @@ export async function ensureInventoryRestaurantColumns(knex) {
     "stock_adjustments",
   ];
   for (const table of tables) {
-    try {
-      await knex.raw(
-        `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;`
-      );
-    } catch {
-      try {
-        await knex.raw(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS restaurant_id UUID;`);
-      } catch {
-        // Table might not exist or non-fatal
-      }
-    }
-    try {
-      await knex.raw(`CREATE INDEX IF NOT EXISTS idx_${table}_restaurant_id ON ${table}(restaurant_id);`);
-    } catch {
-      // ignore
-    }
+    // Try with FK first; fall back to plain UUID — each in its own DO block so errors are non-fatal
+    await knex.raw(`
+      DO $ensure$ BEGIN
+        ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
+      EXCEPTION WHEN OTHERS THEN
+        BEGIN
+          ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS restaurant_id UUID;
+        EXCEPTION WHEN OTHERS THEN NULL;
+        END;
+      END $ensure$;
+    `).catch(() => { });
+    await knex.raw(`
+      DO $idx$ BEGIN
+        CREATE INDEX IF NOT EXISTS idx_${table}_restaurant_id ON ${table}(restaurant_id);
+      EXCEPTION WHEN OTHERS THEN NULL;
+      END $idx$;
+    `).catch(() => { });
   }
-  columnsEnsured = true;
+  // Verify at least one key table actually has the column before marking as done
+  const verified = await knex.schema.hasColumn("suppliers", "restaurant_id").catch(() => false);
+  columnsEnsured = verified;
 }
 
 async function checkHasColumn(knex, tableName, columnName = "restaurant_id") {
@@ -1065,9 +1069,9 @@ router.post("/checkout", optionalAuth, requireAuth, async (req, res) => {
 
     const dbMenuItems = menuItemIds.length > 0
       ? await trx("menu_items")
-          .where({ restaurant_id: targetRestaurantId })
-          .whereIn("id", menuItemIds)
-          .select("id", "name", "price", "is_available")
+        .where({ restaurant_id: targetRestaurantId })
+        .whereIn("id", menuItemIds)
+        .select("id", "name", "price", "is_available")
       : [];
 
     const dbMenuMap = new Map(dbMenuItems.map(m => [m.id, m]));

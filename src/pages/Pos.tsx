@@ -37,12 +37,15 @@ import { PosNewPurchaseDialog } from "@/components/pos/PosNewPurchaseDialog";
 import { PosRawMaterialDialog } from "@/components/pos/PosRawMaterialDialog";
 import { PosRecipeDialog } from "@/components/pos/PosRecipeDialog";
 import { PosStockAdjustDialog } from "@/components/pos/PosStockAdjustDialog";
-import { PosSupplierDialog } from "@/components/pos/PosSupplierDialog";
+import {
+    PosSupplierDialog,
+    SupplierItem,
+} from "@/components/pos/PosSupplierDialog";
 
 export default function Pos() {
     const [searchParams, setSearchParams] = useSearchParams();
     const currentTab = searchParams.get("tab") || "terminal";
-    const { restaurantId, activeRestaurant } = useActiveRestaurant();
+    const { restaurantId, activeRestaurant, currency } = useActiveRestaurant();
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -62,6 +65,12 @@ export default function Pos() {
     const [adjustingMaterial, setAdjustingMaterial] =
         useState<RawMaterialItem | null>(null);
     const [showSupplierDialog, setShowSupplierDialog] = useState(false);
+    const [editingSupplier, setEditingSupplier] = useState<SupplierItem | null>(
+        null,
+    );
+    const [purchaseSupplierId, setPurchaseSupplierId] = useState<
+        string | undefined
+    >(undefined);
     const [showRecipeDialog, setShowRecipeDialog] = useState(false);
     const [editingRecipe, setEditingRecipe] = useState<RecipeItem | null>(null);
     const [seeding, setSeeding] = useState(false);
@@ -201,7 +210,14 @@ export default function Pos() {
                 .eq("is_available", true)
                 .order("name", { ascending: true });
             if (error) throw error;
-            return (data || []) as Array<Record<string, unknown>>;
+            return (data || []) as Array<{
+                id: string;
+                name: string;
+                price: number;
+                image_url?: string | null;
+                category_id?: string;
+                is_available?: boolean;
+            }>;
         },
         enabled: Boolean(restaurantId),
     });
@@ -314,6 +330,35 @@ export default function Pos() {
         }
     };
 
+    // Delete supplier
+    const handleDeleteSupplier = async (supplierId: string) => {
+        if (!confirm("Are you sure you want to delete this supplier?")) return;
+        try {
+            const res = await fetch(
+                `${getApiBase()}/api/pos/suppliers/${supplierId}?restaurant_id=${restaurantId}`,
+                {
+                    method: "DELETE",
+                    headers: { Authorization: `Bearer ${getToken()}` },
+                },
+            );
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok)
+                throw new Error(body.error || "Failed to delete supplier");
+
+            toast({
+                title: "Supplier Removed",
+                description: "Supplier deleted successfully.",
+            });
+            refetchSuppliers();
+        } catch (err: unknown) {
+            const msg =
+                err instanceof Error
+                    ? err.message
+                    : "Failed to delete supplier";
+            toast({ variant: "destructive", title: "Error", description: msg });
+        }
+    };
+
     const rawMaterialsList = rawMaterialsData?.raw_materials || [];
     const suppliersList = suppliersData?.suppliers || [];
     const purchasesList = purchasesData?.purchases || [];
@@ -354,7 +399,8 @@ export default function Pos() {
                             variant="outline"
                             className="font-semibold text-xs px-2.5 py-0.5 border-primary/30 text-primary"
                         >
-                            {activeRestaurant?.name || "Restaurant"}
+                            {activeRestaurant?.name || "Restaurant"}{" "}
+                            {currency ? `(${currency})` : ""}
                         </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -479,6 +525,7 @@ export default function Pos() {
                     menuItems={menuItems}
                     categories={categories}
                     tables={tables}
+                    currency={currency}
                     onOrderCompleted={refetchAll}
                 />
             )}
@@ -487,6 +534,7 @@ export default function Pos() {
                 <PosOverview
                     data={summaryData}
                     period={period}
+                    currency={currency}
                     onPeriodChange={setPeriod}
                     onNavigateTab={handleTabChange}
                 />
@@ -495,14 +543,28 @@ export default function Pos() {
             {currentTab === "purchases" && (
                 <PosPurchases
                     purchases={purchasesList}
-                    onOpenNewPurchase={() => setShowPurchaseDialog(true)}
-                    onOpenSupplierDialog={() => setShowSupplierDialog(true)}
+                    suppliers={suppliersList}
+                    currency={currency}
+                    onOpenNewPurchase={() => {
+                        setPurchaseSupplierId(undefined);
+                        setShowPurchaseDialog(true);
+                    }}
+                    onOpenNewPurchaseWithSupplier={(supplierId) => {
+                        setPurchaseSupplierId(supplierId);
+                        setShowPurchaseDialog(true);
+                    }}
+                    onOpenSupplierDialog={(s) => {
+                        setEditingSupplier(s || null);
+                        setShowSupplierDialog(true);
+                    }}
+                    onDeleteSupplier={handleDeleteSupplier}
                 />
             )}
 
             {currentTab === "raw-materials" && (
                 <PosRawMaterials
                     materials={rawMaterialsList}
+                    currency={currency}
                     onOpenAddMaterial={() => {
                         setEditingMaterial(null);
                         setShowMaterialDialog(true);
@@ -524,6 +586,7 @@ export default function Pos() {
                     rawMaterials={rawMaterialsList}
                     history={usageHistory}
                     selectedMaterialId={selectedUsageMaterialId}
+                    currency={currency}
                     onSelectMaterialId={setSelectedUsageMaterialId}
                     summary={usageSummary}
                 />
@@ -532,7 +595,8 @@ export default function Pos() {
             {currentTab === "recipes" && (
                 <PosRecipes
                     recipes={recipesList}
-                    menuItems={menuItems as any}
+                    menuItems={menuItems}
+                    currency={currency}
                     onOpenRecipeDialog={(rec) => {
                         setEditingRecipe(rec);
                         setShowRecipeDialog(true);
@@ -548,12 +612,20 @@ export default function Pos() {
             {/* 1. New Purchase Dialog */}
             <PosNewPurchaseDialog
                 open={showPurchaseDialog}
-                onOpenChange={setShowPurchaseDialog}
+                onOpenChange={(open) => {
+                    setShowPurchaseDialog(open);
+                    if (!open) setPurchaseSupplierId(undefined);
+                }}
                 restaurantId={restaurantId}
                 rawMaterials={rawMaterialsList}
                 suppliers={suppliersList}
+                currency={currency}
+                initialSupplierId={purchaseSupplierId}
                 onPurchaseCreated={refetchAll}
-                onOpenAddSupplier={() => setShowSupplierDialog(true)}
+                onOpenAddSupplier={() => {
+                    setEditingSupplier(null);
+                    setShowSupplierDialog(true);
+                }}
                 onOpenAddMaterial={() => {
                     setEditingMaterial(null);
                     setShowMaterialDialog(true);
@@ -567,6 +639,7 @@ export default function Pos() {
                 restaurantId={restaurantId}
                 material={editingMaterial}
                 suppliers={suppliersList}
+                currency={currency}
                 onSaved={refetchAll}
             />
 
@@ -579,11 +652,15 @@ export default function Pos() {
                 onAdjusted={refetchAll}
             />
 
-            {/* 4. Add Supplier Dialog */}
+            {/* 4. Add / Edit Supplier Dialog */}
             <PosSupplierDialog
                 open={showSupplierDialog}
-                onOpenChange={setShowSupplierDialog}
+                onOpenChange={(open) => {
+                    setShowSupplierDialog(open);
+                    if (!open) setEditingSupplier(null);
+                }}
                 restaurantId={restaurantId}
+                supplier={editingSupplier}
                 onSaved={refetchSuppliers}
             />
 
@@ -594,8 +671,9 @@ export default function Pos() {
                 restaurantId={restaurantId}
                 recipe={editingRecipe}
                 allRecipes={recipesList}
-                menuItems={menuItems as any}
+                menuItems={menuItems}
                 rawMaterials={rawMaterialsList}
+                currency={currency}
                 onSaved={refetchAll}
             />
         </div>
