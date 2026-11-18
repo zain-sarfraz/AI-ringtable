@@ -987,7 +987,6 @@ export default function RestaurantSettings() {
                 await loadRestaurantData();
                 throw new Error(d?.error || "Failed");
             }
-            setReplaceFullPrompt(false);
             toast({
                 title: "Synthflow agent updated",
                 description:
