@@ -1033,11 +1033,11 @@ export default function TableReservations() {
                     {/* ─── Unified Modern Control & Filter Bar ─── */}
                     <div className="bg-card border border-border/80 rounded-2xl p-4 sm:p-4.5 shadow-2xs space-y-3.5">
                         {/* Top Row: Date Scope Segmented Bar + View Switcher + Search & Refresh */}
-                        <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-3">
+                        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
                             {/* Left: Date Scope Filter Controls */}
-                            <div className="flex items-center gap-2 overflow-x-auto pb-1 2xl:pb-0 scrollbar-none shrink-0">
+                            <div className="flex items-center gap-2 overflow-x-auto pb-1 xl:pb-0 scrollbar-none flex-nowrap shrink-0">
                                 {/* Segmented Control */}
-                                <div className="inline-flex items-center p-1 bg-muted/70 dark:bg-muted/40 rounded-xl border border-border/70 shrink-0 gap-1">
+                                <div className="inline-flex flex-nowrap items-center p-1 bg-muted/60 dark:bg-muted/30 rounded-xl border border-border/60 shadow-2xs shrink-0 gap-1">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -1047,18 +1047,18 @@ export default function TableReservations() {
                                         className={cn(
                                             "h-8 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0",
                                             dateFilterMode === "current"
-                                                ? "bg-background text-foreground shadow-2xs font-bold border border-border/80"
+                                                ? "bg-background text-foreground shadow-xs font-bold border border-border/70"
                                                 : "text-muted-foreground hover:text-foreground hover:bg-background/40",
                                         )}
                                     >
-                                        <CalendarDays className="h-3.5 w-3.5 text-primary/80" />
+                                        <CalendarDays className="h-3.5 w-3.5 text-primary" />
                                         <span>Today & Upcoming</span>
                                         <span
                                             className={cn(
-                                                "px-1.5 py-0.2 rounded-full text-[10px] font-bold leading-none",
+                                                "px-2 py-0.5 rounded-full text-[10px] font-bold leading-none tracking-tight",
                                                 dateFilterMode === "current"
                                                     ? "bg-primary/15 text-primary"
-                                                    : "bg-muted-foreground/10 text-muted-foreground",
+                                                    : "bg-background/80 dark:bg-muted/80 text-muted-foreground border border-border/40",
                                             )}
                                         >
                                             {dateCounts.upcoming}
@@ -1074,18 +1074,21 @@ export default function TableReservations() {
                                         className={cn(
                                             "h-8 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0",
                                             dateFilterMode === "today"
-                                                ? "bg-background text-emerald-700 dark:text-emerald-400 shadow-2xs font-bold border border-emerald-500/40"
+                                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 shadow-xs font-bold border border-emerald-500/30"
                                                 : "text-muted-foreground hover:text-foreground hover:bg-background/40",
                                         )}
                                     >
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                        <span className="relative flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                        </span>
                                         <span>Today</span>
                                         <span
                                             className={cn(
-                                                "px-1.5 py-0.2 rounded-full text-[10px] font-bold leading-none",
+                                                "px-2 py-0.5 rounded-full text-[10px] font-bold leading-none tracking-tight",
                                                 dateFilterMode === "today"
-                                                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                                                    : "bg-muted-foreground/10 text-muted-foreground",
+                                                    ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-black"
+                                                    : "bg-background/80 dark:bg-muted/80 text-muted-foreground border border-border/40",
                                             )}
                                         >
                                             {dateCounts.today}
@@ -1101,18 +1104,18 @@ export default function TableReservations() {
                                         className={cn(
                                             "h-8 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0",
                                             dateFilterMode === "past"
-                                                ? "bg-background text-amber-800 dark:text-amber-300 shadow-2xs font-bold border border-amber-500/40"
+                                                ? "bg-amber-500/10 text-amber-800 dark:text-amber-300 shadow-xs font-bold border border-amber-500/30"
                                                 : "text-muted-foreground hover:text-foreground hover:bg-background/40",
                                         )}
                                     >
-                                        <Clock className="h-3.5 w-3.5 text-amber-500" />
-                                        <span>Past (Old)</span>
+                                        <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                                        <span>Past</span>
                                         <span
                                             className={cn(
-                                                "px-1.5 py-0.2 rounded-full text-[10px] font-bold leading-none",
+                                                "px-2 py-0.5 rounded-full text-[10px] font-bold leading-none tracking-tight",
                                                 dateFilterMode === "past"
-                                                    ? "bg-amber-500/20 text-amber-800 dark:text-amber-300 font-extrabold"
-                                                    : "bg-muted-foreground/10 text-muted-foreground",
+                                                    ? "bg-amber-500/25 text-amber-900 dark:text-amber-200 font-black"
+                                                    : "bg-background/80 dark:bg-muted/80 text-muted-foreground border border-border/40",
                                             )}
                                         >
                                             {dateCounts.past}
@@ -1128,17 +1131,17 @@ export default function TableReservations() {
                                         className={cn(
                                             "h-8 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0",
                                             dateFilterMode === "all"
-                                                ? "bg-background text-foreground shadow-2xs font-bold border border-border/80"
+                                                ? "bg-background text-foreground shadow-xs font-bold border border-border/70"
                                                 : "text-muted-foreground hover:text-foreground hover:bg-background/40",
                                         )}
                                     >
                                         <span>All</span>
                                         <span
                                             className={cn(
-                                                "px-1.5 py-0.2 rounded-full text-[10px] font-bold leading-none",
+                                                "px-2 py-0.5 rounded-full text-[10px] font-bold leading-none tracking-tight",
                                                 dateFilterMode === "all"
                                                     ? "bg-primary/15 text-primary"
-                                                    : "bg-muted-foreground/10 text-muted-foreground",
+                                                    : "bg-background/80 dark:bg-muted/80 text-muted-foreground border border-border/40",
                                             )}
                                         >
                                             {dateCounts.all}
@@ -1149,11 +1152,11 @@ export default function TableReservations() {
                                 {/* Specific Date Picker */}
                                 <div
                                     className={cn(
-                                        "inline-flex items-center gap-2 px-3 h-10 rounded-xl border transition-all shrink-0",
+                                        "inline-flex items-center gap-1.5 px-3 h-8 rounded-xl border text-xs transition-all shrink-0 font-medium",
                                         dateFilterMode === "custom" &&
                                             customDate
-                                            ? "bg-primary/10 border-primary/40 text-primary shadow-2xs font-bold"
-                                            : "bg-muted/50 hover:bg-muted border-border/70 text-muted-foreground hover:text-foreground",
+                                            ? "bg-primary/10 border-primary/40 text-primary shadow-xs font-bold"
+                                            : "bg-muted/40 hover:bg-muted/70 border-border/60 text-muted-foreground hover:text-foreground",
                                     )}
                                 >
                                     <CalendarDays
@@ -1173,7 +1176,7 @@ export default function TableReservations() {
                                             if (e.target.value)
                                                 setDateFilterMode("custom");
                                         }}
-                                        className="bg-transparent text-xs text-foreground font-semibold focus:outline-none cursor-pointer"
+                                        className="bg-transparent text-xs text-foreground font-medium focus:outline-none cursor-pointer"
                                         title="Filter by specific date"
                                     />
                                     {customDate && (
@@ -1183,7 +1186,7 @@ export default function TableReservations() {
                                                 setCustomDate("");
                                                 setDateFilterMode("current");
                                             }}
-                                            className="text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10 p-0.5 rounded-full transition-colors"
+                                            className="text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10 p-0.5 rounded-full transition-colors ml-1"
                                             title="Clear date"
                                         >
                                             <X className="h-3 w-3" />
@@ -1193,12 +1196,12 @@ export default function TableReservations() {
                             </div>
 
                             {/* Right: Search, Refresh & View Mode Switcher */}
-                            <div className="flex items-center gap-2 w-full 2xl:w-auto">
-                                <div className="relative flex-1 2xl:w-72">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                            <div className="flex items-center gap-2 w-full xl:w-auto">
+                                <div className="relative flex-1 xl:w-64">
+                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                                     <Input
-                                        placeholder="Search guest name, phone, table..."
-                                        className="pl-8 pr-8 h-10 text-xs rounded-xl bg-background border-border/80 focus-visible:ring-primary/20 shadow-2xs"
+                                        placeholder="Search guest, phone, table..."
+                                        className="pl-8 pr-7 h-8.5 text-xs rounded-xl bg-background border-border/70 focus-visible:ring-primary/20 shadow-2xs"
                                         value={searchTerm}
                                         onChange={(e) =>
                                             setSearchTerm(e.target.value)
@@ -1208,7 +1211,7 @@ export default function TableReservations() {
                                         <button
                                             type="button"
                                             onClick={() => setSearchTerm("")}
-                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded-full"
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded-full"
                                         >
                                             <X className="h-3 w-3" />
                                         </button>
@@ -1216,14 +1219,14 @@ export default function TableReservations() {
                                 </div>
 
                                 {/* View Mode Switcher */}
-                                <div className="inline-flex items-center p-1 bg-muted/70 dark:bg-muted/40 rounded-xl border border-border/70 shrink-0 gap-0.5">
+                                <div className="inline-flex items-center p-0.5 bg-muted/50 dark:bg-muted/30 rounded-xl border border-border/60 shrink-0 gap-0.5">
                                     <button
                                         type="button"
                                         onClick={() => setViewMode("table")}
                                         className={cn(
-                                            "flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold transition-all",
+                                            "flex items-center gap-1.5 px-2.5 h-7.5 rounded-lg text-xs font-semibold transition-all",
                                             viewMode === "table"
-                                                ? "bg-background text-foreground shadow-2xs font-bold border border-border/70"
+                                                ? "bg-background text-foreground shadow-xs font-bold border border-border/70"
                                                 : "text-muted-foreground hover:text-foreground",
                                         )}
                                         title="Table View"
@@ -1237,9 +1240,9 @@ export default function TableReservations() {
                                         type="button"
                                         onClick={() => setViewMode("cards")}
                                         className={cn(
-                                            "flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold transition-all",
+                                            "flex items-center gap-1.5 px-2.5 h-7.5 rounded-lg text-xs font-semibold transition-all",
                                             viewMode === "cards"
-                                                ? "bg-background text-foreground shadow-2xs font-bold border border-border/70"
+                                                ? "bg-background text-foreground shadow-xs font-bold border border-border/70"
                                                 : "text-muted-foreground hover:text-foreground",
                                         )}
                                         title="Cards View"
@@ -1254,7 +1257,7 @@ export default function TableReservations() {
                                 <Button
                                     variant="outline"
                                     size="icon"
-                                    className="h-10 w-10 rounded-xl shrink-0 border-border/80 hover:bg-muted shadow-2xs"
+                                    className="h-8.5 w-8.5 rounded-xl shrink-0 border-border/70 hover:bg-muted shadow-2xs"
                                     onClick={loadReservations}
                                     title="Refresh reservations"
                                 >
@@ -1318,10 +1321,10 @@ export default function TableReservations() {
                                                 setStatusFilter(tab.id)
                                             }
                                             className={cn(
-                                                "flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap",
+                                                "flex items-center gap-1.5 px-2.5 h-7.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0",
                                                 isActive
                                                     ? "bg-primary text-primary-foreground shadow-xs font-bold"
-                                                    : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted border border-border/40",
+                                                    : "bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted/70 border border-border/40",
                                             )}
                                         >
                                             {tab.dot && (
@@ -1337,10 +1340,10 @@ export default function TableReservations() {
                                             <span>{tab.label}</span>
                                             <span
                                                 className={cn(
-                                                    "px-1.5 py-0.2 rounded-full text-[10px] font-bold",
+                                                    "px-1.5 py-0.2 rounded-full text-[10px] font-bold leading-none",
                                                     isActive
                                                         ? "bg-primary-foreground/20 text-primary-foreground"
-                                                        : "bg-muted text-muted-foreground",
+                                                        : "bg-background/80 dark:bg-muted/80 text-muted-foreground border border-border/40",
                                                 )}
                                             >
                                                 {tab.count}
@@ -1368,7 +1371,7 @@ export default function TableReservations() {
                                 <Clock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
                                 <span className="truncate">
                                     Showing{" "}
-                                    <strong>past / old reservations</strong> (
+                                    <strong>past reservations</strong> (
                                     {filtered.length}) whose scheduled date has
                                     already passed.
                                 </span>

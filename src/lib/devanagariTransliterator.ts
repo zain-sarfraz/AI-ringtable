@@ -188,7 +188,6 @@ const DICTIONARY_ROMAN: Record<string, string> = {
   "राबता": "Raabta",
   "महफ़ूज़": "Mehfooz",
   "महफूज": "Mehfooz",
-  "मदद": "Madad",
   "हाफ़िज़": "Hafiz",
   "हाफिज": "Hafiz",
   "अल्लाह": "Allah",

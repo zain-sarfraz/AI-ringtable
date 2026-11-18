@@ -1180,6 +1180,21 @@ router.get("/orders/:id", optionalAuth, requireAuth, async (req, res) => {
   }
 });
 
+async function ensureInventoryRestaurantColumns(knex) {
+  try {
+    await knex.raw(`
+      ALTER TABLE inventory_categories ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
+      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
+      ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
+      ALTER TABLE purchases ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
+      ALTER TABLE recipes ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
+      ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
+    `);
+  } catch (err) {
+    console.warn("[pos] Note: ensureInventoryRestaurantColumns notice:", err?.message || err);
+  }
+}
+
 // -------------------------------------------------------------------------
 // 8. ONE-CLICK SEED DEMO DATA FOR TESTING POS & RAW MATERIALS
 // -------------------------------------------------------------------------
@@ -1190,14 +1205,24 @@ router.post("/seed-sample-data", optionalAuth, requireAuth, async (req, res) => 
   }
 
   const knex = getKnex();
+  await ensureInventoryRestaurantColumns(knex);
+
+  const hasCatRid = await knex.schema.hasColumn("inventory_categories", "restaurant_id").catch(() => false);
+  const hasSuppRid = await knex.schema.hasColumn("suppliers", "restaurant_id").catch(() => false);
+  const hasItemRid = await knex.schema.hasColumn("inventory_items", "restaurant_id").catch(() => false);
+  const hasPurchRid = await knex.schema.hasColumn("purchases", "restaurant_id").catch(() => false);
+  const hasRecipeRid = await knex.schema.hasColumn("recipes", "restaurant_id").catch(() => false);
+
   const trx = await knex.transaction();
   try {
     const sampleCats = ["Meat & Poultry", "Bakery & Buns", "Dairy & Cheese", "Vegetables & Produce", "Oils & Sauces", "Packaging"];
     const catMap = {};
     for (const cName of sampleCats) {
-      let cat = await trx("inventory_categories").where({ restaurant_id, name: cName }).first();
+      const catQuery = hasCatRid ? { restaurant_id, name: cName } : { name: cName };
+      let cat = await trx("inventory_categories").where(catQuery).first();
       if (!cat) {
-        const [newCat] = await trx("inventory_categories").insert({ restaurant_id, name: cName }).returning("*");
+        const catInsert = hasCatRid ? { restaurant_id, name: cName } : { name: cName };
+        const [newCat] = await trx("inventory_categories").insert(catInsert).returning("*");
         cat = newCat;
       }
       catMap[cName] = cat.id;
@@ -1212,9 +1237,11 @@ router.post("/seed-sample-data", optionalAuth, requireAuth, async (req, res) => 
 
     const supplierMap = {};
     for (const s of sampleSuppliers) {
-      let supp = await trx("suppliers").where({ restaurant_id, name: s.name }).first();
+      const suppQuery = hasSuppRid ? { restaurant_id, name: s.name } : { name: s.name };
+      let supp = await trx("suppliers").where(suppQuery).first();
       if (!supp) {
-        const [newSupp] = await trx("suppliers").insert({ restaurant_id, ...s }).returning("*");
+        const suppInsert = hasSuppRid ? { restaurant_id, ...s } : { ...s };
+        const [newSupp] = await trx("suppliers").insert(suppInsert).returning("*");
         supp = newSupp;
       }
       supplierMap[s.name] = supp.id;
@@ -1236,21 +1263,24 @@ router.post("/seed-sample-data", optionalAuth, requireAuth, async (req, res) => 
 
     const rawMaterialMap = {};
     for (const rm of rawMaterialsList) {
-      let item = await trx("inventory_items").where({ restaurant_id, name: rm.name }).first();
+      const itemQuery = hasItemRid ? { restaurant_id, name: rm.name } : { name: rm.name };
+      let item = await trx("inventory_items").where(itemQuery).first();
       if (!item) {
+        const itemInsert = {
+          name: rm.name,
+          sku: `SKU-${Math.floor(1000 + Math.random() * 9000)}`,
+          category_id: catMap[rm.cat] || null,
+          unit: rm.unit,
+          cost_price: rm.cost_price,
+          current_stock: rm.current_stock,
+          minimum_stock: rm.minimum_stock,
+          supplier_id: supplierMap[rm.supp] || null,
+          status: "active",
+        };
+        if (hasItemRid) itemInsert.restaurant_id = restaurant_id;
+
         const [newItem] = await trx("inventory_items")
-          .insert({
-            restaurant_id,
-            name: rm.name,
-            sku: `SKU-${Math.floor(1000 + Math.random() * 9000)}`,
-            category_id: catMap[rm.cat] || null,
-            unit: rm.unit,
-            cost_price: rm.cost_price,
-            current_stock: rm.current_stock,
-            minimum_stock: rm.minimum_stock,
-            supplier_id: supplierMap[rm.supp] || null,
-            status: "active",
-          })
+          .insert(itemInsert)
           .returning("*");
         item = newItem;
 
@@ -1265,19 +1295,22 @@ router.post("/seed-sample-data", optionalAuth, requireAuth, async (req, res) => 
       rawMaterialMap[rm.name] = item;
     }
 
-    const existingPurchases = await trx("purchases").where({ restaurant_id }).count().first();
+    const existingPurchasesQuery = hasPurchRid ? { restaurant_id } : {};
+    const existingPurchases = await trx("purchases").where(existingPurchasesQuery).count().first();
     if (Number(existingPurchases?.count || 0) === 0) {
       const p1Supplier = supplierMap["Al-Madina Meat Supply"];
       if (p1Supplier) {
+        const p1Insert = {
+          supplier_id: p1Supplier,
+          purchase_date: new Date(Date.now() - 3 * 86400000).toISOString().split("T")[0],
+          total_amount: 301.0,
+          status: "received",
+          notes: "Weekly fresh poultry & meat batch",
+        };
+        if (hasPurchRid) p1Insert.restaurant_id = restaurant_id;
+
         const [p1] = await trx("purchases")
-          .insert({
-            restaurant_id,
-            supplier_id: p1Supplier,
-            purchase_date: new Date(Date.now() - 3 * 86400000).toISOString().split("T")[0],
-            total_amount: 301.0,
-            status: "received",
-            notes: "Weekly fresh poultry & meat batch",
-          })
+          .insert(p1Insert)
           .returning("*");
 
         const chickItem = rawMaterialMap["Chicken Patty / Mince"];
@@ -1302,15 +1335,17 @@ router.post("/seed-sample-data", optionalAuth, requireAuth, async (req, res) => 
 
       const p2Supplier = supplierMap["Golden Crust Bakery"];
       if (p2Supplier) {
+        const p2Insert = {
+          supplier_id: p2Supplier,
+          purchase_date: new Date(Date.now() - 1 * 86400000).toISOString().split("T")[0],
+          total_amount: 108.0,
+          status: "received",
+          notes: "Fresh bakery buns & pizza dough delivery",
+        };
+        if (hasPurchRid) p2Insert.restaurant_id = restaurant_id;
+
         const [p2] = await trx("purchases")
-          .insert({
-            restaurant_id,
-            supplier_id: p2Supplier,
-            purchase_date: new Date(Date.now() - 1 * 86400000).toISOString().split("T")[0],
-            total_amount: 108.0,
-            status: "received",
-            notes: "Fresh bakery buns & pizza dough delivery",
-          })
+          .insert(p2Insert)
           .returning("*");
 
         const bunItem = rawMaterialMap["Brioche Burger Buns"];
@@ -1337,16 +1372,20 @@ router.post("/seed-sample-data", optionalAuth, requireAuth, async (req, res) => 
     const menuItems = await trx("menu_items").where({ restaurant_id }).select("id", "name");
     for (const mi of menuItems) {
       const lower = mi.name.toLowerCase();
-      const existingRecipe = await trx("recipes").where({ restaurant_id, selling_item_id: mi.id }).first();
+      const recQuery = { selling_item_id: mi.id };
+      if (hasRecipeRid) recQuery.restaurant_id = restaurant_id;
+      const existingRecipe = await trx("recipes").where(recQuery).first();
       if (!existingRecipe) {
         if (lower.includes("burger") || lower.includes("beef") || lower.includes("chicken")) {
+          const recInsert = {
+            selling_item_id: mi.id,
+            name: `${mi.name} Recipe`,
+            description: "Standard chef recipe",
+          };
+          if (hasRecipeRid) recInsert.restaurant_id = restaurant_id;
+
           const [rec] = await trx("recipes")
-            .insert({
-              restaurant_id,
-              selling_item_id: mi.id,
-              name: `${mi.name} Recipe`,
-              description: "Standard chef recipe",
-            })
+            .insert(recInsert)
             .returning("*");
 
           const isChicken = lower.includes("chicken");
@@ -1362,13 +1401,15 @@ router.post("/seed-sample-data", optionalAuth, requireAuth, async (req, res) => 
           if (sauceItem) await trx("recipe_ingredients").insert({ recipe_id: rec.id, inventory_item_id: sauceItem.id, quantity: 0.02, unit: "liters" });
           if (boxItem) await trx("recipe_ingredients").insert({ recipe_id: rec.id, inventory_item_id: boxItem.id, quantity: 1, unit: "pcs" });
         } else if (lower.includes("pizza")) {
+          const recInsert = {
+            selling_item_id: mi.id,
+            name: `${mi.name} Recipe`,
+            description: "Pizza crust and toppings",
+          };
+          if (hasRecipeRid) recInsert.restaurant_id = restaurant_id;
+
           const [rec] = await trx("recipes")
-            .insert({
-              restaurant_id,
-              selling_item_id: mi.id,
-              name: `${mi.name} Recipe`,
-              description: "Pizza crust and toppings",
-            })
+            .insert(recInsert)
             .returning("*");
 
           const doughItem = rawMaterialMap["Pizza Dough Balls"];
