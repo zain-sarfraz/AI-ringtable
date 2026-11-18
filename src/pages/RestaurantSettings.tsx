@@ -1779,7 +1779,7 @@ export default function RestaurantSettings() {
                                     type="number"
                                     step="0.01"
                                     min="0"
-                                    value={s.tax_rate ?? ""}
+                                    value={String(s.tax_rate ?? "")}
                                     onChange={(e) =>
                                         setS({ ...s, tax_rate: e.target.value })
                                     }
@@ -1815,7 +1815,7 @@ export default function RestaurantSettings() {
                                                 type="number"
                                                 step="0.01"
                                                 min="0"
-                                                value={s.delivery_fee ?? ""}
+                                                value={String(s.delivery_fee ?? "")}
                                                 onChange={(e) =>
                                                     setS({
                                                         ...s,
@@ -1845,7 +1845,7 @@ export default function RestaurantSettings() {
                                                 type="number"
                                                 step="0.01"
                                                 min="0"
-                                                value={s.min_order_amount ?? ""}
+                                                value={String(s.min_order_amount ?? "")}
                                                 onChange={(e) =>
                                                     setS({
                                                         ...s,
