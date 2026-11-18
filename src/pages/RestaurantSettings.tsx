@@ -211,8 +211,6 @@ export default function RestaurantSettings() {
     const [telnyxProvisionBusy, setTelnyxProvisionBusy] = useState(false);
     const [synthflowBusy, setSynthflowBusy] = useState(false);
     const [synthflowSyncBusy, setSynthflowSyncBusy] = useState(false);
-    /** Explicit full overwrite of the live agent prompt (default: merge / preserve). */
-    const [replaceFullPrompt, setReplaceFullPrompt] = useState(false);
     const [testCallPhone, setTestCallPhone] = useState("");
     const [testCallBusy, setTestCallBusy] = useState(false);
     const [telnyxCandidates, setTelnyxCandidates] = useState<
@@ -943,7 +941,7 @@ export default function RestaurantSettings() {
                             r.agent_first_message?.trim() || undefined,
                         system_prompt:
                             r.agent_system_prompt?.trim() || undefined,
-                        replace_full_prompt: replaceFullPrompt,
+                        replace_full_prompt: false,
                         expected_synced_at: r.synthflow_synced_at || undefined,
                     },
                 },
@@ -2762,24 +2760,8 @@ export default function RestaurantSettings() {
                             Updates merge with the latest saved prompt (menu,
                             branch ordering, cash-only, and place_order rules
                             are refreshed). Empty field keeps the existing
-                            prompt. Check the box below only if you intend to
-                            replace the entire prompt.
+                            prompt.
                         </p>
-                        <label className="flex items-start gap-2 text-sm cursor-pointer">
-                            <input
-                                type="checkbox"
-                                className="mt-1"
-                                checked={replaceFullPrompt}
-                                onChange={(e) =>
-                                    setReplaceFullPrompt(e.target.checked)
-                                }
-                            />
-                            <span>
-                                Replace full prompt (overwrite saved
-                                instructions with the editor text). Leave
-                                unchecked to preserve existing rules.
-                            </span>
-                        </label>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
