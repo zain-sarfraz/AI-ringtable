@@ -1,18 +1,18 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import { branchOrderingSection } from "./branchLocation.js";
 import {
   normalizeVoicePaymentMethod,
   resolveVoiceBranchSelection,
 } from "./phoneOrderService.js";
+import { rewriteStaleOrderSpeechRules } from "./promptMerge.js";
 import {
-  cashOnlyPaymentProtocolLines,
   appendPlaceOrderToolContract,
   applyBranchOrdering,
   buildRestaurantVoiceKnowledge,
+  cashOnlyPaymentProtocolLines,
   defaultSynthflowPrompt,
 } from "./restaurantVoiceContext.js";
-import { rewriteStaleOrderSpeechRules } from "./promptMerge.js";
 
 const johar = {
   id: "b1",
@@ -253,7 +253,7 @@ describe("place_order contract + knowledge preserve cash and branch rules", () =
     assert.match(knowledge, /EXACT DISH/i);
     assert.match(
       knowledge,
-      /SUBCATEGORY PHONE SCRIPT for "Burger" \(1 item — say ONCE then ask; do NOT auto-add; NEVER repeat this script\): Burger mein hamare paas Chicken Burger five hundred rupees ka hai\. Kya aap Chicken Burger order karna chahengay\?/i,
+      /SUBCATEGORY PHONE SCRIPT for "Burger" \(1 item — say ONCE then ask; do NOT auto-add; NEVER repeat this script\): Burger mein hamare paas Chicken Burger five hundred rupees ka hai\. Kya aap Chicken Burger order karna chaheen gay\?/i,
     );
     assert.match(knowledge, /## Branch ordering/i);
     assert.match(knowledge, /NO BRANCH CHOICE/i);

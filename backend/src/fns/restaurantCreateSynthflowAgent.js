@@ -1,26 +1,26 @@
 import { getKnex } from "../db.js";
-import {
-  updateAgent,
-  getAssistant,
-  listAssistantsBrief,
-  createInformationExtractor,
-  createCustomAction,
-  updateCustomAction,
-  attachActions,
-  toSynthflowLanguage,
-  postCallWebhookUrl,
-} from "../lib/synthflowClient.js";
+import { PromptMergeError, resolveSynthflowPromptUpdate } from "../lib/promptMerge.js";
 import {
   buildRestaurantVoiceKnowledge,
   defaultSynthflowGreeting,
   defaultSynthflowPrompt,
-  loadRestaurantVoiceCatalog,
-  loadActiveChildBranches,
-  resolveAgentGender,
   getSynthflowVoicePrompt,
+  loadActiveChildBranches,
+  loadRestaurantVoiceCatalog,
   PAKISTANI_NAME_KEYWORDS,
+  resolveAgentGender,
 } from "../lib/restaurantVoiceContext.js";
-import { PromptMergeError, resolveSynthflowPromptUpdate } from "../lib/promptMerge.js";
+import {
+  attachActions,
+  createCustomAction,
+  createInformationExtractor,
+  getAssistant,
+  listAssistantsBrief,
+  postCallWebhookUrl,
+  toSynthflowLanguage,
+  updateAgent,
+  updateCustomAction,
+} from "../lib/synthflowClient.js";
 import { rejectVoiceSyncIfDisabled } from "../lib/voiceSyncGuard.js";
 
 function isPhoneAlreadyAttachedError(err) {
@@ -229,7 +229,7 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
         run_action_before_call_start: false,
         name: "place_order",
         description: isMultiBranch
-          ? "FOOD ORDERS ONLY. FORBIDDEN to call when caller only named/chose an item or said haan to \"Kya aap [Item] order karna chahengay?\". Call ONLY after FINAL summary confirm. Required before call: customer_name, customer_phone, order_items (non-empty), fulfillment_type (delivery|pickup), delivery_address (full address OR Pickup). Pass branch_name from Branch ordering. If tool returns fulfillment_required/address_required/phone_required/speak: READ speak EXACTLY, WAIT, retry once — NEVER invent order number or say order failed."
+          ? "FOOD ORDERS ONLY. FORBIDDEN to call when caller only named/chose an item or said haan to \"Kya aap [Item] order karna chaheen gay?\". Call ONLY after FINAL summary confirm. Required before call: customer_name, customer_phone, order_items (non-empty), fulfillment_type (delivery|pickup), delivery_address (full address OR Pickup). Pass branch_name from Branch ordering. If tool returns fulfillment_required/address_required/phone_required/speak: READ speak EXACTLY, WAIT, retry once — NEVER invent order number or say order failed."
           : "FOOD ORDERS ONLY. FORBIDDEN to call when caller only named/chose an item or said haan to item accept. Call ONLY after FINAL summary confirm. Required: customer_name, customer_phone, order_items (non-empty), fulfillment_type (delivery|pickup), delivery_address (address OR Pickup). If fulfillment_required/address_required/phone_required/speak: READ speak EXACTLY, WAIT, retry — NEVER invent order number.",
         // Must be false — true lets the LLM invent area questions instead of reading "speak".
         agent_speak_naturally: false,
@@ -307,7 +307,7 @@ export async function ensureLiveOrderActions(restaurantId, existingIds = [], ide
         run_action_before_call_start: false,
         name: "reserve_table",
         description:
-          "TABLE RESERVATIONS ONLY. Call this tool as soon as contact phone number is collected. Parameters: customer_name, party_size (person), reservation_date (date), reservation_time (time), customer_phone (phone number). Pass branch_name (none if single location). WHILE TOOL RUNS: stay completely SILENT — never say Ji / Ji. / One moment. AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in Roman Urdu. If speak says missing fields, ask only that. NEVER invent 'table reserve nahi ho raha'. NEVER read reservation IDs or UUIDs.",
+          "TABLE RESERVATIONS ONLY. Call this tool as soon as contact phone number is collected. Parameters: customer_name, party_size (persons), reservation_date (date), reservation_time (time), customer_phone (phone number). Pass branch_name (none if single location). WHILE TOOL RUNS: stay completely SILENT — never say Ji / Ji. / One moment. NEVER repeat 'Ji' or 'Ji ji'. ALWAYS say persons, date, time, table confirm. NEVER say afraad, waqt, tareekh, pakki. AFTER TOOL RETURNS: READ \"speak\" EXACTLY once in Roman Urdu. If speak says missing fields, ask only that. NEVER invent 'table reserve nahi ho raha'. NEVER read reservation IDs or UUIDs.",
         agent_speak_naturally: false,
         speech_while_using_the_tool: "",
         failure_timeout: 25,
@@ -513,8 +513,8 @@ export async function restaurantCreateSynthflowAgent(req, res) {
           }
           const hint = available.length
             ? ` Agents visible to this server API key: ${available
-                .map((a) => `${a.name} (${a.model_id})`)
-                .join("; ")}.`
+              .map((a) => `${a.name} (${a.model_id})`)
+              .join("; ")}.`
             : " No agents were returned for the server SYNTHFLOW_API_KEY — confirm the live .env key matches the Synthflow workspace that owns this agent.";
           return res.status(200).json({
             success: false,
@@ -569,15 +569,15 @@ export async function restaurantCreateSynthflowAgent(req, res) {
     // Gender switch always rebuilds greeting (sakti/sakta) even if a greeting was saved.
     const greeting =
       genderFlip ||
-      !savedGreeting ||
-      /^Hi[, ]/i.test(savedGreeting) ||
-      /^Hello[, ]/i.test(savedGreeting) ||
-      /^Thanks for calling/i.test(savedGreeting) ||
-      /^Assalam-o-Alaikum/i.test(savedGreeting) ||
-      /^Assalamualaikum/i.test(savedGreeting) ||
-      /^ہیلو،/i.test(savedGreeting) ||
-      /madad kar sakti hoon/i.test(savedGreeting) ||
-      /madad kar sakta hoon/i.test(savedGreeting)
+        !savedGreeting ||
+        /^Hi[, ]/i.test(savedGreeting) ||
+        /^Hello[, ]/i.test(savedGreeting) ||
+        /^Thanks for calling/i.test(savedGreeting) ||
+        /^Assalam-o-Alaikum/i.test(savedGreeting) ||
+        /^Assalamualaikum/i.test(savedGreeting) ||
+        /^ہیلو،/i.test(savedGreeting) ||
+        /madad kar sakti hoon/i.test(savedGreeting) ||
+        /madad kar sakta hoon/i.test(savedGreeting)
         ? defaultSynthflowGreeting(r.name, agentLanguage, voiceGender)
         : savedGreeting;
     // Non-destructive merge: keep saved conversation rules; refresh menu / branch / place_order.
@@ -665,8 +665,8 @@ export async function restaurantCreateSynthflowAgent(req, res) {
         const existing = await getAssistant(modelId);
         const wh = String(
           existing?.assistant?.external_webhook_url ||
-            existing?.assistant?.inbound_call_webhook_url ||
-            "",
+          existing?.assistant?.inbound_call_webhook_url ||
+          "",
         );
         if (/ringtable\.io/i.test(wh)) {
           return res.status(200).json({

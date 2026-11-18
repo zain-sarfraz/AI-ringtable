@@ -1,20 +1,20 @@
 import { getKnex } from "../db.js";
+import { cleanUrduText } from "../lib/devanagariTransliterator.js";
+import { createPhoneOrder, normalizeVoicePaymentMethod } from "../lib/phoneOrderService.js";
 import {
+  getCurrencyDetails,
+  speakOrderNumberForPhone,
+  spokenPriceHints,
+} from "../lib/restaurantVoiceContext.js";
+import {
+  hasUsableOrderItems,
+  isSamePhonePhrase,
+  looksLikePhoneNumber,
+  normalizeE164,
   normalizeElevenLabsToolBody,
   resolveRestaurantIdForVoiceTools,
   resolveSpokenCustomerPhone,
-  looksLikePhoneNumber,
-  isSamePhonePhrase,
-  normalizeE164,
-  hasUsableOrderItems,
 } from "../lib/voiceWebhookUtils.js";
-import { createPhoneOrder, normalizeVoicePaymentMethod } from "../lib/phoneOrderService.js";
-import { cleanUrduText } from "../lib/devanagariTransliterator.js";
-import {
-  getCurrencyDetails,
-  spokenPriceHints,
-  speakOrderNumberForPhone,
-} from "../lib/restaurantVoiceContext.js";
 
 export async function aiPlaceOrder(req, res) {
   res.set("Access-Control-Allow-Origin", "*");
@@ -61,14 +61,14 @@ export async function aiPlaceOrder(req, res) {
         speak:
           "Maazrat, order items clear nahi hain. Pehle item confirm karein, phir order place karein.",
         message:
-          "order_items was empty/null. Do NOT say the order failed. Ask which item they want, confirm \"Kya aap [Item] order karna chahengay?\", WAIT for haan, then continue collecting name/phone. Call place_order ONLY after final summary confirmation with a non-empty order_items string (e.g. \"1 Chicken Burger\"). Do NOT invent an order number.",
+          "order_items was empty/null. Do NOT say the order failed. Ask which item they want, confirm \"Kya aap [Item] order karna chaheen gay?\", WAIT for haan, then continue collecting name/phone. Call place_order ONLY after final summary confirmation with a non-empty order_items string (e.g. \"1 Chicken Burger\"). Do NOT invent an order number.",
       });
     }
     if (!body.customer_name) {
       console.error("❌ Validation Failed: Missing customer_name", { items: body.items });
       return res.status(200).json({
         success: false,
-        speak: "Aap kis naam se order note karwana chahengay?",
+        speak: "Aap kis naam se order note karwana chaheen gay?",
         message:
           "customer_name missing. Ask for the name once, then continue. Do NOT invent an order number.",
       });
@@ -219,7 +219,7 @@ export async function aiPlaceOrder(req, res) {
           success: false,
           address_required: true,
           order_failed: false,
-          speak: "Apna mukammal address bata dein?",
+          speak: "Apna complete address bata dein?",
           message:
             "Delivery address missing. Speak EXACTLY the speak field, WAIT, then retry place_order with delivery_address. Do NOT invent an order number.",
         });
@@ -368,7 +368,7 @@ export async function aiPlaceOrder(req, res) {
           branch_required: true,
           requested_branch: branchErr.requestedBranch || null,
           available_areas: areas,
-          speak: `Aap kaunsa area chahenge: ${areaList}?`,
+          speak: `Aap kaunsa area chaheen gay: ${areaList}?`,
           message:
             `READ "speak" EXACTLY once (Roman Urdu). After they answer, call place_order again ONCE with branch_name set to that exact area name. ` +
             `ONLY use these areas from the tool response — never invent other areas. Do NOT invent an order number. Do NOT keep asking area after one answer.`,

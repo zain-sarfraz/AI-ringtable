@@ -1,6 +1,6 @@
 import {
-  applyBranchOrdering,
   appendPlaceOrderToolContract,
+  applyBranchOrdering,
   SOFT_TONE_MANNER_BLOCK,
 } from "./restaurantVoiceContext.js";
 
@@ -92,8 +92,8 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
 
   text = text.replace(
-    /Name:\s*"Aap(?:ka naam bata (?:dijiye|dein)| kis naam pe order karna chaheng[ei]| kis naam se order note karwana chaheng[ei])\?"/gi,
-    'Name: "Aap kis naam se order note karwana chahengay?"',
+    /Name:\s*"Aap(?:ka naam bata (?:dijiye|dein)| kis naam pe order karna (?:chaheng[ei]|chaheen\s*g[ei])| kis naam se order note karwana (?:chaheng[ei]|chaheen\s*g[ei]))\?"/gi,
+    'Name: "Aap kis naam se order note karwana chaheen gay?"',
   );
   text = text.replace(
     /Phone:\s*ask once only\s*—\s*"Aapka (?:raabta|phone) number (?:bata (?:dijiye|dein)|share kar dein)\?"/gi,
@@ -104,16 +104,16 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     'Ask once: "Apna phone number share kar dein?"',
   );
   text = text.replace(
-    /naam \(ask "Aap kis naam pe order karna chaheng[ei]\?", accept EXACT name first try\)/g,
-    'naam (softly ask "Aap kis naam se order note karwana chahengay?", accept EXACT name first try)',
+    /naam \(ask "Aap kis naam pe order karna (?:chaheng[ei]|chaheen\s*g[ei])\?", accept EXACT name first try\)/g,
+    'naam (softly ask "Aap kis naam se order note karwana chaheen gay?", accept EXACT name first try)',
   );
   text = text.replace(
-    /naam \(softly ask "Aap kis naam se order note karwana chaheng(?:e|ay)\?", accept EXACT name first try[^)]*\)/g,
-    'naam (softly ask "Aap kis naam se order note karwana chahengay?", accept EXACT name first try)',
+    /naam \(softly ask "Aap kis naam se order note karwana (?:chaheng(?:e|ay)|chaheen\s*g(?:e|ay))\?", accept EXACT name first try[^)]*\)/g,
+    'naam (softly ask "Aap kis naam se order note karwana chaheen gay?", accept EXACT name first try)',
   );
   text = text.replace(
     /Aapka naam bata dijiye\?/gi,
-    "Aap kis naam se order note karwana chahengay?",
+    "Aap kis naam se order note karwana chaheen gay?",
   );
   text = text.replace(
     /(?:raabta|phone) number \(ask "Apna (?:raabta|phone) number (?:bata|share) (?:dein|dijiye|kar dein)\?", once; yahi = "same"\)/g,
@@ -121,7 +121,7 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
   text = text.replace(
     /Delivery:\s*softly ask "Apna mukammal address bata (?:dein|dijiye)\?", accept on first try, then phone\./gi,
-    'Delivery: softly ask "Apna mukammal address bata dein?", accept on first try, then phone.',
+    'Delivery: softly ask "Apna complete address bata dein?", accept on first try, then phone.',
   );
   text = text.replace(
     /(?:Apna Aapka|Aapka Apna|Ji,\s+apna|Apna|Aapka)\s+(?:raabta|rabta|phone)\s+number\s+(?:bata (?:dijiye|dein)|share kar dein)\?/gi,
@@ -129,7 +129,7 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
   );
   text = text.replace(
     /Apna mukammal address bata dijiye\?/gi,
-    'Apna mukammal address bata dein?',
+    'Apna complete address bata dein?',
   );
   // Spoken customer wording: keep "Teks" for TTS; never rewrite teks → Tax.
   text = text.replace(/teks shamil karke/gi, "Teks include kar ke");
@@ -144,12 +144,23 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     /Aapka (?:raabta|rabta) number bata dijiye\?/gi,
     "Apna phone number share kar dein?",
   );
-  // Table reservation spoken vocab: afraad→persons, tareekh→date (do not rewrite FORBIDDEN lists)
+    // User wording preferences: table reservation madad->help, delivery mukammal address->complete address
+  text = text.replace(/table reservation mein madad/gi, "table reservation mein help");
+  text = text.replace(/mukammal address/gi, "complete address");
+  // Table reservation spoken vocab: afraad→persons, tareekh→date, waqt→time, pakki→confirm (do not rewrite FORBIDDEN lists)
   text = text.replace(/kitne afraad/gi, "kitne persons");
-  text = text.replace(/kis tareekh\s+aur\s+kis\s+time/gi, "kis date aur kis time");
+  text = text.replace(/kis tareekh\s+aur\s+kis\s+(?:time|waqt)/gi, "kis date aur kis time");
   text = text.replace(/kis tareekh/gi, "kis date");
+  text = text.replace(/kis waqt/gi, "kis time");
+  text = text.replace(/kisi aur waqt/gi, "kisi aur time");
+  text = text.replace(/is waqt koi table/gi, "is time koi table");
   text = text.replace(/kitne person ke liye table/gi, "kitne persons ke liye table");
   text = text.replace(/(\d+|\[guests\]) person ke liye table/gi, "$1 persons ke liye table");
+  text = text.replace(/table\s+pakki\b/gi, "table confirm");
+  text = text.replace(/pakki\s+ho\s+gayi\b/gi, "confirm ho chuki");
+  text = text.replace(/pakki\s+ho\s+chuki\b/gi, "confirm ho chuki");
+  text = text.replace(/\bpakki\s+hai\b/gi, "confirm hai");
+  text = text.replace(/table\s+mehfooz\s+hai/gi, "table confirm hai");
   text = text.replace(
     /Ji,?\s*apna\s+Aapka\s+(?:raabta|rabta|phone)\s+number\s+share\s+kar\s+dein\?/gi,
     "Apna phone number share kar dein?",
@@ -163,6 +174,11 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     const before = text.slice(Math.max(0, offset - 50), offset);
     if (/FORBIDDEN|NEVER say|NEVER speak|ALWAYS say/i.test(before)) return match;
     return "date";
+  });
+  text = text.replace(/\bwaqt\b/gi, (match, offset) => {
+    const before = text.slice(Math.max(0, offset - 50), offset);
+    if (/FORBIDDEN|NEVER say|NEVER speak|ALWAYS say|delivery ke waqt|is waqt sirf cash/i.test(before)) return match;
+    return "time";
   });
   text = text.replace(
     /9\.\s*Track order: ask "Aapka order number kya hai\?"[^\n]*/gi,
@@ -185,6 +201,10 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     'Aapka order confirm ho gaya hai',
   );
   // Strip leftover Ji fillers from stale prompts / examples.
+  text = text.replace(/\bJi\s+Ji\b/gi, "");
+  text = text.replace(/\bJi,\s*ji\b/gi, "");
+  text = text.replace(/\bJee\s+Jee\b/gi, "");
+  text = text.replace(/\bJee,?\s*/gi, "");
   text = text.replace(/\bJi bilkul,?\s*/gi, "Bilkul, ");
   text = text.replace(/\bJi zaroor,?\s*/gi, "Zaroor, ");
   text = text.replace(/(^|[\n.])\s*Ji\.\s*/g, "$1");
@@ -204,12 +224,12 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
       const label = prefix.match(/PHONE SCRIPT for "([^"]+)"/i)?.[1] || "menu";
       return (
         `${prefix.replace(/say it once, then continue/i, "offer then ask; do NOT auto-add")}` +
-        `${label} mein hamare paas ${bit} hai. Kya aap ${itemName} order karna chahengay?`
+        `${label} mein hamare paas ${bit} hai. Kya aap ${itemName} order karna chaheen gay?`
       );
     },
   );
   text = text.replace(
-    /(\w+ PHONE SCRIPT for "[^"]+" \(1 items? — say all 1, skip none\): )([^.]+?) hain\. Aap konsa lena (?:chahenge|chahengi|chahengay)\?/gi,
+    /(\w+ PHONE SCRIPT for "[^"]+" \(1 items? — say all 1, skip none\): )([^.]+?) hain\. Aap konsa lena (?:chahenge|chahengi|chahengay|chaheen\s*g[ei])\?/gi,
     (_m, prefix, list) => {
       const itemBit = String(list)
         .replace(/^[^]*?\bmein hamare paas\s+/i, "")
@@ -224,52 +244,62 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
       const label = prefix.match(/PHONE SCRIPT for "([^"]+)"/i)?.[1] || "menu";
       return (
         `${prefix.replace(/say all 1, skip none/i, "offer then ask; do NOT auto-add")}` +
-        `${label} mein hamare paas ${itemBit} hai. Kya aap ${itemName} order karna chahengay?`
+        `${label} mein hamare paas ${itemBit} hai. Kya aap ${itemName} order karna chaheen gay?`
       );
     },
   );
   text = text.replace(/\bchahengi\b/gi, (match, offset) => {
     const before = text.slice(Math.max(0, offset - 100), offset);
     if (/FORBIDDEN|NEVER/i.test(before)) return match;
-    return "chahengay";
+    return "chaheen gay";
   });
   text = text.replace(/\bchahenge\b/gi, (match, offset) => {
     const before = text.slice(Math.max(0, offset - 100), offset);
     if (/FORBIDDEN|NEVER/i.test(before)) return match;
-    return "chahengay";
+    return "chaheen gay";
+  });
+  text = text.replace(/\bchahengay\b/gi, (match, offset) => {
+    const before = text.slice(Math.max(0, offset - 100), offset);
+    if (/FORBIDDEN|NEVER/i.test(before)) return match;
+    return "chaheen gay";
   });
   text = text.replace(/chahein\s*gi\b/gi, (match, offset) => {
     const before = text.slice(Math.max(0, offset - 100), offset);
     if (/FORBIDDEN|NEVER/i.test(before)) return match;
-    return "chahengay";
+    return "chaheen gay";
+  });
+  text = text.replace(/chahein\s*ge\b/gi, (match, offset) => {
+    const before = text.slice(Math.max(0, offset - 100), offset);
+    if (/FORBIDDEN|NEVER/i.test(before)) return match;
+    return "chaheen gay";
   });
   text = text.replace(
     /SINGLE-ITEM SCRIPT: if a PHONE SCRIPT has only 1 item, say that item \+ price and continue the order — NEVER ask which one they want\./gi,
-    'TYPE-ALONE / SINGLE-ITEM: if they said only a type (e.g. "burger") and the matching script has 1 item, speak that item + price, then ask explicitly "Kya aap [Item] order karna chahengay?" WAIT for haan. Do NOT add the item until they accept. Never auto-select.',
+    'TYPE-ALONE / SINGLE-ITEM: if they said only a type (e.g. "burger") and the matching script has 1 item, speak that item + price, then ask explicitly "Kya aap [Item] order karna chaheen gay?" WAIT for haan. Do NOT add the item until they accept. Never auto-select.',
   );
 
   // Turn-2 rules 2–3: exact dish must win over category PHONE SCRIPT (merge keeps old Turn rules).
   text = text.replace(
     /2\. If caller NAMED a dish \(e\.g\. "Chicken Burger order karna hai"\): quote THAT item price from the menu and continue\. Do NOT list the whole category\. NEVER call check_previous_order\. NEVER offer to repeat an old pizza\/order\.\n3\. CATEGORY LIST \(mandatory — overrides the short-sentence limit\):[\s\S]*?FORBIDDEN: "Kaunsa burger lena hai\?" without the matching list\. FORBIDDEN: reading Junk Food or any other category whose name does not match\. If they already named one exact dish, do not read a script\. Quote that one item only\./g,
-    `2. FRESH ORDER FIRST (ABSOLUTE): If caller says they want to order or names any item/type (e.g. "Mujhe burger order karna hai"), PROCEED WITH THE NEW ORDER IMMEDIATELY. NEVER say "Aapka pehle wala order mil gaya hai" and NEVER ask "kya aap wahi order repeat karna chahengay?". NEVER call check_previous_order unless caller explicitly asks: "Mera pichla order repeat kar do" or "Pehle wala order bhej do".
-   - CATEGORY OR GENERIC TYPE ("burger", "1 burger", "ek burger", "mujhe 1 burger order karna hai", "pizza", "koi drink"): Caller named a category or generic food type, NOT an exact menu item. You MUST read the matching PHONE SCRIPT from rule 3 ("Burger mein hamare paas Chicken Burger five hundred rupees ka hai. Kya aap Chicken Burger order karna chahengay?") and STOP and WAIT for their answer.
+    `2. FRESH ORDER FIRST (ABSOLUTE): If caller says they want to order or names any item/type (e.g. "Mujhe burger order karna hai"), PROCEED WITH THE NEW ORDER IMMEDIATELY. NEVER say "Aapka pehle wala order mil gaya hai" and NEVER ask "kya aap wahi order repeat karna chaheen gay?". NEVER call check_previous_order unless caller explicitly asks: "Mera pichla order repeat kar do" or "Pehle wala order bhej do".
+   - CATEGORY OR GENERIC TYPE ("burger", "1 burger", "ek burger", "mujhe 1 burger order karna hai", "pizza", "koi drink"): Caller named a category or generic food type, NOT an exact menu item. You MUST read the matching PHONE SCRIPT from rule 3 ("Burger mein hamare paas Chicken Burger five hundred rupees ka hai. Kya aap Chicken Burger order karna chaheen gay?") and STOP and WAIT for their answer.
      * STRICTLY FORBIDDEN: NEVER ask for customer name in the same turn!
      * STRICTLY FORBIDDEN: NEVER merge price and name into one sentence!
      * STRICTLY FORBIDDEN: NEVER call place_order when caller says haan to this question!
-     * Only after caller answers "Haan" or in the NEXT turn ask: "Aap kis naam se order note karwana chahengay?"
-   - EXACT FULL DISH NAMED BY CALLER (caller literally speaks the exact words "Chicken Burger" / "1 Chicken Burger"): Softly confirm price and ask name: "Bilkul, Chicken Burger five hundred rupees ka hai. Aap kis naam se order note karwana chahengay?" Do NOT read any PHONE SCRIPT. Do NOT ask again "Kya aap Chicken Burger order karna chahengay?" after they already named Chicken Burger. NEVER call check_previous_order.
+     * Only after caller answers "Haan" or in the NEXT turn ask: "Aap kis naam se order note karwana chaheen gay?"
+   - EXACT FULL DISH NAMED BY CALLER (caller literally speaks the exact words "Chicken Burger" / "1 Chicken Burger"): Softly confirm price and ask name: "Bilkul, Chicken Burger five hundred rupees ka hai. Aap kis naam se order note karwana chaheen gay?" Do NOT read any PHONE SCRIPT. Do NOT ask again "Kya aap Chicken Burger order karna chaheen gay?" after they already named Chicken Burger. NEVER call check_previous_order.
 3. CATEGORY LIST (only when they named a TYPE, not a full dish — overrides the short-sentence limit):
    - Use ONLY for type-alone phrases ("burger chahiye", "1 burger", "pizza", "koi drink") — NOT when they already said a full item name like "Chicken Burger".
    - A type match means the spoken TYPE word equals the subcategory/category name (burger → Burgers). Extra words like "order"/"chahiye" are ignored, but a full dish name is NOT a type match.
    - If a subcategory name matches, read that SUBCATEGORY PHONE SCRIPT word for word. Every item in it, every price. Do not add items from the parent category.
    - If no subcategory matches and a category name matches, read that CATEGORY PHONE SCRIPT word for word. Every item, every price.
    - If neither a category nor a subcategory is named that word, read the ITEM PHONE SCRIPT for that word. Say only those items. Do not read the parent category.
-   - Multi-item script: say every listed item + price, then wait for their choice. Single-item script (1 item): say item + price, ask "Kya aap [Item] order karna chahengay?", WAIT for haan — do NOT auto-add.
+   - Multi-item script: say every listed item + price, then wait for their choice. Single-item script (1 item): say item + price, ask "Kya aap [Item] order karna chaheen gay?", WAIT for haan — do NOT auto-add.
    - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: auto-selecting the only item in a category without the caller's yes.`,
   );
   text = text.replace(
     /Multi-item script: say every listed item \+ price, then wait\. Single-item script \(1 item\): say that one item \+ price and CONTINUE — never ask which one\.\n\s*- FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named\. FORBIDDEN: "Kaunsa burger lena hai\?" \/ "Aap konsa lena chahenge\?" when only 1 item exists or the dish is already chosen\./g,
-    `Multi-item script: say every listed item + price, then wait for their choice. Single-item script (1 item): say item + price, ask "Kya aap [Item] order karna chahengay?", WAIT for haan — do NOT auto-add.
+    `Multi-item script: say every listed item + price, then wait for their choice. Single-item script (1 item): say item + price, ask "Kya aap [Item] order karna chaheen gay?", WAIT for haan — do NOT auto-add.
    - FORBIDDEN: reading a PHONE SCRIPT after an exact dish was named. FORBIDDEN: auto-selecting the only item in a category without the caller's yes.`,
   );
   text = text.replace(
@@ -279,7 +309,7 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
 
   text = text.replace(
     /Acha, Chicken Burger five hundred rupees ka hai\.\s*["']?\s*then continue to naam\/fulfillment\./gi,
-    'Bilkul, Chicken Burger five hundred rupees ka hai. Aap kis naam se order note karwana chahengay?" then continue to fulfillment.',
+    'Bilkul, Chicken Burger five hundred rupees ka hai. Aap kis naam se order note karwana chaheen gay?" then continue to fulfillment.',
   );
   text = text.replace(
     /Call place_order ONLY after the caller confirms \(haan \/ theek hai \/ yes \/ kar do \/ confirm\) — then call IMMEDIATELY/gi,
@@ -325,7 +355,7 @@ export function rewriteStaleOrderSpeechRules(prompt, branchCount = 0) {
     // 2. Replace Rule 8 and Rule 11 cleanly — never ask area when there is no branch choice.
     text = text.replace(
       /8\. Branch ordering section overrides location questions[^\n]*/gi,
-      '8. Fulfillment: ask "Kya yeh order delivery ke liye hai ya pickup karein gay?"\n   - Delivery: ask street address ("Apna mukammal address bata dein?"), then phone number. Pass branch_name none.\n   - Pickup: customer collects directly from the restaurant. Say: "Theek hai, pickup ke liye note kar liya. Apna phone number share kar dein?" Go straight to phone. Pass branch_name none.',
+      '8. Fulfillment: ask "Kya yeh order delivery ke liye hai ya pickup karein gay?"\n   - Delivery: ask street address ("Apna complete address bata dein?"), then phone number. Pass branch_name none.\n   - Pickup: customer collects directly from the restaurant. Say: "Theek hai, pickup ke liye note kar liya. Apna phone number share kar dein?" Go straight to phone. Pass branch_name none.',
     );
     text = text.replace(
       /11\. After (?:the caller says )?haan[^\n]*/gi,

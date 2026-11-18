@@ -137,8 +137,8 @@ export async function aiReserveTable(req, res) {
     const parseTimeLoose = (s) =>
       s
         ? parseReservationTime(s) ||
-          parseReservationTime(String(s).replace(/[^\d:apm.\s]/gi, "")) ||
-          lastSpokenReservationTime(String(s))
+        parseReservationTime(String(s).replace(/[^\d:apm.\s]/gi, "")) ||
+        lastSpokenReservationTime(String(s))
         : null;
     const isoTime =
       parseTimeLoose(timeBlob) ||
@@ -149,45 +149,45 @@ export async function aiReserveTable(req, res) {
     if (!isoDate && !isoTime) {
       return res.status(200).json({
         success: false,
-        speak: "Main table reservation mein madad kar sakta hoon. Aap kis date aur kis time table chahengay?",
+        speak: "Main table reservation mein help kar sakta hoon. Aap kis date aur kis time table chaheen gay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Main table reservation mein madad kar sakta hoon. Aap kis date aur kis time table chahengay?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: Main table reservation mein help kar sakta hoon. Aap kis date aur kis time table chaheen gay?",
       });
     }
 
     if (!isoTime) {
       return res.status(200).json({
         success: false,
-        speak: "Kis time table chahengay?",
+        speak: "Kis time table chaheen gay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: kis time table chahengay?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: kis time table chaheen gay?",
       });
     }
 
     if (!isoDate) {
       return res.status(200).json({
         success: false,
-        speak: "Kis date ke liye table chahengay?",
+        speak: "Kis date ke liye table chaheen gay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: kis date ke liye table chahengay?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: kis date ke liye table chaheen gay?",
       });
     }
 
     if (!pSize) {
       return res.status(200).json({
         success: false,
-        speak: "Kitne persons ke liye table chahengay?",
+        speak: "Kitne persons ke liye table chaheen gay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: kitne persons ke liye table chahengay? NEVER say afraad.",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: kitne persons ke liye table chaheen gay? NEVER say afraad.",
       });
     }
 
     if (!customer_name || /^(none|null|n\/a|unknown)$/i.test(String(customer_name).trim())) {
       return res.status(200).json({
         success: false,
-        speak: "Aap kis naam se reservation karwana chahengay?",
+        speak: "Aap kis naam se reservation karwana chaheen gay?",
         message:
-          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: aap kis naam se reservation karwana chahengay?",
+          "CRITICAL: Reply ONLY in the caller's LOCKED language. Ask: aap kis naam se reservation karwana chaheen gay?",
       });
     }
 
@@ -235,9 +235,9 @@ export async function aiReserveTable(req, res) {
       return res.status(200).json({
         success: false,
         available: false,
-        speak: "Maazrat, is waqt koi table khali nahi hai. Kya aap kisi aur waqt aana chahenge?",
+        speak: "Maazrat, is time par koi table khali nahi hai. Kya aap kisi aur time par aana chaheen gay?",
         message:
-          `CRITICAL: Reply ONLY in the caller's LOCKED language, softly and politely (apologize first). No table is free at ${isoTime} on ${isoDate}. Gently ask for a different time once. Do not sound rude. Do not ask area/branch unless ## Branch ordering lists areas. Do not switch languages.`,
+          `CRITICAL: Reply ONLY in the caller's LOCKED language, softly and politely (apologize first). No table is free at ${isoTime} on ${isoDate}. Gently ask for a different time once. Do not sound rude. Do not ask area/branch unless ## Branch ordering lists areas. Do not switch languages. NEVER say waqt or pakki.`,
       });
     }
 
@@ -280,7 +280,7 @@ export async function aiReserveTable(req, res) {
 
     console.log(`✅ Reservation created: id=${reservation.id} table=${availableTable.table_number}`);
 
-    const speakUr = `Aapki table confirm ho chuki hai, ${pSize} persons ke liye table mehfooz hai. Bohot shukriya!`;
+    const speakUr = `Aapki table confirm ho chuki hai, ${pSize} persons ke liye table confirm hai. Bohot shukriya!`;
     const speakEn = `Your table is confirmed for ${pSize} guest(s). Thank you so much!`;
 
     return res.json({
@@ -291,7 +291,7 @@ export async function aiReserveTable(req, res) {
       speak_ur: speakUr,
       message:
         `CRITICAL: Reply ONLY in the caller's LOCKED language. READ speak EXACTLY once. ` +
-        `Never say order number or bill. Never invent failure. FORBIDDEN: afraad, tareekh, raabta, rabta, UUIDs, table numbers.`,
+        `Never say order number or bill. Never invent failure. FORBIDDEN: afraad, waqt, tareekh, raabta, rabta, pakki, table pakki, Ji, Ji ji, UUIDs, table numbers.`,
       reservation_id: reservation.id,
       _reservation_id: reservation.id,
       table_number: availableTable.table_number,

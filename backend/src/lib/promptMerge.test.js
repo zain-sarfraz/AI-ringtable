@@ -1,13 +1,13 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import {
   PromptMergeError,
+  ensurePlaceOrderToolContract,
   isPartialPromptOverwrite,
   replaceMenuKnowledgeBlock,
   resolveSynthflowPromptUpdate,
-  ensurePlaceOrderToolContract,
-  stripPlaceOrderToolContract,
   rewriteStaleOrderSpeechRules,
+  stripPlaceOrderToolContract,
 } from "./promptMerge.js";
 
 const BRANCH_NONE = [
@@ -92,30 +92,33 @@ Turn 1: Speak exactly: "Assalamualaikum"
     assert.doesNotMatch(fixed, /Apna Aapka/);
     assert.match(fixed, /kis phone number se place hua tha/);
     assert.match(fixed, /thora sa masla/);
-    assert.match(fixed, /Aap kis naam se order note karwana chahengay\?/);
+    assert.match(fixed, /Aap kis naam se order note karwana chaheen gay\?/);
     assert.match(fixed, /Kya yeh order delivery ke liye hai ya pickup karein gay\?/);
     assert.match(fixed, /Teks include kar ke kul bill/);
     assert.match(fixed, /with branch_name none/);
     assert.doesNotMatch(fixed, /with branch_name per$/m);
   });
 
-  it("rewrites table reservation afraad/tareekh/rabta to persons/date/phone number", () => {
+  it("rewrites table reservation afraad/tareekh/rabta/waqt/pakki to persons/date/time/confirm", () => {
     const stale = `
 Zaroor, kitne afraad ke liye table chahengay?
-kis tareekh aur kis time ke liye table chahengay?
+kis tareekh aur kis waqt ke liye table chahengay?
 apna Aapka rabta number share kar dein?
-aapki table confirm ho chuki hai, 5 person ke liye table mehfooz hai.
+aapki table pakki ho chuki hai, 5 person ke liye table mehfooz hai.
 NEVER say "afraad", "tareekh", "raabta"
 Turn 1: Speak exactly: "Assalamualaikum"
 `.trim();
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
-    assert.match(fixed, /kitne persons ke liye table chahengay/);
+    assert.match(fixed, /kitne persons ke liye table chaheen gay/);
     assert.match(fixed, /kis date aur kis time/);
     assert.match(fixed, /Apna phone number share kar dein\?/);
-    assert.match(fixed, /5 persons ke liye table/);
+    assert.match(fixed, /5 persons ke liye table confirm hai/);
     assert.match(fixed, /NEVER say "afraad", "tareekh"/);
     assert.doesNotMatch(fixed, /kitne afraad/);
     assert.doesNotMatch(fixed, /kis tareekh/);
+    assert.doesNotMatch(fixed, /kis waqt/);
+    assert.doesNotMatch(fixed, /table pakki/);
+    assert.doesNotMatch(fixed, /table mehfooz/);
   });
 
   it("rewrites single-item PHONE SCRIPT to explicit accept ask", () => {
@@ -123,7 +126,7 @@ Turn 1: Speak exactly: "Assalamualaikum"
 SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Burger mein hamare paas Chicken Burger five hundred rupees hain. Aap konsa lena chahenge?
 `.trim();
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
-    assert.match(fixed, /Kya aap Chicken Burger order karna chahengay\?/i);
+    assert.match(fixed, /Kya aap Chicken Burger order karna chaheen gay\?/i);
     assert.match(fixed, /offer then ask; do NOT auto-add/i);
     assert.doesNotMatch(fixed, /Aap konsa lena chaheng/i);
     assert.doesNotMatch(fixed, /Main yeh note kar leti hoon/i);
@@ -134,7 +137,7 @@ SUBCATEGORY PHONE SCRIPT for "Burger" (1 items — say all 1, skip none): Burger
 SUBCATEGORY PHONE SCRIPT for "Burger" (1 item — say it once, then continue): Acha, Chicken Burger five hundred rupees ka hai. Main yeh note kar leti hoon.
 `.trim();
     const fixed = rewriteStaleOrderSpeechRules(stale, 0);
-    assert.match(fixed, /Kya aap Chicken Burger order karna chahengay\?/i);
+    assert.match(fixed, /Kya aap Chicken Burger order karna chaheen gay\?/i);
     assert.doesNotMatch(fixed, /Main yeh note kar leti hoon/i);
   });
 
