@@ -38,16 +38,34 @@ export interface RecipeItem {
 
 interface Props {
   recipes: RecipeItem[];
+  menuItems?: Array<{ id: string; name: string; price: number; image_url?: string | null }>;
   onOpenRecipeDialog: (recipe: RecipeItem) => void;
   onOpenNewRecipe?: () => void;
 }
 
-export function PosRecipes({ recipes, onOpenRecipeDialog, onOpenNewRecipe }: Props) {
+export function PosRecipes({ recipes, menuItems = [], onOpenRecipeDialog, onOpenNewRecipe }: Props) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "configured" | "missing">("all");
 
+  const effectiveRecipes = useMemo(() => {
+    if (recipes && recipes.length > 0) return recipes;
+    return (menuItems || []).map((m) => ({
+      menu_item_id: m.id,
+      menu_item_name: m.name,
+      selling_price: Number(m.price || 0),
+      image_url: m.image_url,
+      has_recipe: false,
+      recipe_id: null,
+      recipe_name: null,
+      recipe_description: null,
+      ingredients: [],
+      total_food_cost: 0,
+      profit_margin: 0,
+    }));
+  }, [recipes, menuItems]);
+
   const filtered = useMemo(() => {
-    return recipes.filter((r) => {
+    return effectiveRecipes.filter((r) => {
       const matchSearch =
         !search.trim() || r.menu_item_name.toLowerCase().includes(search.toLowerCase());
       const matchConfig =
@@ -56,9 +74,9 @@ export function PosRecipes({ recipes, onOpenRecipeDialog, onOpenNewRecipe }: Pro
         (filter === "missing" && !r.has_recipe);
       return matchSearch && matchConfig;
     });
-  }, [recipes, search, filter]);
+  }, [effectiveRecipes, search, filter]);
 
-  const configuredCount = recipes.filter((r) => r.has_recipe).length;
+  const configuredCount = effectiveRecipes.filter((r) => r.has_recipe).length;
 
   return (
     <div className="space-y-4">
@@ -76,7 +94,7 @@ export function PosRecipes({ recipes, onOpenRecipeDialog, onOpenNewRecipe }: Pro
 
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="px-2.5 py-1 text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
-            {configuredCount} of {recipes.length} dishes mapped
+            {configuredCount} of {effectiveRecipes.length} dishes mapped
           </Badge>
           {onOpenNewRecipe && (
             <Button

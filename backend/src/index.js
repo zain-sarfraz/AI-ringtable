@@ -162,6 +162,13 @@ async function start() {
       const count = await runMigrations(process.env.DATABASE_URL);
       console.log(`Database migrations ok (${count} file(s)).`);
       await seedAdminUser(process.env.DATABASE_URL);
+      try {
+        const { getKnex } = await import("./db.js");
+        const { ensureInventoryRestaurantColumns } = await import("./routes/pos.js");
+        await ensureInventoryRestaurantColumns(getKnex());
+      } catch (e) {
+        console.warn("[boot] ensureInventoryRestaurantColumns notice:", e?.message || e);
+      }
     } catch (err) {
       console.error("Database migration failed:", err.message || err);
       process.exit(1);

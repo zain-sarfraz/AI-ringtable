@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -30,10 +30,12 @@ interface RecipeIngredient {
   unit: string;
 }
 
-interface MenuItemRecipe {
+export interface MenuItemRecipe {
   menu_item_id: string;
   menu_item_name: string;
   selling_price: number;
+  has_recipe?: boolean;
+  recipe_id?: string | null;
   recipe_name?: string | null;
   recipe_description?: string | null;
   ingredients?: Array<{
@@ -43,12 +45,20 @@ interface MenuItemRecipe {
   }>;
 }
 
+export interface PosMenuItemOption {
+  id: string;
+  name: string;
+  price?: number;
+  image_url?: string | null;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
   recipe: MenuItemRecipe | null;
   allRecipes?: MenuItemRecipe[];
+  menuItems?: PosMenuItemOption[];
   rawMaterials: RawMaterial[];
   onSaved: () => void;
 }
@@ -59,6 +69,7 @@ export function PosRecipeDialog({
   restaurantId,
   recipe,
   allRecipes = [],
+  menuItems = [],
   rawMaterials,
   onSaved,
 }: Props) {
@@ -69,7 +80,60 @@ export function PosRecipeDialog({
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const effectiveRecipe = recipe || allRecipes.find((r) => r.menu_item_id === selectedDishId) || null;
+  // Merge allRecipes and menuItems so every dish is ALWAYS available in the dropdown
+  const dishOptions = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        price: number;
+        hasRecipe: boolean;
+        recipe?: MenuItemRecipe;
+      }
+    >();
+
+    for (const m of menuItems || []) {
+      if (!m.id) continue;
+      map.set(m.id, {
+        id: m.id,
+        name: m.name || "Unnamed Dish",
+        price: Number(m.price || 0),
+        hasRecipe: false,
+      });
+    }
+
+    for (const r of allRecipes || []) {
+      if (!r.menu_item_id) continue;
+      const existing = map.get(r.menu_item_id);
+      map.set(r.menu_item_id, {
+        id: r.menu_item_id,
+        name: r.menu_item_name || existing?.name || "Unnamed Dish",
+        price: Number(r.selling_price ?? existing?.price ?? 0),
+        hasRecipe: Boolean(r.has_recipe || (r.ingredients && r.ingredients.length > 0)),
+        recipe: r,
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [menuItems, allRecipes]);
+
+  const selectedDishOpt = dishOptions.find((d) => d.id === selectedDishId);
+
+  const effectiveRecipe: MenuItemRecipe | null =
+    recipe ||
+    allRecipes.find((r) => r.menu_item_id === selectedDishId) ||
+    (selectedDishOpt
+      ? {
+          menu_item_id: selectedDishOpt.id,
+          menu_item_name: selectedDishOpt.name,
+          selling_price: selectedDishOpt.price,
+          has_recipe: selectedDishOpt.hasRecipe,
+          recipe_name: selectedDishOpt.recipe?.recipe_name,
+          recipe_description: selectedDishOpt.recipe?.recipe_description,
+          ingredients: selectedDishOpt.recipe?.ingredients,
+        }
+      : null);
 
   useEffect(() => {
     if (recipe) {
@@ -97,7 +161,8 @@ export function PosRecipeDialog({
 
   const handleSelectDish = (dishId: string) => {
     setSelectedDishId(dishId);
-    const chosen = allRecipes.find((r) => r.menu_item_id === dishId);
+    const chosenOpt = dishOptions.find((d) => d.id === dishId);
+    const chosen = chosenOpt?.recipe || allRecipes.find((r) => r.menu_item_id === dishId);
     if (chosen) {
       setName(chosen.recipe_name || `${chosen.menu_item_name} Recipe`);
       setDescription(chosen.recipe_description || "");
@@ -112,6 +177,10 @@ export function PosRecipeDialog({
       } else {
         setIngredients([{ inventory_item_id: "", quantity: 1, unit: "pcs" }]);
       }
+    } else if (chosenOpt) {
+      setName(`${chosenOpt.name} Recipe`);
+      setDescription("");
+      setIngredients([{ inventory_item_id: "", quantity: 1, unit: "pcs" }]);
     }
   };
 
@@ -249,11 +318,17 @@ export function PosRecipeDialog({
                   <SelectValue placeholder="Choose a dish to map ingredients..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
-                  {allRecipes.map((r) => (
-                    <SelectItem key={r.menu_item_id} value={r.menu_item_id}>
-                      {r.menu_item_name} ({formatCurrency(r.selling_price)}) {r.has_recipe ? "✓ Already Mapped" : "• Not Mapped"}
-                    </SelectItem>
-                  ))}
+                  {dishOptions.length === 0 ? (
+                    <div className="p-3 text-center text-xs text-muted-foreground">
+                      No menu dishes found. Add dishes in Menu first.
+                    </div>
+                  ) : (
+                    dishOptions.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name} ({formatCurrency(d.price)}) {d.hasRecipe ? "✓ Already Mapped" : "• Not Mapped"}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>

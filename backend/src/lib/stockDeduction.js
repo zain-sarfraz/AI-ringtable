@@ -72,11 +72,16 @@ export async function deductStockForOrder(trxOrKnex, orderId) {
       const orderedQty = Math.max(1, Number(item.quantity) || 1);
 
       // Find recipe for this menu item (check current restaurant first, then parent if branch)
-      let recipe = await trx("recipes")
-        .where({ selling_item_id: menuItemId, restaurant_id: order.restaurant_id })
-        .first();
+      const hasRecipeRid = trx.schema
+        ? await trx.schema.hasColumn("recipes", "restaurant_id").catch(() => false)
+        : true;
+      let recipeQuery = trx("recipes").where({ selling_item_id: menuItemId });
+      if (hasRecipeRid) {
+        recipeQuery = recipeQuery.where({ restaurant_id: order.restaurant_id });
+      }
+      let recipe = await recipeQuery.first();
 
-      if (!recipe) {
+      if (!recipe && hasRecipeRid) {
         const rest = await trx("restaurants").where({ id: order.restaurant_id }).first("parent_restaurant_id");
         if (rest?.parent_restaurant_id) {
           recipe = await trx("recipes")

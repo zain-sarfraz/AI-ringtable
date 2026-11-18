@@ -17,6 +17,60 @@ function checkRestaurantAccess(req, restaurantId) {
   return userRestaurants.includes(restaurantId);
 }
 
+/**
+ * Auto-heal multi-tenant columns on live databases where migration 060 hasn't executed yet.
+ */
+let columnsEnsured = false;
+export async function ensureInventoryRestaurantColumns(knex) {
+  const tables = [
+    "inventory_categories",
+    "inventory_items",
+    "suppliers",
+    "purchases",
+    "recipes",
+    "stock_adjustments",
+  ];
+  for (const table of tables) {
+    try {
+      await knex.raw(
+        `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;`
+      );
+    } catch {
+      try {
+        await knex.raw(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS restaurant_id UUID;`);
+      } catch {
+        // Table might not exist or non-fatal
+      }
+    }
+    try {
+      await knex.raw(`CREATE INDEX IF NOT EXISTS idx_${table}_restaurant_id ON ${table}(restaurant_id);`);
+    } catch {
+      // ignore
+    }
+  }
+  columnsEnsured = true;
+}
+
+async function checkHasColumn(knex, tableName, columnName = "restaurant_id") {
+  try {
+    return await knex.schema.hasColumn(tableName, columnName);
+  } catch {
+    return false;
+  }
+}
+
+// Ensure columns on POS requests
+router.use(async (_req, _res, next) => {
+  if (!columnsEnsured) {
+    try {
+      await ensureInventoryRestaurantColumns(getKnex());
+    } catch (err) {
+      console.warn("[pos] Note: ensureInventoryRestaurantColumns notice:", err?.message || err);
+    }
+  }
+  next();
+});
+
 // -------------------------------------------------------------------------
 // 1. POS & INVENTORY SUMMARY: Total Sales vs Total Purchasing + Profit
 // -------------------------------------------------------------------------
@@ -30,15 +84,19 @@ router.get("/summary", optionalAuth, requireAuth, async (req, res) => {
   const period = req.query.period || "all"; // 'today', 'week', 'month', 'all'
 
   try {
+    const hasPurchRid = await checkHasColumn(knex, "purchases");
+    const hasItemRid = await checkHasColumn(knex, "inventory_items");
+
     // Base orders query (excluding cancelled)
     let salesQuery = knex("orders")
       .where({ restaurant_id: restaurantId })
       .whereNot({ status: "cancelled" });
 
     // Base purchases query (excluding cancelled)
-    let purchasesQuery = knex("purchases")
-      .where({ restaurant_id: restaurantId })
-      .whereNot({ status: "cancelled" });
+    let purchasesQuery = knex("purchases").whereNot({ status: "cancelled" });
+    if (hasPurchRid) {
+      purchasesQuery = purchasesQuery.where({ restaurant_id: restaurantId });
+    }
 
     if (period === "today") {
       salesQuery = salesQuery.whereRaw("created_at >= CURRENT_DATE");
@@ -69,8 +127,11 @@ router.get("/summary", optionalAuth, requireAuth, async (req, res) => {
     const marginPercent = totalSales > 0 ? Math.round(((grossProfit / totalSales) * 100) * 10) / 10 : 0;
 
     // Inventory status (stock value and count)
-    const inventoryStats = await knex("inventory_items")
-      .where({ restaurant_id: restaurantId, status: "active" })
+    let inventoryStatsQuery = knex("inventory_items").where({ status: "active" });
+    if (hasItemRid) {
+      inventoryStatsQuery = inventoryStatsQuery.where({ restaurant_id: restaurantId });
+    }
+    const inventoryStats = await inventoryStatsQuery
       .select(
         knex.raw("COUNT(id) as total_items"),
         knex.raw("COALESCE(SUM(current_stock * cost_price), 0) as total_stock_value"),
@@ -88,25 +149,31 @@ router.get("/summary", optionalAuth, requireAuth, async (req, res) => {
       .select("id", "order_number", "customer_name", "total_amount", "payment_method", "fulfillment_type", "status", "created_at");
 
     // Recent purchases
-    const recentPurchases = await knex("purchases")
+    let recentPurchasesQuery = knex("purchases")
       .leftJoin("suppliers", "purchases.supplier_id", "suppliers.id")
-      .where({ "purchases.restaurant_id": restaurantId })
       .orderBy("purchases.purchase_date", "desc")
-      .limit(6)
-      .select(
-        "purchases.id",
-        "purchases.purchase_date",
-        "purchases.total_amount",
-        "purchases.status",
-        "purchases.notes",
-        "suppliers.name as supplier_name",
-        "suppliers.company_name as supplier_company"
-      );
+      .limit(6);
+    if (hasPurchRid) {
+      recentPurchasesQuery = recentPurchasesQuery.where({ "purchases.restaurant_id": restaurantId });
+    }
+    const recentPurchases = await recentPurchasesQuery.select(
+      "purchases.id",
+      "purchases.purchase_date",
+      "purchases.total_amount",
+      "purchases.status",
+      "purchases.notes",
+      "suppliers.name as supplier_name",
+      "suppliers.company_name as supplier_company"
+    );
 
     // Top 5 consumed raw materials
-    const topUsed = await knex("inventory_transactions")
+    let topUsedQuery = knex("inventory_transactions")
       .join("inventory_items", "inventory_transactions.inventory_item_id", "inventory_items.id")
-      .where({ "inventory_items.restaurant_id": restaurantId, "inventory_transactions.transaction_type": "sale" })
+      .where({ "inventory_transactions.transaction_type": "sale" });
+    if (hasItemRid) {
+      topUsedQuery = topUsedQuery.where({ "inventory_items.restaurant_id": restaurantId });
+    }
+    const topUsed = await topUsedQuery
       .groupBy("inventory_items.id", "inventory_items.name", "inventory_items.unit", "inventory_items.cost_price")
       .select(
         "inventory_items.id",
@@ -169,10 +236,11 @@ router.get("/raw-materials", optionalAuth, requireAuth, async (req, res) => {
 
   const knex = getKnex();
   try {
-    const items = await knex("inventory_items")
+    const hasItemRid = await checkHasColumn(knex, "inventory_items");
+
+    let itemsQuery = knex("inventory_items")
       .leftJoin("inventory_categories", "inventory_items.category_id", "inventory_categories.id")
       .leftJoin("suppliers", "inventory_items.supplier_id", "suppliers.id")
-      .where({ "inventory_items.restaurant_id": restaurantId })
       .select(
         "inventory_items.*",
         "inventory_categories.name as category_name",
@@ -181,16 +249,25 @@ router.get("/raw-materials", optionalAuth, requireAuth, async (req, res) => {
       )
       .orderBy("inventory_items.name", "asc");
 
+    if (hasItemRid) {
+      itemsQuery = itemsQuery.where({ "inventory_items.restaurant_id": restaurantId });
+    }
+    const items = await itemsQuery;
+
     // Compute total purchased & total used for each item
-    const transactions = await knex("inventory_transactions")
+    let txQuery = knex("inventory_transactions")
       .join("inventory_items", "inventory_transactions.inventory_item_id", "inventory_items.id")
-      .where({ "inventory_items.restaurant_id": restaurantId })
       .groupBy("inventory_transactions.inventory_item_id", "inventory_transactions.transaction_type")
       .select(
         "inventory_transactions.inventory_item_id",
         "inventory_transactions.transaction_type",
         knex.raw("COALESCE(SUM(inventory_transactions.quantity), 0) as total_qty")
       );
+
+    if (hasItemRid) {
+      txQuery = txQuery.where({ "inventory_items.restaurant_id": restaurantId });
+    }
+    const transactions = await txQuery;
 
     const txMap = {};
     for (const tx of transactions) {
@@ -256,43 +333,46 @@ router.post("/raw-materials", optionalAuth, requireAuth, async (req, res) => {
   const knex = getKnex();
   const trx = await knex.transaction();
   try {
+    const hasItemRid = await checkHasColumn(trx, "inventory_items");
     let resultItem = null;
 
     if (id && isValidUUID(id)) {
       // Update existing
-      const [updated] = await trx("inventory_items")
-        .where({ id, restaurant_id })
-        .update({
-          name: String(name).trim(),
-          sku: sku ? String(sku).trim() : null,
-          category_id: category_id && isValidUUID(category_id) ? category_id : null,
-          unit: String(unit).trim(),
-          cost_price: Number(cost_price) || 0,
-          current_stock: Number(current_stock) || 0,
-          minimum_stock: Number(minimum_stock) || 0,
-          supplier_id: supplier_id && isValidUUID(supplier_id) ? supplier_id : null,
-          status: status || "active",
-          notes: notes ? String(notes).trim() : null,
-          updated_at: new Date(),
-        })
-        .returning("*");
+      const updatePayload = {
+        name: String(name).trim(),
+        sku: sku ? String(sku).trim() : null,
+        category_id: category_id && isValidUUID(category_id) ? category_id : null,
+        unit: String(unit).trim(),
+        cost_price: Number(cost_price) || 0,
+        current_stock: Number(current_stock) || 0,
+        minimum_stock: Number(minimum_stock) || 0,
+        supplier_id: supplier_id && isValidUUID(supplier_id) ? supplier_id : null,
+        status: status || "active",
+        notes: notes ? String(notes).trim() : null,
+        updated_at: new Date(),
+      };
+      let updateQuery = trx("inventory_items").where({ id });
+      if (hasItemRid) updateQuery = updateQuery.where({ restaurant_id });
+      const [updated] = await updateQuery.update(updatePayload).returning("*");
       resultItem = updated;
     } else {
       // Create new
+      const insertPayload = {
+        name: String(name).trim(),
+        sku: sku ? String(sku).trim() : `SKU-${Math.floor(1000 + Math.random() * 9000)}`,
+        category_id: category_id && isValidUUID(category_id) ? category_id : null,
+        unit: String(unit).trim(),
+        cost_price: Number(cost_price) || 0,
+        current_stock: Number(current_stock) || 0,
+        minimum_stock: Number(minimum_stock) || 0,
+        supplier_id: supplier_id && isValidUUID(supplier_id) ? supplier_id : null,
+        status: status || "active",
+        notes: notes ? String(notes).trim() : null,
+      };
+      if (hasItemRid) insertPayload.restaurant_id = restaurant_id;
+
       const [created] = await trx("inventory_items")
-        .insert({
-          restaurant_id,
-          name: String(name).trim(),
-          sku: sku ? String(sku).trim() : `SKU-${Math.floor(1000 + Math.random() * 9000)}`,
-          category_id: category_id && isValidUUID(category_id) ? category_id : null,
-          unit: String(unit).trim(),
-          cost_price: Number(cost_price) || 0,
-          current_stock: Number(current_stock) || 0,
-          minimum_stock: Number(minimum_stock) || 0,
-          supplier_id: supplier_id && isValidUUID(supplier_id) ? supplier_id : null,
-          status: status || "active",
-          notes: notes ? String(notes).trim() : null,
-        })
+        .insert(insertPayload)
         .returning("*");
       resultItem = created;
 
@@ -326,13 +406,18 @@ router.delete("/raw-materials/:id", optionalAuth, requireAuth, async (req, res) 
 
   const knex = getKnex();
   try {
+    const hasItemRid = await checkHasColumn(knex, "inventory_items");
     const recipeCount = await knex("recipe_ingredients").where({ inventory_item_id: id }).count().first();
     if (Number(recipeCount?.count || 0) > 0) {
-      await knex("inventory_items").where({ id, restaurant_id: restaurantId }).update({ status: "inactive" });
+      let updateQuery = knex("inventory_items").where({ id });
+      if (hasItemRid) updateQuery = updateQuery.where({ restaurant_id: restaurantId });
+      await updateQuery.update({ status: "inactive" });
       return res.json({ success: true, message: "Item deactivated because it is linked to recipes" });
     }
 
-    await knex("inventory_items").where({ id, restaurant_id: restaurantId }).del();
+    let delQuery = knex("inventory_items").where({ id });
+    if (hasItemRid) delQuery = delQuery.where({ restaurant_id: restaurantId });
+    await delQuery.del();
     return res.json({ success: true });
   } catch (err) {
     console.error("Delete raw material error:", err);
@@ -358,7 +443,12 @@ router.post("/raw-materials/:id/adjust", optionalAuth, requireAuth, async (req, 
   const knex = getKnex();
   const trx = await knex.transaction();
   try {
-    const item = await trx("inventory_items").where({ id, restaurant_id }).first();
+    const hasItemRid = await checkHasColumn(trx, "inventory_items");
+    const hasAdjRid = await checkHasColumn(trx, "stock_adjustments");
+
+    let itemQuery = trx("inventory_items").where({ id });
+    if (hasItemRid) itemQuery = itemQuery.where({ restaurant_id });
+    const item = await itemQuery.first();
     if (!item) {
       await trx.rollback();
       return res.status(404).json({ error: "Raw material not found" });
@@ -372,14 +462,16 @@ router.post("/raw-materials/:id/adjust", optionalAuth, requireAuth, async (req, 
       updated_at: new Date(),
     });
 
-    await trx("stock_adjustments").insert({
-      restaurant_id,
+    const adjPayload = {
       inventory_item_id: id,
       adjustment_type,
       quantity: qtyNum,
       reason: reason ? String(reason).trim() : "Manual stock adjustment",
       performed_by: req.user?.id || null,
-    });
+    };
+    if (hasAdjRid) adjPayload.restaurant_id = restaurant_id;
+
+    await trx("stock_adjustments").insert(adjPayload);
 
     await trx("inventory_transactions").insert({
       inventory_item_id: id,
@@ -409,19 +501,24 @@ router.get("/suppliers", optionalAuth, requireAuth, async (req, res) => {
 
   const knex = getKnex();
   try {
-    const suppliers = await knex("suppliers")
-      .where({ restaurant_id: restaurantId })
-      .select("suppliers.*")
-      .orderBy("name", "asc");
+    const hasSuppRid = await checkHasColumn(knex, "suppliers");
+    const hasPurchRid = await checkHasColumn(knex, "purchases");
 
-    const stats = await knex("purchases")
-      .where({ restaurant_id: restaurantId })
-      .groupBy("supplier_id")
-      .select(
-        "supplier_id",
-        knex.raw("COUNT(id) as total_purchases"),
-        knex.raw("COALESCE(SUM(total_amount), 0) as total_spent")
-      );
+    let suppliersQuery = knex("suppliers").select("suppliers.*").orderBy("name", "asc");
+    if (hasSuppRid) {
+      suppliersQuery = suppliersQuery.where({ restaurant_id: restaurantId });
+    }
+    const suppliers = await suppliersQuery;
+
+    let purchasesQuery = knex("purchases").groupBy("supplier_id");
+    if (hasPurchRid) {
+      purchasesQuery = purchasesQuery.where({ restaurant_id: restaurantId });
+    }
+    const stats = await purchasesQuery.select(
+      "supplier_id",
+      knex.raw("COUNT(id) as total_purchases"),
+      knex.raw("COALESCE(SUM(total_amount), 0) as total_spent")
+    );
 
     const statsMap = {};
     for (const s of stats) {
@@ -455,32 +552,33 @@ router.post("/suppliers", optionalAuth, requireAuth, async (req, res) => {
 
   const knex = getKnex();
   try {
+    const hasSuppRid = await checkHasColumn(knex, "suppliers");
+
     if (id && isValidUUID(id)) {
-      const [updated] = await knex("suppliers")
-        .where({ id, restaurant_id })
-        .update({
-          name: String(name).trim(),
-          company_name: company_name ? String(company_name).trim() : null,
-          phone: phone ? String(phone).trim() : null,
-          email: email ? String(email).trim() : null,
-          address: address ? String(address).trim() : null,
-          notes: notes ? String(notes).trim() : null,
-          updated_at: new Date(),
-        })
-        .returning("*");
+      const updatePayload = {
+        name: String(name).trim(),
+        company_name: company_name ? String(company_name).trim() : null,
+        phone: phone ? String(phone).trim() : null,
+        email: email ? String(email).trim() : null,
+        address: address ? String(address).trim() : null,
+        notes: notes ? String(notes).trim() : null,
+        updated_at: new Date(),
+      };
+      let updateQuery = knex("suppliers").where({ id });
+      if (hasSuppRid) updateQuery = updateQuery.where({ restaurant_id });
+      const [updated] = await updateQuery.update(updatePayload).returning("*");
       return res.json({ supplier: updated });
     } else {
-      const [created] = await knex("suppliers")
-        .insert({
-          restaurant_id,
-          name: String(name).trim(),
-          company_name: company_name ? String(company_name).trim() : null,
-          phone: phone ? String(phone).trim() : null,
-          email: email ? String(email).trim() : null,
-          address: address ? String(address).trim() : null,
-          notes: notes ? String(notes).trim() : null,
-        })
-        .returning("*");
+      const insertPayload = {
+        name: String(name).trim(),
+        company_name: company_name ? String(company_name).trim() : null,
+        phone: phone ? String(phone).trim() : null,
+        email: email ? String(email).trim() : null,
+        address: address ? String(address).trim() : null,
+        notes: notes ? String(notes).trim() : null,
+      };
+      if (hasSuppRid) insertPayload.restaurant_id = restaurant_id;
+      const [created] = await knex("suppliers").insert(insertPayload).returning("*");
       return res.json({ supplier: created });
     }
   } catch (err) {
@@ -498,11 +596,14 @@ router.delete("/suppliers/:id", optionalAuth, requireAuth, async (req, res) => {
 
   const knex = getKnex();
   try {
+    const hasSuppRid = await checkHasColumn(knex, "suppliers");
     const purchaseCount = await knex("purchases").where({ supplier_id: id }).count().first();
     if (Number(purchaseCount?.count || 0) > 0) {
       return res.status(400).json({ error: "Cannot delete supplier with existing purchase records" });
     }
-    await knex("suppliers").where({ id, restaurant_id: restaurantId }).del();
+    let delQuery = knex("suppliers").where({ id });
+    if (hasSuppRid) delQuery = delQuery.where({ restaurant_id: restaurantId });
+    await delQuery.del();
     return res.json({ success: true });
   } catch (err) {
     console.error("Delete supplier error:", err);
@@ -521,9 +622,10 @@ router.get("/purchases", optionalAuth, requireAuth, async (req, res) => {
 
   const knex = getKnex();
   try {
-    const purchases = await knex("purchases")
+    const hasPurchRid = await checkHasColumn(knex, "purchases");
+
+    let purchasesQuery = knex("purchases")
       .leftJoin("suppliers", "purchases.supplier_id", "suppliers.id")
-      .where({ "purchases.restaurant_id": restaurantId })
       .select(
         "purchases.*",
         "suppliers.name as supplier_name",
@@ -531,6 +633,11 @@ router.get("/purchases", optionalAuth, requireAuth, async (req, res) => {
         "suppliers.phone as supplier_phone"
       )
       .orderBy("purchases.purchase_date", "desc");
+
+    if (hasPurchRid) {
+      purchasesQuery = purchasesQuery.where({ "purchases.restaurant_id": restaurantId });
+    }
+    const purchases = await purchasesQuery;
 
     const purchaseIds = purchases.map(p => p.id);
     let items = [];
@@ -592,21 +699,26 @@ router.post("/purchases", optionalAuth, requireAuth, async (req, res) => {
   const knex = getKnex();
   const trx = await knex.transaction();
   try {
+    const hasPurchRid = await checkHasColumn(trx, "purchases");
+    const hasItemRid = await checkHasColumn(trx, "inventory_items");
+
     const totalAmount = items.reduce((sum, item) => {
       const q = Number(item.quantity) || 0;
       const p = Number(item.unit_price) || 0;
       return sum + q * p;
     }, 0);
 
+    const purchasePayload = {
+      supplier_id,
+      purchase_date,
+      total_amount: totalAmount,
+      status,
+      notes: notes ? String(notes).trim() : null,
+    };
+    if (hasPurchRid) purchasePayload.restaurant_id = restaurant_id;
+
     const [purchase] = await trx("purchases")
-      .insert({
-        restaurant_id,
-        supplier_id,
-        purchase_date,
-        total_amount: totalAmount,
-        status,
-        notes: notes ? String(notes).trim() : null,
-      })
+      .insert(purchasePayload)
       .returning("*");
 
     for (const item of items) {
@@ -622,7 +734,9 @@ router.post("/purchases", optionalAuth, requireAuth, async (req, res) => {
       });
 
       if (status === "received") {
-        const invItem = await trx("inventory_items").where({ id: item.inventory_item_id }).first();
+        let itemQuery = trx("inventory_items").where({ id: item.inventory_item_id });
+        if (hasItemRid) itemQuery = itemQuery.where({ restaurant_id });
+        const invItem = await itemQuery.first();
         if (invItem) {
           const updatedStock = Number(invItem.current_stock || 0) + qty;
           await trx("inventory_items")
@@ -665,14 +779,18 @@ router.get("/recipes", optionalAuth, requireAuth, async (req, res) => {
 
   const knex = getKnex();
   try {
+    const hasRecipeRid = await checkHasColumn(knex, "recipes");
+
     const menuItems = await knex("menu_items")
       .where({ restaurant_id: restaurantId, is_available: true })
       .select("id", "name", "price", "image_url")
       .orderBy("name", "asc");
 
-    const recipes = await knex("recipes")
-      .where({ restaurant_id: restaurantId })
-      .select("id", "selling_item_id", "name", "description");
+    let recipesQuery = knex("recipes").select("id", "selling_item_id", "name", "description");
+    if (hasRecipeRid) {
+      recipesQuery = recipesQuery.where({ restaurant_id: restaurantId });
+    }
+    const recipes = await recipesQuery;
 
     const recipeIds = recipes.map(r => r.id);
     let recipeIngredients = [];
@@ -751,7 +869,13 @@ router.post("/recipes", optionalAuth, requireAuth, async (req, res) => {
   const knex = getKnex();
   const trx = await knex.transaction();
   try {
-    let recipe = await trx("recipes").where({ selling_item_id: menu_item_id, restaurant_id }).first();
+    const hasRecipeRid = await checkHasColumn(trx, "recipes");
+
+    let recipeQuery = trx("recipes").where({ selling_item_id: menu_item_id });
+    if (hasRecipeRid) {
+      recipeQuery = recipeQuery.where({ restaurant_id });
+    }
+    let recipe = await recipeQuery.first();
 
     if (recipe) {
       await trx("recipes")
@@ -763,13 +887,15 @@ router.post("/recipes", optionalAuth, requireAuth, async (req, res) => {
         });
       await trx("recipe_ingredients").where({ recipe_id: recipe.id }).del();
     } else {
+      const insertPayload = {
+        selling_item_id: menu_item_id,
+        name: name ? String(name).trim() : null,
+        description: description ? String(description).trim() : null,
+      };
+      if (hasRecipeRid) insertPayload.restaurant_id = restaurant_id;
+
       const [created] = await trx("recipes")
-        .insert({
-          restaurant_id,
-          selling_item_id: menu_item_id,
-          name: name ? String(name).trim() : null,
-          description: description ? String(description).trim() : null,
-        })
+        .insert(insertPayload)
         .returning("*");
       recipe = created;
     }
@@ -807,12 +933,13 @@ router.get("/usage", optionalAuth, requireAuth, async (req, res) => {
 
   const knex = getKnex();
   try {
+    const hasItemRid = await checkHasColumn(knex, "inventory_items");
+
     let query = knex("inventory_transactions")
       .join("inventory_items", "inventory_transactions.inventory_item_id", "inventory_items.id")
       .leftJoin("orders", "inventory_transactions.related_order_id", "orders.id")
       .leftJoin("purchases", "inventory_transactions.related_purchase_id", "purchases.id")
       .leftJoin("suppliers", "purchases.supplier_id", "suppliers.id")
-      .where({ "inventory_items.restaurant_id": restaurantId })
       .select(
         "inventory_transactions.id",
         "inventory_transactions.transaction_type",
@@ -833,6 +960,10 @@ router.get("/usage", optionalAuth, requireAuth, async (req, res) => {
       .orderBy("inventory_transactions.created_at", "desc")
       .limit(200);
 
+    if (hasItemRid) {
+      query = query.where({ "inventory_items.restaurant_id": restaurantId });
+    }
+
     if (rawMaterialId && isValidUUID(rawMaterialId)) {
       query = query.where({ "inventory_items.id": rawMaterialId });
     }
@@ -840,8 +971,11 @@ router.get("/usage", optionalAuth, requireAuth, async (req, res) => {
     const rows = await query;
 
     let summaryQuery = knex("inventory_transactions")
-      .join("inventory_items", "inventory_transactions.inventory_item_id", "inventory_items.id")
-      .where({ "inventory_items.restaurant_id": restaurantId });
+      .join("inventory_items", "inventory_transactions.inventory_item_id", "inventory_items.id");
+
+    if (hasItemRid) {
+      summaryQuery = summaryQuery.where({ "inventory_items.restaurant_id": restaurantId });
+    }
 
     if (rawMaterialId && isValidUUID(rawMaterialId)) {
       summaryQuery = summaryQuery.where({ "inventory_items.id": rawMaterialId });
@@ -1179,21 +1313,6 @@ router.get("/orders/:id", optionalAuth, requireAuth, async (req, res) => {
     return res.status(500).json({ error: err.message || "Failed to load order" });
   }
 });
-
-async function ensureInventoryRestaurantColumns(knex) {
-  try {
-    await knex.raw(`
-      ALTER TABLE inventory_categories ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
-      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
-      ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
-      ALTER TABLE purchases ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
-      ALTER TABLE recipes ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
-      ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE;
-    `);
-  } catch (err) {
-    console.warn("[pos] Note: ensureInventoryRestaurantColumns notice:", err?.message || err);
-  }
-}
 
 // -------------------------------------------------------------------------
 // 8. ONE-CLICK SEED DEMO DATA FOR TESTING POS & RAW MATERIALS

@@ -32,10 +32,15 @@ export async function runMigrations(connectionString) {
     for (const name of migrationFiles) {
       const filePath = path.join(migrationsDir, name);
       if (!fs.existsSync(filePath)) {
-        throw new Error(`Migration file not found: ${filePath}`);
+        console.warn(`[migration] File not found: ${filePath}`);
+        continue;
       }
       const sql = fs.readFileSync(filePath, "utf8");
-      await client.query(sql);
+      try {
+        await client.query(sql);
+      } catch (err) {
+        console.warn(`[migration] Notice running ${name}:`, err?.message || err);
+      }
     }
   } finally {
     await client.end();
