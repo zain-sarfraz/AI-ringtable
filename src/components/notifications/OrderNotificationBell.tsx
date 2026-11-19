@@ -707,25 +707,31 @@ export function OrderNotificationBell() {
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-88 sm:w-96 p-0 shadow-2xl rounded-2xl border border-border overflow-hidden" sideOffset={8}>
+      <PopoverContent
+        align="end"
+        side="bottom"
+        sideOffset={8}
+        collisionPadding={12}
+        className="z-[60] w-[min(100vw-1.25rem,22rem)] max-w-[calc(100vw-1.25rem)] p-0 shadow-2xl rounded-2xl border border-border overflow-hidden sm:w-96 sm:max-w-none"
+      >
         {/* Clean Header */}
-        <div className="px-4 py-3.5 border-b border-border flex items-center justify-between bg-muted/40 backdrop-blur-sm">
-          <div className="flex items-center gap-2.5">
+        <div className="flex flex-col gap-2 border-b border-border bg-muted/40 px-3 py-3 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3.5">
+          <div className="flex min-w-0 items-center gap-2.5">
             <div className={cn(
-              "h-8 w-8 rounded-xl flex items-center justify-center font-bold transition-all",
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl font-bold transition-all",
               ringing ? "bg-primary text-primary-foreground animate-pulse" : "bg-primary/10 text-primary"
             )}>
               {ringing ? <BellRing className="h-4 w-4" /> : <ShoppingBag className="h-4 w-4" />}
             </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="font-bold text-sm text-foreground">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="truncate text-sm font-bold text-foreground">
                   {isReceptionist
                     ? "Reservations"
                     : t("orders:notifications", "Order Notifications")}
                 </p>
                 {ringing && (
-                  <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 animate-pulse">
+                  <Badge variant="destructive" className="h-4 animate-pulse px-1 py-0 text-[9px]">
                     Alert
                   </Badge>
                 )}
@@ -740,45 +746,43 @@ export function OrderNotificationBell() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
-            {visibleNotifications.length > 0 && (
-              <>
-                {unreadCount > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={markAllSeen}
-                    className="h-7 px-2 text-xs gap-1 text-primary hover:bg-primary/10"
-                    title={t("common:markAllRead", "Mark all as read")}
-                  >
-                    <CheckCheck className="h-3.5 w-3.5" />
-                    <span>Read</span>
-                  </Button>
-                )}
+          {visibleNotifications.length > 0 && (
+            <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+              {unreadCount > 0 && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={clearAll}
-                  className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                  onClick={markAllSeen}
+                  className="h-7 gap-1 px-2 text-xs text-primary hover:bg-primary/10"
+                  title={t("common:markAllRead", "Mark all as read")}
                 >
-                  {t("common:clearAll", "Clear")}
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  <span>Read</span>
                 </Button>
-              </>
-            )}
-          </div>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAll}
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+              >
+                {t("common:clearAll", "Clear")}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Notification List */}
-        <div className="max-h-[380px] overflow-y-auto divide-y divide-border">
+        <div className="max-h-[min(60vh,380px)] overflow-y-auto overscroll-contain divide-y divide-border">
           {visibleNotifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+            <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-muted-foreground">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                 <Bell className="h-6 w-6 opacity-30" />
               </div>
               <p className="text-sm font-medium">
                 {isReceptionist ? "No reservations yet" : t("orders:noNotifications", "No notifications yet")}
               </p>
-              <p className="text-xs opacity-60 text-center max-w-[200px]">
+              <p className="max-w-[220px] text-center text-xs opacity-60">
                 {isReceptionist
                   ? "A new reservation will ring this bell"
                   : t("orders:noNotificationsDesc", "New orders and transfer alerts will appear here in real time")}
@@ -796,73 +800,72 @@ export function OrderNotificationBell() {
                   key={n.id}
                   onClick={() => goToOrder(n)}
                   className={cn(
-                    "w-full text-left px-4 py-3 transition-all duration-200 group relative flex items-start gap-3",
+                    "group relative flex w-full items-start gap-2.5 px-3 py-3 text-left transition-all duration-200 sm:gap-3 sm:px-4",
                     n.seen
-                      ? "bg-card hover:bg-accent/40 opacity-75 hover:opacity-100"
+                      ? "bg-card opacity-75 hover:bg-accent/40 hover:opacity-100"
                       : isTransferReq
-                        ? "bg-amber-500/10 hover:bg-amber-500/15 border-l-4 border-l-amber-500"
+                        ? "border-l-4 border-l-amber-500 bg-amber-500/10 hover:bg-amber-500/15"
                         : isTransferRej
-                          ? "bg-rose-500/10 hover:bg-rose-500/15 border-l-4 border-l-rose-500"
+                          ? "border-l-4 border-l-rose-500 bg-rose-500/10 hover:bg-rose-500/15"
                           : isTransferAcc
-                            ? "bg-emerald-500/10 hover:bg-emerald-500/15 border-l-4 border-l-emerald-500"
+                            ? "border-l-4 border-l-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/15"
                             : isReservation
-                              ? "bg-sky-500/10 hover:bg-sky-500/15 border-l-4 border-l-sky-500"
-                              : "bg-primary/5 hover:bg-primary/10 border-l-4 border-l-primary"
+                              ? "border-l-4 border-l-sky-500 bg-sky-500/10 hover:bg-sky-500/15"
+                              : "border-l-4 border-l-primary bg-primary/5 hover:bg-primary/10"
                   )}
                 >
-                  {/* Icon Indicator */}
-                  <div className="mt-0.5 flex-shrink-0">
+                  <div className="mt-0.5 shrink-0">
                     {isTransferReq ? (
-                      <div className="h-7 w-7 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400">
                         <ArrowRightLeft className="h-3.5 w-3.5 animate-pulse" />
                       </div>
                     ) : isTransferRej ? (
-                      <div className="h-7 w-7 rounded-lg bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/20 text-rose-600 dark:text-rose-400">
                         <XCircle className="h-3.5 w-3.5" />
                       </div>
                     ) : isTransferAcc ? (
-                      <div className="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
                         <CheckCircle2 className="h-3.5 w-3.5" />
                       </div>
                     ) : isReservation ? (
-                      <div className="h-7 w-7 rounded-lg bg-sky-500/20 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/20 text-sky-600 dark:text-sky-400">
                         <CalendarCheck className="h-3.5 w-3.5" />
                       </div>
                     ) : (
-                      <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
                         <ShoppingBag className="h-3.5 w-3.5" />
                       </div>
                     )}
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                         <span
                           className={cn(
-                            "font-bold text-xs truncate",
+                            "break-all text-xs font-bold",
                             n.seen ? "text-muted-foreground" : "text-foreground"
                           )}
                         >
                           {tidyLabel(n.order_number)}
                         </span>
                         {isTransferReq && (
-                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                          <Badge variant="outline" className="h-4 border-amber-500/30 bg-amber-500/20 px-1 py-0 text-[9px] text-amber-700 dark:text-amber-300">
                             Transfer
                           </Badge>
                         )}
                         {isTransferRej && (
-                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/30">
+                          <Badge variant="outline" className="h-4 border-rose-500/30 bg-rose-500/20 px-1 py-0 text-[9px] text-rose-700 dark:text-rose-300">
                             Rejected
                           </Badge>
                         )}
                         {isTransferAcc && (
-                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                          <Badge variant="outline" className="h-4 border-emerald-500/30 bg-emerald-500/20 px-1 py-0 text-[9px] text-emerald-700 dark:text-emerald-300">
                             Accepted
                           </Badge>
                         )}
                         {isReservation && (
-                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-sky-500/20 text-sky-700 dark:text-sky-300 border-sky-500/30">
+                          <Badge variant="outline" className="h-4 border-sky-500/30 bg-sky-500/20 px-1 py-0 text-[9px] text-sky-700 dark:text-sky-300">
                             Reservation
                           </Badge>
                         )}
@@ -870,7 +873,7 @@ export function OrderNotificationBell() {
                       {n.total_amount > 0 && (
                         <span
                           className={cn(
-                            "text-xs font-extrabold flex-shrink-0",
+                            "shrink-0 text-xs font-extrabold tabular-nums",
                             n.seen ? "text-muted-foreground" : "text-primary"
                           )}
                         >
@@ -881,15 +884,15 @@ export function OrderNotificationBell() {
 
                     <p
                       className={cn(
-                        "text-xs truncate mt-0.5",
-                        n.seen ? "text-muted-foreground/80" : "text-foreground font-medium"
+                        "mt-0.5 text-xs leading-snug break-words [overflow-wrap:anywhere]",
+                        n.seen ? "text-muted-foreground/80" : "font-medium text-foreground"
                       )}
                     >
                       {tidyLabel(n.message || n.customer_name || "Order alert")}
                     </p>
 
-                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60 mt-1">
-                      <Clock className="h-3 w-3" />
+                    <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground/60">
+                      <Clock className="h-3 w-3 shrink-0" />
                       <span>{formatTimeAgo(n.created_at)}</span>
                       {!n.seen && (
                         <Badge variant="secondary" className="ml-auto h-4 px-1 text-[9px] font-semibold">
@@ -904,24 +907,23 @@ export function OrderNotificationBell() {
           )}
         </div>
 
-        {/* Clean Footer */}
         {visibleNotifications.length > 0 && (
-          <div className="p-2 border-t border-border bg-muted/20">
+          <div className="border-t border-border bg-muted/20 p-2">
             <Button
               variant="ghost"
               size="sm"
-              className="w-full text-xs h-8 text-primary hover:text-primary hover:bg-primary/10 font-bold justify-between"
+              className="h-8 w-full justify-between text-xs font-bold text-primary hover:bg-primary/10 hover:text-primary"
               onClick={() => {
                 setPopoverOpen(false);
                 navigate(isReceptionist ? "/reservations" : "/orders");
               }}
             >
-              <span>
+              <span className="truncate">
                 {isReceptionist
                   ? "View reservations"
                   : t("orders:viewAllOrders", "View all orders")}
               </span>
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRight className="h-3.5 w-3.5 shrink-0" />
             </Button>
           </div>
         )}

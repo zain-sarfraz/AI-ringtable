@@ -897,8 +897,8 @@ export default function Landing() {
             <p>Your owner dashboard shows calls handled, orders captured, revenue by channel and the missed calls the AI recovered.</p>
           </div>
           <div className="perf">
-            <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
-              <div>
+            <div className="perf-head d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+              <div className="min-w-0">
                 <b style={{ fontSize: 20 }}>Restaurant AI Performance</b>
                 <div className="text-mut" style={{ fontSize: 14 }}>
                   This month · All locations
@@ -910,7 +910,7 @@ export default function Landing() {
                 <span>90D</span>
               </div>
             </div>
-            <div className="row g-3">
+            <div className="row g-3 kpi-grid">
               {[
                 ["📞 Calls received", "1,284", "▲ 12% vs last month"],
                 ["🤖 Calls handled by AI", "1,173", "91% of all calls"],
@@ -1099,7 +1099,7 @@ export default function Landing() {
                 <h3>Royal Restaurant: every call answered, +38% phone revenue, zero new hires.</h3>
                 <p>During Friday and weekend rush, calls went unanswered, orders were written by hand and deliveries were sent from the wrong location. Reservations lived in a notebook.</p>
                 <p>They moved phone, QR and website ordering into one Order Engine with the AI Receptionist on the main line - while keeping their existing POS.</p>
-                <div className="row g-3 mt-2">
+                <div className="row g-3 mt-2 meta-grid">
                   <div className="col-4">
                     <div className="meta">
                       Locations<b>3</b>
@@ -1120,7 +1120,7 @@ export default function Landing() {
             </div>
             <div className="col-lg-6">
               <div className="csr">
-                <div className="row g-3">
+                <div className="row g-3 res-grid">
                   <div className="col-6">
                     <div className="res">
                       <b>100%</b>
