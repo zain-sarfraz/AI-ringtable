@@ -1246,18 +1246,18 @@ export default function RestaurantSettings() {
 
     if (activeRestaurantLoading || loading) {
         return (
-            <div className="max-w-4xl mx-auto space-y-6 p-6 pb-16">
-                <Skeleton className="h-9 w-64" />
-                <Skeleton className="h-4 w-96" />
-                <Skeleton className="h-48 w-full rounded-xl" />
-                <Skeleton className="h-40 w-full rounded-xl" />
+            <div className="mx-auto w-full max-w-4xl space-y-6 pb-16">
+                <Skeleton className="h-9 w-48 max-w-full sm:w-64" />
+                <Skeleton className="h-4 w-full max-w-md" />
+                <Skeleton className="h-48 w-full rounded-2xl" />
+                <Skeleton className="h-40 w-full rounded-2xl" />
             </div>
         );
     }
 
     if (!restaurantId || !s || !r) {
         return (
-            <p className="text-muted-foreground p-6 max-w-4xl mx-auto">
+            <p className="mx-auto max-w-4xl py-6 text-sm text-muted-foreground">
                 No restaurant is linked to your account. Ask a super admin to
                 add you as the restaurant owner.
             </p>
@@ -1269,21 +1269,21 @@ export default function RestaurantSettings() {
         resolveMediaUrl(String(r.cover_image_url ?? "")) ?? undefined;
 
     return (
-        <div className="max-w-4xl mx-auto space-y-8 p-6 pb-16">
-            <header className="space-y-1">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                            <Store className="h-6 w-6" />
+        <div className="mx-auto w-full max-w-4xl space-y-6 pb-16 sm:space-y-8">
+            <header className="space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:h-11 sm:w-11">
+                            <Store className="h-5 w-5 sm:h-6 sm:w-6" />
                         </div>
-                        <div>
-                            <h1 className="text-2xl font-bold tracking-tight">
+                        <div className="min-w-0 space-y-1">
+                            <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
                                 {t(
                                     "restaurantSettings:title",
                                     "Restaurant settings",
                                 )}
                             </h1>
-                            <p className="text-muted-foreground text-sm">
+                            <p className="text-xs text-muted-foreground sm:text-sm leading-relaxed">
                                 {t(
                                     "restaurantSettings:subtitle",
                                     "Public-facing details, pricing, and phone AI — kept in sync with your live restaurant record.",
@@ -1291,27 +1291,27 @@ export default function RestaurantSettings() {
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                    <div className="flex w-full items-center gap-2 rounded-xl border border-border/70 bg-muted/40 px-3 py-2 text-sm text-muted-foreground sm:w-auto sm:max-w-[min(100%,18rem)]">
                         <Hash className="h-4 w-4 shrink-0" />
-                        <span className="font-mono text-xs sm:text-sm">
+                        <span className="truncate font-mono text-xs sm:text-sm">
                             {r.slug}
                         </span>
                     </div>
                 </div>
             </header>
 
-            <Card className="overflow-hidden border shadow-sm">
+            <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
                 <CardHeader className="border-b bg-muted/30 pb-4">
                     <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1.5">
-                            <CardTitle className="text-lg flex items-center gap-2">
-                                <Gauge className="h-5 w-5 text-primary" />
+                        <div className="min-w-0 space-y-1.5">
+                            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                                <Gauge className="h-5 w-5 shrink-0 text-primary" />
                                 {t(
                                     "restaurantSettings:aiMinutes",
                                     "AI call minutes",
                                 )}
                             </CardTitle>
-                            <CardDescription>
+                            <CardDescription className="text-xs sm:text-sm leading-relaxed">
                                 {t(
                                     "restaurantSettings:aiMinutesDesc",
                                     "Minutes included in your plan for this billing period, plus any top-ups you buy. Remaining = included + purchased − used.",
@@ -1333,23 +1333,23 @@ export default function RestaurantSettings() {
                         </Button>
                     </div>
                 </CardHeader>
-                <CardContent className="space-y-5 pt-6">
+                <CardContent className="space-y-5 pt-5 sm:pt-6">
                     {minutesLoading && !minutesBalance ? (
                         <div className="space-y-3">
-                            <Skeleton className="h-4 w-40" />
+                            <Skeleton className="h-4 w-40 max-w-full" />
                             <Skeleton className="h-3 w-full" />
                             <Skeleton className="h-20 w-full" />
                         </div>
                     ) : minutesBalance ? (
                         <>
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                                 <Badge
                                     variant="secondary"
-                                    className="capitalize"
+                                    className="w-fit capitalize"
                                 >
                                     {minutesBalance.plan || "growth"} plan
                                 </Badge>
-                                <span className="text-sm text-muted-foreground">
+                                <span className="text-xs text-muted-foreground sm:text-sm">
                                     Period{" "}
                                     {new Date(
                                         minutesBalance.period_start,
@@ -1360,36 +1360,36 @@ export default function RestaurantSettings() {
                                     ).toLocaleDateString()}
                                 </span>
                             </div>
-                            <div className="grid gap-3 sm:grid-cols-4">
-                                <div className="rounded-lg border bg-muted/20 p-3">
-                                    <div className="text-xs text-muted-foreground">
+                            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+                                <div className="rounded-xl border bg-muted/20 p-3">
+                                    <div className="text-[11px] text-muted-foreground sm:text-xs">
                                         Included
                                     </div>
-                                    <div className="text-xl font-semibold tabular-nums">
+                                    <div className="text-lg font-semibold tabular-nums sm:text-xl">
                                         {minutesBalance.included_minutes.toLocaleString()}
                                     </div>
                                 </div>
-                                <div className="rounded-lg border bg-muted/20 p-3">
-                                    <div className="text-xs text-muted-foreground">
+                                <div className="rounded-xl border bg-muted/20 p-3">
+                                    <div className="text-[11px] text-muted-foreground sm:text-xs">
                                         Purchased
                                     </div>
-                                    <div className="text-xl font-semibold tabular-nums">
+                                    <div className="text-lg font-semibold tabular-nums sm:text-xl">
                                         {minutesBalance.purchased_minutes.toLocaleString()}
                                     </div>
                                 </div>
-                                <div className="rounded-lg border bg-muted/20 p-3">
-                                    <div className="text-xs text-muted-foreground">
+                                <div className="rounded-xl border bg-muted/20 p-3">
+                                    <div className="text-[11px] text-muted-foreground sm:text-xs">
                                         Used
                                     </div>
-                                    <div className="text-xl font-semibold tabular-nums">
+                                    <div className="text-lg font-semibold tabular-nums sm:text-xl">
                                         {minutesBalance.used_minutes.toLocaleString()}
                                     </div>
                                 </div>
-                                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-                                    <div className="text-xs text-muted-foreground">
+                                <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+                                    <div className="text-[11px] text-muted-foreground sm:text-xs">
                                         Remaining
                                     </div>
-                                    <div className="text-xl font-semibold tabular-nums text-primary">
+                                    <div className="text-lg font-semibold tabular-nums text-primary sm:text-xl">
                                         {minutesBalance.remaining_minutes.toLocaleString()}
                                     </div>
                                 </div>
@@ -1433,7 +1433,7 @@ export default function RestaurantSettings() {
                                             key={pack.id}
                                             type="button"
                                             variant="outline"
-                                            className="h-auto justify-between py-3 px-4"
+                                            className="h-auto min-h-[3.25rem] justify-between gap-3 rounded-xl px-3 py-3 sm:px-4"
                                             disabled={!!buyingPackId}
                                             onClick={() =>
                                                 void buyMinutePack(
@@ -1441,15 +1441,15 @@ export default function RestaurantSettings() {
                                                 )
                                             }
                                         >
-                                            <span className="text-left">
-                                                <span className="block font-semibold">
+                                            <span className="min-w-0 text-left">
+                                                <span className="block truncate font-semibold">
                                                     {pack.label}
                                                 </span>
-                                                <span className="text-xs text-muted-foreground font-normal">
+                                                <span className="text-xs font-normal text-muted-foreground">
                                                     One-time top-up
                                                 </span>
                                             </span>
-                                            <span className="font-bold text-primary">
+                                            <span className="shrink-0 font-bold text-primary">
                                                 {buyingPackId === pack.id
                                                     ? "…"
                                                     : pack.priceLabel}
@@ -1468,20 +1468,20 @@ export default function RestaurantSettings() {
                 </CardContent>
             </Card>
 
-            <Card className="overflow-hidden border shadow-sm">
+            <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
                 <CardHeader className="border-b bg-muted/30 pb-4">
-                    <CardTitle className="text-lg">
+                    <CardTitle className="text-base sm:text-lg">
                         {t("restaurantSettings:general", "General")}
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-xs sm:text-sm leading-relaxed">
                         {t(
                             "restaurantSettings:generalDesc",
                             "Name, location, and contact info. Values you entered when the restaurant was created appear here automatically (we merge them from your main restaurant record if a field was left empty in storefront settings).",
                         )}
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6 pt-6">
-                    <div className="grid gap-6 sm:grid-cols-2">
+                <CardContent className="space-y-5 pt-5 sm:space-y-6 sm:pt-6">
+                    <div className="grid gap-4 sm:grid-cols-2 sm:gap-6">
                         <div className="space-y-2 sm:col-span-2">
                             <Label htmlFor="rs-name">
                                 {t(
@@ -1588,7 +1588,7 @@ export default function RestaurantSettings() {
                                     className="font-mono text-xs sm:text-sm"
                                 />
                                 {logoPreview ? (
-                                    <div className="mt-2 overflow-hidden rounded-lg border bg-muted/30 p-2 w-fit">
+                                    <div className="mt-2 w-fit max-w-full overflow-hidden rounded-xl border bg-muted/30 p-2">
                                         <img
                                             src={logoPreview}
                                             alt={t(
@@ -1627,7 +1627,7 @@ export default function RestaurantSettings() {
                                     className="font-mono text-xs sm:text-sm"
                                 />
                                 {coverPreview ? (
-                                    <div className="mt-2 overflow-hidden rounded-lg border bg-muted/30 p-2 max-w-xs">
+                                    <div className="mt-2 w-full max-w-xs overflow-hidden rounded-xl border bg-muted/30 p-2">
                                         <img
                                             src={coverPreview}
                                             alt={t(
@@ -1644,8 +1644,8 @@ export default function RestaurantSettings() {
 
                     <Separator />
 
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-lg border bg-muted/20 px-4 py-3">
-                        <div className="flex items-center gap-3">
+                    <div className="flex flex-col gap-3 rounded-xl border bg-muted/20 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
+                        <div className="flex min-w-0 items-center gap-3">
                             <Switch
                                 id="rs-open"
                                 checked={Boolean(s.is_open)}
@@ -1688,19 +1688,19 @@ export default function RestaurantSettings() {
                 </CardContent>
             </Card>
 
-            <Card className="overflow-hidden border shadow-sm">
+            <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
                 <CardHeader className="border-b bg-muted/30 pb-4">
-                    <CardTitle className="text-lg">
+                    <CardTitle className="text-base sm:text-lg">
                         {t("restaurantSettings:pricing", "Pricing")}
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-xs sm:text-sm leading-relaxed">
                         {t(
                             "restaurantSettings:pricingDesc",
                             "Currency, tax, delivery fee, and minimum order for quotes and checkout.",
                         )}
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6 pt-6">
+                <CardContent className="space-y-5 pt-5 sm:space-y-6 sm:pt-6">
                     <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                             <Label htmlFor="rs-currency">
@@ -1869,44 +1869,45 @@ export default function RestaurantSettings() {
                     </div>
                     <Button
                         variant="secondary"
+                        className="w-full sm:w-auto"
                         onClick={() => void saveSettings()}
                         disabled={savingSettings}
                     >
                         {savingSettings ? (
-                            <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
                         ) : null}
                         {t("restaurantSettings:savePricing", "Save pricing")}
                     </Button>
                 </CardContent>
             </Card>
 
-            <Card className="overflow-hidden border shadow-sm">
+            <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
                 <CardHeader className="border-b bg-muted/30 pb-4">
-                    <CardTitle className="text-lg">
+                    <CardTitle className="text-base sm:text-lg">
                         {t(
                             "restaurantSettings:fulfillmentOptions",
                             "Fulfillment Options",
                         )}
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-xs sm:text-sm leading-relaxed">
                         {t(
                             "restaurantSettings:fulfillmentDesc",
                             "Choose how you want to serve your customers.",
                         )}
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6 pt-6">
-                    <div className="grid gap-6 sm:grid-cols-2">
-                        <div className="flex flex-col gap-4 p-4 rounded-lg border bg-muted/10">
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label className="text-base">
+                <CardContent className="space-y-5 pt-5 sm:space-y-6 sm:pt-6">
+                    <div className="grid gap-4 sm:grid-cols-2 sm:gap-6">
+                        <div className="flex flex-col gap-4 rounded-xl border bg-muted/10 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 space-y-0.5">
+                                    <Label className="text-sm sm:text-base">
                                         {t(
                                             "restaurantSettings:allowsDelivery",
                                             "Allows Delivery",
                                         )}
                                     </Label>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
                                         {t(
                                             "restaurantSettings:allowsDeliveryDesc",
                                             "Customers can request delivery to their address.",
@@ -1921,16 +1922,16 @@ export default function RestaurantSettings() {
                                 />
                             </div>
                         </div>
-                        <div className="flex flex-col gap-4 p-4 rounded-lg border bg-muted/10">
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label className="text-base">
+                        <div className="flex flex-col gap-4 rounded-xl border bg-muted/10 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 space-y-0.5">
+                                    <Label className="text-sm sm:text-base">
                                         {t(
                                             "restaurantSettings:allowsPickup",
                                             "Allows Self Pickup",
                                         )}
                                     </Label>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
                                         {t(
                                             "restaurantSettings:allowsPickupDesc",
                                             "Customers can come and collect their order.",
@@ -1948,6 +1949,7 @@ export default function RestaurantSettings() {
                     </div>
                     <Button
                         variant="secondary"
+                        className="w-full sm:w-auto"
                         disabled={savingFulfillment}
                         onClick={async () => {
                             setSavingFulfillment(true);
@@ -1998,7 +2000,7 @@ export default function RestaurantSettings() {
                         }}
                     >
                         {savingFulfillment ? (
-                            <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
                         ) : null}
                         {t(
                             "restaurantSettings:saveFulfillment",
@@ -2008,17 +2010,17 @@ export default function RestaurantSettings() {
                 </CardContent>
             </Card>
 
-            <Card className="overflow-hidden border shadow-sm">
-                <CardHeader className="border-b bg-muted/30 pb-4 flex flex-row items-center justify-between">
-                    <div>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                            <Clock className="h-5 w-5" />{" "}
+            <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+                <CardHeader className="flex flex-col gap-3 border-b bg-muted/30 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0 space-y-1">
+                        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                            <Clock className="h-5 w-5 shrink-0" />{" "}
                             {t(
                                 "restaurantSettings:operatingHours",
                                 "Operating Hours",
                             )}
                         </CardTitle>
-                        <CardDescription>
+                        <CardDescription className="text-xs sm:text-sm">
                             {t(
                                 "restaurantSettings:operatingHoursDesc",
                                 "Set when your restaurant is open for orders.",
@@ -2029,6 +2031,7 @@ export default function RestaurantSettings() {
                         onClick={() => void saveHours()}
                         disabled={savingHours || loading}
                         size="sm"
+                        className="w-full shrink-0 sm:w-auto"
                     >
                         {savingHours ? (
                             <RefreshCw className="h-4 w-4 animate-spin" />
@@ -2037,7 +2040,7 @@ export default function RestaurantSettings() {
                         )}
                     </Button>
                 </CardHeader>
-                <CardContent className="space-y-6 pt-6">
+                <CardContent className="space-y-5 pt-5 sm:space-y-6 sm:pt-6">
                     {DAY_KEYS.map((dayKey, dayIdx) => {
                         const daySlots = hours.filter(
                             (h) => h.day_of_week === dayIdx,
@@ -2045,10 +2048,10 @@ export default function RestaurantSettings() {
                         return (
                             <div
                                 key={dayIdx}
-                                className="space-y-3 pb-4 border-b last:border-0"
+                                className="space-y-3 border-b pb-4 last:border-0 last:pb-0"
                             >
-                                <div className="flex items-center justify-between">
-                                    <Label className="text-base font-bold">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <Label className="text-sm font-bold sm:text-base">
                                         {t(
                                             `restaurantSettings:days.${dayKey}`,
                                             DAYS[dayIdx],
@@ -2058,9 +2061,9 @@ export default function RestaurantSettings() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => addHourSlot(dayIdx)}
-                                        className="h-8"
+                                        className="h-8 shrink-0"
                                     >
-                                        <Plus className="h-4 w-4 mr-1" />{" "}
+                                        <Plus className="mr-1 h-4 w-4" />{" "}
                                         {t(
                                             "restaurantSettings:addSlot",
                                             "Add Slot",
@@ -2069,8 +2072,8 @@ export default function RestaurantSettings() {
                                 </div>
 
                                 {daySlots.length === 0 ? (
-                                    <div className="p-3 rounded-lg border border-dashed text-center bg-muted/5">
-                                        <p className="text-xs text-muted-foreground italic">
+                                    <div className="rounded-xl border border-dashed bg-muted/5 p-3 text-center">
+                                        <p className="text-xs italic text-muted-foreground">
                                             {t(
                                                 "restaurantSettings:closedAllDay",
                                                 "Closed all day",
@@ -2085,11 +2088,11 @@ export default function RestaurantSettings() {
                                             return (
                                                 <div
                                                     key={globalIdx}
-                                                    className="flex items-center gap-3 bg-muted/20 p-2 rounded-lg border"
+                                                    className="flex flex-col gap-2 rounded-xl border bg-muted/20 p-2.5 sm:flex-row sm:items-end sm:gap-3"
                                                 >
-                                                    <div className="flex-1 grid grid-cols-2 gap-2">
+                                                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
                                                         <div className="space-y-1">
-                                                            <span className="text-[10px] uppercase font-bold opacity-50 block ml-1">
+                                                            <span className="ml-0.5 block text-[10px] font-bold uppercase opacity-50">
                                                                 {t(
                                                                     "restaurantSettings:openTimeLabel",
                                                                     "Open",
@@ -2115,7 +2118,7 @@ export default function RestaurantSettings() {
                                                             />
                                                         </div>
                                                         <div className="space-y-1">
-                                                            <span className="text-[10px] uppercase font-bold opacity-50 block ml-1">
+                                                            <span className="ml-0.5 block text-[10px] font-bold uppercase opacity-50">
                                                                 {t(
                                                                     "restaurantSettings:closeTimeLabel",
                                                                     "Close",
@@ -2144,7 +2147,7 @@ export default function RestaurantSettings() {
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-9 w-9 text-destructive hover:bg-destructive/10"
+                                                        className="h-9 w-9 shrink-0 self-end text-destructive hover:bg-destructive/10 sm:self-auto"
                                                         onClick={() =>
                                                             removeHourSlot(
                                                                 globalIdx,
@@ -2164,16 +2167,16 @@ export default function RestaurantSettings() {
                 </CardContent>
             </Card>
 
-            <Card className="overflow-hidden border shadow-sm border-primary/20">
+            <Card className="overflow-hidden rounded-2xl border border-primary/20 shadow-xs">
                 <CardHeader className="border-b bg-muted/30 pb-4">
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                        <Phone className="h-5 w-5" />
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                        <Phone className="h-5 w-5 shrink-0" />
                         {t(
                             "restaurantSettings:telnyxTitle",
                             "Telnyx + Synthflow (recommended)",
                         )}
                     </CardTitle>
-                    <CardDescription className="space-y-2">
+                    <CardDescription className="space-y-2 text-xs sm:text-sm leading-relaxed">
                         <span className="block">
                             {t(
                                 "restaurantSettings:telnyxDesc",
@@ -2182,7 +2185,7 @@ export default function RestaurantSettings() {
                         </span>
                         <span className="block text-muted-foreground">
                             {t("restaurantSettings:serverMode", "Server mode:")}{" "}
-                            <span className="font-mono text-foreground">
+                            <span className="break-all font-mono text-foreground">
                                 {voiceRouting}
                             </span>
                             {isSynthflowMode
@@ -2194,9 +2197,9 @@ export default function RestaurantSettings() {
                         </span>
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-5 pt-6">
-                    <div className="rounded-lg border bg-muted/15 px-4 py-3 text-xs text-muted-foreground space-y-1">
-                        <div className="flex items-center justify-between gap-2">
+                <CardContent className="space-y-5 pt-5 sm:pt-6">
+                    <div className="space-y-1 rounded-xl border bg-muted/15 px-3 py-3 text-xs text-muted-foreground sm:px-4">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
                             <div>
                                 {t(
                                     "restaurantSettings:telnyxNumber",
@@ -2215,19 +2218,19 @@ export default function RestaurantSettings() {
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 text-xs px-2.5 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                                    className="h-8 w-full border-destructive/30 px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:w-auto"
                                     disabled={unassigningNumberBusy}
                                     onClick={() => void unassignTelnyxNumber()}
                                 >
-                                    <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                    <Trash2 className="mr-1 h-3.5 w-3.5" />
                                     {unassigningNumberBusy
                                         ? "Removing…"
                                         : "Remove number"}
                                 </Button>
                             ) : null}
                         </div>
-                        <div className="flex items-center justify-between gap-2">
-                            <div>
+                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                            <div className="min-w-0 break-all">
                                 {t(
                                     "restaurantSettings:synthflowAgent",
                                     "Synthflow agent:",
@@ -2245,7 +2248,7 @@ export default function RestaurantSettings() {
                                     type="button"
                                     variant="ghost"
                                     size="sm"
-                                    className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground border border-border/50"
+                                    className="h-7 w-fit shrink-0 border border-border/50 px-2 text-[11px] text-muted-foreground hover:text-foreground"
                                     onClick={async () => {
                                         await supabase
                                             .from("restaurants")
@@ -2278,15 +2281,15 @@ export default function RestaurantSettings() {
                         ) : null}
                     </div>
 
-                    <div className="space-y-3 rounded-lg border p-4">
+                    <div className="space-y-3 rounded-xl border p-3 sm:p-4">
                         <p className="text-sm font-medium">
                             {t(
                                 "restaurantSettings:step1Title",
                                 "1. Search & assign a Telnyx number",
                             )}
                         </p>
-                        <div className="flex flex-wrap gap-2 items-end">
-                            <div className="space-y-1">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                            <div className="w-full space-y-1 sm:w-auto">
                                 <Label className="text-xs">
                                     {t(
                                         "restaurantSettings:areaCode",
@@ -2299,12 +2302,13 @@ export default function RestaurantSettings() {
                                         setTelnyxAreaCode(e.target.value)
                                     }
                                     placeholder="415"
-                                    className="w-28"
+                                    className="w-full sm:w-28"
                                 />
                             </div>
                             <Button
                                 type="button"
                                 variant="secondary"
+                                className="w-full sm:w-auto"
                                 disabled={telnyxSearchBusy}
                                 onClick={() => void searchTelnyxNumbers()}
                             >
@@ -2356,6 +2360,7 @@ export default function RestaurantSettings() {
                                 </Select>
                                 <Button
                                     type="button"
+                                    className="w-full sm:w-auto"
                                     disabled={
                                         telnyxProvisionBusy ||
                                         !selectedTelnyxNumber
@@ -2379,25 +2384,26 @@ export default function RestaurantSettings() {
                             </div>
                         ) : null}
 
-                        <div className="space-y-2 pt-2 border-t">
+                        <div className="space-y-2 border-t pt-2">
                             <Label>
                                 {t(
                                     "restaurantSettings:attachExistingTelnyx",
                                     "Or attach an existing Telnyx number (E.164)",
                                 )}
                             </Label>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                                 <Input
                                     value={manualTelnyxNumber}
                                     onChange={(e) =>
                                         setManualTelnyxNumber(e.target.value)
                                     }
                                     placeholder="+15551234567"
-                                    className="max-w-xs font-mono"
+                                    className="w-full font-mono sm:max-w-xs"
                                 />
                                 <Button
                                     type="button"
                                     variant="outline"
+                                    className="w-full sm:w-auto"
                                     disabled={telnyxProvisionBusy}
                                     onClick={() =>
                                         void provisionTelnyxNumber({
@@ -2415,14 +2421,14 @@ export default function RestaurantSettings() {
                         </div>
                     </div>
 
-                    <div className="space-y-3 rounded-lg border p-4">
+                    <div className="space-y-3 rounded-xl border p-3 sm:p-4">
                         <p className="text-sm font-medium">
                             {t(
                                 "restaurantSettings:step2Title",
                                 "2. Sync Synthflow AI order assistant",
                             )}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs leading-relaxed text-muted-foreground">
                             Link your existing Synthflow agent and keep menu,
                             coupons, and phone settings synchronized.
                         </p>
@@ -2431,24 +2437,25 @@ export default function RestaurantSettings() {
                             <Label className="text-xs">
                                 Link an existing Synthflow Agent ID
                             </Label>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-[11px] leading-relaxed text-muted-foreground">
                                 Agents are never auto-created. Copy a real
                                 model_id from Synthflow → paste here → Link →
                                 then Update.
                             </p>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                                 <Input
                                     value={linkAgentId}
                                     onChange={(e) =>
                                         setLinkAgentId(e.target.value)
                                     }
                                     placeholder="Paste model_id from Synthflow (e.g. 8294235e-...)"
-                                    className="max-w-md font-mono text-xs"
+                                    className="w-full font-mono text-xs sm:max-w-md"
                                 />
                                 <Button
                                     type="button"
                                     variant="outline"
                                     size="sm"
+                                    className="w-full sm:w-auto"
                                     disabled={
                                         !linkAgentId.trim() ||
                                         linkingAgentBusy ||
@@ -2535,9 +2542,10 @@ export default function RestaurantSettings() {
                             </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-2 pt-2 border-t">
+                        <div className="flex flex-col gap-2 border-t pt-2 sm:flex-row sm:flex-wrap">
                             <Button
                                 type="button"
+                                className="w-full sm:w-auto"
                                 disabled={
                                     synthflowBusy || !r.synthflow_agent_id
                                 }
@@ -2545,7 +2553,7 @@ export default function RestaurantSettings() {
                                     void createOrUpdateSynthflowAgent()
                                 }
                             >
-                                <Sparkles className="h-4 w-4 mr-2" />
+                                <Sparkles className="mr-2 h-4 w-4" />
                                 {synthflowBusy
                                     ? t(
                                           "restaurantSettings:updating",
@@ -2559,13 +2567,14 @@ export default function RestaurantSettings() {
                             <Button
                                 type="button"
                                 variant="outline"
+                                className="w-full sm:w-auto"
                                 disabled={
                                     synthflowSyncBusy || !r.synthflow_agent_id
                                 }
                                 onClick={() => void syncMenuToSynthflow()}
                             >
                                 <RefreshCw
-                                    className={`h-4 w-4 mr-2 ${synthflowSyncBusy ? "animate-spin" : ""}`}
+                                    className={`mr-2 h-4 w-4 ${synthflowSyncBusy ? "animate-spin" : ""}`}
                                 />
                                 {synthflowSyncBusy
                                     ? t(
@@ -2580,23 +2589,24 @@ export default function RestaurantSettings() {
                         </div>
                     </div>
 
-                    <div className="space-y-2 rounded-lg border bg-muted/15 p-4">
+                    <div className="space-y-2 rounded-xl border bg-muted/15 p-3 sm:p-4">
                         <Label className="text-xs uppercase tracking-wide text-muted-foreground">
                             {t(
                                 "restaurantSettings:postCallWebhook",
                                 "Post-call webhook (configured on the agent automatically)",
                             )}
                         </Label>
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                             <Input
                                 value={synthflowWebhookUrl}
                                 readOnly
-                                className="font-mono text-xs"
+                                className="min-w-0 flex-1 font-mono text-[11px] sm:text-xs"
                             />
                             <Button
                                 type="button"
                                 variant="outline"
                                 size="icon"
+                                className="shrink-0 self-end sm:self-auto"
                                 onClick={() => copy(synthflowWebhookUrl)}
                             >
                                 <Copy className="h-4 w-4" />
@@ -2654,23 +2664,23 @@ export default function RestaurantSettings() {
       LEGACY_TWILIO_END */}
 
             {/* AI Voice Agent Configuration (Prompt, Language, Greeting) */}
-            <Card className="overflow-hidden border shadow-sm">
+            <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
                 <CardHeader className="border-b bg-muted/30 pb-4">
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                        <Bot className="h-5 w-5" />
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                        <Bot className="h-5 w-5 shrink-0" />
                         {t(
                             "restaurantSettings:aiAgentTitle",
                             "AI agent (Synthflow)",
                         )}
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-xs sm:text-sm leading-relaxed">
                         {t(
                             "restaurantSettings:aiAgentDesc",
                             "Configure language, voice greeting, and custom system prompt for your AI phone agent.",
                         )}
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-5 pt-6">
+                <CardContent className="space-y-5 pt-5 sm:pt-6">
                     <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                             <Label>
@@ -2763,13 +2773,14 @@ export default function RestaurantSettings() {
                         </p>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         <Button
                             type="button"
+                            className="w-full sm:w-auto"
                             disabled={synthflowBusy || !r.telnyx_phone_number}
                             onClick={() => void createOrUpdateSynthflowAgent()}
                         >
-                            <Sparkles className="h-4 w-4 mr-2" />
+                            <Sparkles className="mr-2 h-4 w-4" />
                             {synthflowBusy
                                 ? t("restaurantSettings:updating", "Updating…")
                                 : t(
@@ -2780,13 +2791,14 @@ export default function RestaurantSettings() {
                         <Button
                             type="button"
                             variant="outline"
+                            className="w-full sm:w-auto"
                             disabled={
                                 synthflowSyncBusy || !r.synthflow_agent_id
                             }
                             onClick={() => void syncMenuToSynthflow()}
                         >
                             <RefreshCw
-                                className={`h-4 w-4 mr-2 ${synthflowSyncBusy ? "animate-spin" : ""}`}
+                                className={`mr-2 h-4 w-4 ${synthflowSyncBusy ? "animate-spin" : ""}`}
                             />
                             {synthflowSyncBusy
                                 ? t("restaurantSettings:syncing", "Syncing…")
@@ -2797,11 +2809,11 @@ export default function RestaurantSettings() {
                         </Button>
                     </div>
 
-                    <div className="space-y-3 rounded-lg border p-4">
+                    <div className="space-y-3 rounded-xl border p-3 sm:p-4">
                         <p className="text-sm font-medium">
                             {t("restaurantSettings:testCallTitle", "Test call")}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs leading-relaxed text-muted-foreground">
                             {t(
                                 "restaurantSettings:testCallDesc",
                                 "Place test call dials your phone via a Synthflow outbound twin. If dialing fails, call the restaurant number below to test inbound.",
@@ -2812,29 +2824,30 @@ export default function RestaurantSettings() {
                         r.phone ? (
                             <p className="text-sm">
                                 Call to test:{" "}
-                                <span className="font-mono font-medium text-foreground">
+                                <span className="break-all font-mono font-medium text-foreground">
                                     {r.telnyx_phone_number ||
                                         r.twilio_phone_number ||
                                         r.phone}
                                 </span>
                             </p>
                         ) : null}
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                             <Input
                                 value={testCallPhone}
                                 onChange={(e) =>
                                     setTestCallPhone(e.target.value)
                                 }
                                 placeholder="+923001234567"
-                                className="max-w-xs font-mono"
+                                className="w-full font-mono sm:max-w-xs"
                             />
                             <Button
                                 type="button"
                                 variant="secondary"
+                                className="w-full sm:w-auto"
                                 disabled={testCallBusy || !r.synthflow_agent_id}
                                 onClick={() => void placeTestCall()}
                             >
-                                <Phone className="h-4 w-4 mr-2" />
+                                <Phone className="mr-2 h-4 w-4" />
                                 {testCallBusy
                                     ? t(
                                           "restaurantSettings:testCallBusy",
@@ -2849,8 +2862,8 @@ export default function RestaurantSettings() {
                     </div>
 
                     {r.synthflow_agent_id ? (
-                        <div className="rounded-lg border bg-muted/15 px-4 py-3 text-xs text-muted-foreground space-y-1">
-                            <div>
+                        <div className="space-y-1 rounded-xl border bg-muted/15 px-3 py-3 text-xs text-muted-foreground sm:px-4">
+                            <div className="break-all">
                                 Synthflow Agent ID:{" "}
                                 <span className="font-mono text-foreground">
                                     {r.synthflow_agent_id}

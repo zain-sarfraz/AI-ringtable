@@ -157,33 +157,15 @@ export function OrderReceipt({ order, items, restaurantName, isPrintOnly = false
           <span className="w-16 text-right">Total</span>
         </div>
         <div className="pt-1">
-          {sessionOrders
-            ? sessionOrders.map((sessOrder, index) => (
-                <div key={sessOrder.id} className="py-1.5">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500 pb-1">
-                    Order {index + 1}
-                    {sessOrder.created_at ? ` · ${formatTime(sessOrder.created_at)}` : ""}
-                  </p>
-                  {(sessOrder.items || []).map((item) => (
-                    <div key={item.id} className="py-1 text-xs flex items-start justify-between">
-                      <span className="w-8 font-black text-zinc-950">{item.quantity}x</span>
-                      <span className="flex-1 px-2 font-bold text-zinc-900 break-words">{item.item_name}</span>
-                      <span className="w-16 text-right font-black text-zinc-950">
-                        {formatCurrency(item.line_total || item.quantity * item.unit_price)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ))
-            : flatItems.map((item) => (
-                <div key={item.id} className="py-1 text-xs flex items-start justify-between">
-                  <span className="w-8 font-black text-zinc-950">{item.quantity}x</span>
-                  <span className="flex-1 px-2 font-bold text-zinc-900 break-words">{item.item_name}</span>
-                  <span className="w-16 text-right font-black text-zinc-950">
-                    {formatCurrency(item.line_total || item.quantity * item.unit_price)}
-                  </span>
-                </div>
-              ))}
+          {flatItems.map((item, index) => (
+            <div key={item.id || `line-${index}`} className="py-1 text-xs flex items-start justify-between">
+              <span className="w-8 font-black text-zinc-950">{item.quantity}x</span>
+              <span className="flex-1 px-2 font-bold text-zinc-900 break-words">{item.item_name}</span>
+              <span className="w-16 text-right font-black text-zinc-950">
+                {formatCurrency(item.line_total || item.quantity * item.unit_price)}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 import { Shield, ChefHat, UserCog, CalendarCheck, Crown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 const ROLES = [
   {
@@ -36,10 +37,10 @@ const ROLES = [
   {
     key: "staff",
     name: "Staff",
-    note: "Tables, menu, and deals",
+    note: "Tables, orders, and deals (view menu only)",
     icon: UserCog,
     iconWrap: "bg-orange-100 text-orange-700",
-    modules: ["Dashboard", "Tables", "Orders", "Menu", "Deals & Offers", "Reports", "Settings"],
+    modules: ["Dashboard", "Tables", "Orders", "Menu", "Deals & Offers", "Settings"],
   },
   {
     key: "receptionist",
@@ -70,24 +71,18 @@ const MODULES = [
 
 export default function Permissions() {
   return (
-    <div className="space-y-6 animate-fade-in pb-12 max-w-6xl mx-auto">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground flex items-center gap-3">
-          <span className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-            <Shield className="h-5 w-5" />
-          </span>
-          Permissions
-        </h1>
-        <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
-          Roles available when you add a team member, and the modules each one can open.
-        </p>
-      </div>
+    <PageShell maxWidth="lg">
+      <PageHeader
+        icon={<Shield className="h-5 w-5" />}
+        title="Permissions"
+        description="Roles available when you add a team member, and the modules each one can open."
+      />
 
-      <div className="rounded-2xl border border-zinc-200/80 bg-card shadow-[0_1px_3px_rgba(15,23,42,0.06)] overflow-hidden">
+      <div className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] border-collapse">
             <thead>
-              <tr className="border-b border-zinc-200/80">
+              <tr className="border-b border-border/80">
                 <th className="text-left px-6 py-5 text-xs font-semibold uppercase tracking-wider text-muted-foreground w-[220px]">
                   Module
                 </th>
@@ -112,8 +107,8 @@ export default function Permissions() {
                 <tr
                   key={module}
                   className={cn(
-                    "border-b border-zinc-100 last:border-0",
-                    index % 2 === 0 ? "bg-zinc-50/70" : "bg-card",
+                    "border-b border-border/50 last:border-0",
+                    index % 2 === 0 ? "bg-muted/30" : "bg-card",
                   )}
                 >
                   <td className="px-6 py-3.5 text-sm font-medium text-foreground">{module}</td>
@@ -139,6 +134,6 @@ export default function Permissions() {
           </table>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

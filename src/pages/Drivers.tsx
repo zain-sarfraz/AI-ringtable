@@ -15,6 +15,7 @@ import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
 import { useAuth } from "@/hooks/useAuth";
 import { getApiBase, resolveMediaUrl } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 interface Driver {
   id: string;
@@ -259,15 +260,14 @@ export default function Drivers() {
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto pb-10">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t("drivers:title", "Drivers Management")}</h1>
-          <p className="text-muted-foreground mt-1">{t("drivers:subtitle", "Drivers can be assigned to multiple restaurants. List shows drivers linked to the active restaurant.")}</p>
-        </div>
+    <PageShell maxWidth="lg">
+      <PageHeader
+        title={t("drivers:title", "Drivers Management")}
+        description={t("drivers:subtitle", "Drivers can be assigned to multiple restaurants. List shows drivers linked to the active restaurant.")}
+        actions={
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEdit(null); }}>
           <DialogTrigger asChild>
-            <Button className="gap-2 shadow-lg hover:shadow-primary/20">
+            <Button className="w-full sm:w-auto gap-2">
               <Plus className="h-4 w-4" /> {t("drivers:addDriver", "Add Driver")}
             </Button>
           </DialogTrigger>
@@ -280,22 +280,24 @@ export default function Drivers() {
             onSubmit={save}
           />
         </Dialog>
-      </div>
+        }
+      />
 
-      <div className="flex items-center gap-4 bg-card/50 p-4 rounded-xl border border-border/50">
+      <div className="flex items-center gap-4 rounded-2xl border border-border/80 bg-card p-4 shadow-xs">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t("drivers:searchPlaceholder", "Search drivers by name or phone...")}
-            className="pl-10 bg-background/50 border-none shadow-none focus-visible:ring-1"
+            className="rounded-xl pl-10"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0 overflow-x-auto">
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[980px]">
             <thead className="text-left bg-muted/50">
               <tr>
@@ -447,9 +449,10 @@ export default function Drivers() {
               )}
             </tbody>
           </table>
+          </div>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 

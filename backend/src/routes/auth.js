@@ -18,17 +18,15 @@ function requireManagement(req, res, next) {
 }
 
 /**
- * Restaurant staff/owners belong to one portal only.
- * If bad data linked the same email to multiple restaurants (e.g. royal@… on Pizza World),
- * keep the best membership and drop the rest so cross-tenant login stops.
+ * Pick a primary restaurant for login context.
+ * Same email may belong to multiple restaurants — do not delete other memberships.
  */
-async function enforceExclusiveRestaurantPortal(knex, userId, roleNames) {
+async function resolvePrimaryRestaurantId(knex, userId, roleNames) {
   if ((roleNames || []).includes("super_admin")) return null;
 
   const memberships = await knex("restaurant_members").where({ user_id: userId }).select("*");
-  if (memberships.length <= 1) {
-    return memberships[0]?.restaurant_id ?? null;
-  }
+  if (!memberships.length) return null;
+  if (memberships.length === 1) return memberships[0].restaurant_id;
 
   const rank = (role) => {
     if (role === "owner") return 0;
@@ -42,15 +40,28 @@ async function enforceExclusiveRestaurantPortal(knex, userId, roleNames) {
     if (byRole !== 0) return byRole;
     const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
     const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
-    return aTime - bTime; // prefer original/home membership
+    return aTime - bTime;
   });
 
-  const keep = memberships[0];
-  await knex("restaurant_members").where({ user_id: userId }).whereNot({ id: keep.id }).del();
-  console.log(
-    `Exclusive portal for ${userId}: kept ${keep.restaurant_id} (${keep.member_role}), removed ${memberships.length - 1} extra membership(s)`,
-  );
-  return keep.restaurant_id;
+  return memberships[0].restaurant_id;
+}
+
+/** True when this email is already a team member of the given restaurant. */
+async function emailUsedInRestaurant(knex, email, restaurantId, excludeUserId = null) {
+  const em = String(email || "").trim().toLowerCase();
+  if (!em || !restaurantId) return null;
+
+  let q = knex("restaurant_members as rm")
+    .join("profiles as p", "p.id", "rm.user_id")
+    .where("rm.restaurant_id", restaurantId)
+    .whereRaw("lower(p.email) = lower(?)", [em])
+    .select("rm.id as membership_id", "rm.user_id", "p.email");
+
+  if (excludeUserId) {
+    q = q.whereNot("rm.user_id", excludeUserId);
+  }
+
+  return q.first();
 }
 
 router.post("/login", async (req, res) => {
@@ -72,7 +83,7 @@ router.post("/login", async (req, res) => {
 
     const roles = await knex("user_roles").where({ user_id: profile.id }).select("role");
     const roleNames = roles.map((r) => r.role);
-    const restaurantId = await enforceExclusiveRestaurantPortal(knex, profile.id, roleNames);
+    const restaurantId = await resolvePrimaryRestaurantId(knex, profile.id, roleNames);
 
     const token = signToken({ sub: profile.id, email: profile.email });
     console.log("Login success for:", email);
@@ -177,29 +188,26 @@ router.post("/create-team-member", optionalAuth, requireAuth, async (req, res) =
       }
 
       let profile = await knex("profiles").whereRaw("lower(email) = lower(?)", [em]).first();
-      const hash = await bcrypt.hash(String(password), 10);
-
-      if (!profile) {
-        const [newProf] = await knex("profiles")
-          .insert({
-            id: randomUUID(),
-            email: em,
-            full_name: (typeof full_name === "string" && full_name.trim()) || em.split("@")[0],
-            password_hash: hash,
-            status: "available",
-          })
-          .returning("*");
-        profile = newProf;
-
-        await knex("user_roles").insert({ user_id: profile.id, role: platformRole });
-      } else {
-        await knex("profiles").where({ id: profile.id }).update({
-          password_hash: hash,
-          full_name: full_name?.trim() || profile.full_name,
+      if (profile) {
+        return res.status(409).json({
+          error: "Email already taken. Please use a different email.",
+          code: "email_taken",
         });
-        await knex("user_roles").where({ user_id: profile.id }).del();
-        await knex("user_roles").insert({ user_id: profile.id, role: platformRole });
       }
+
+      const hash = await bcrypt.hash(String(password), 10);
+      const [newProf] = await knex("profiles")
+        .insert({
+          id: randomUUID(),
+          email: em,
+          full_name: (typeof full_name === "string" && full_name.trim()) || em.split("@")[0],
+          password_hash: hash,
+          status: "available",
+        })
+        .returning("*");
+      profile = newProf;
+
+      await knex("user_roles").insert({ user_id: profile.id, role: platformRole });
 
       return res.status(201).json({
         success: true,
@@ -219,6 +227,10 @@ router.post("/create-team-member", optionalAuth, requireAuth, async (req, res) =
     if (memberRole === "owner" || !allowedMemberRoles.has(memberRole)) {
       memberRole = "manager";
     }
+    // Managers can add team members, but cannot create admin or manager accounts
+    if (isManagerOnly(req) && (memberRole === "admin" || memberRole === "manager")) {
+      return res.status(403).json({ error: "Managers cannot create admin or manager accounts." });
+    }
 
     // Verify restaurant
     const rest = await knex("restaurants").where({ id: rid }).first();
@@ -227,6 +239,17 @@ router.post("/create-team-member", optionalAuth, requireAuth, async (req, res) =
     }
 
     if (!isSuperAdmin) {
+      const canCreate =
+        req.user?.roles?.includes("admin") ||
+        req.user?.role === "admin" ||
+        req.user?.roles?.includes("manager") ||
+        req.user?.role === "manager" ||
+        req.user?.memberships?.some((m) =>
+          ["admin", "owner", "manager"].includes(String(m.member_role || "").toLowerCase()),
+        );
+      if (!canCreate) {
+        return res.status(403).json({ error: "Only restaurant admins or managers can add team members." });
+      }
       const allowedRestaurants = req.user?.restaurantIds || [];
       if (!allowedRestaurants.includes(rid)) {
         return res.status(403).json({ error: "You can only add users to your own restaurant." });
@@ -242,8 +265,18 @@ router.post("/create-team-member", optionalAuth, requireAuth, async (req, res) =
       }
     }
 
-    // Check or create profile
+    // Email uniqueness is per-restaurant only (other restaurants may reuse the same email)
+    const usedHere = await emailUsedInRestaurant(knex, em, rid);
+    if (usedHere) {
+      return res.status(409).json({
+        error: "Email already taken in this restaurant. Please use a different email.",
+        code: "email_taken",
+      });
+    }
+
+    const hash = await bcrypt.hash(String(password), 10);
     let profile = await knex("profiles").whereRaw("lower(email) = lower(?)", [em]).first();
+
     if (profile) {
       const isPlatformAdmin = await knex("user_roles")
         .where({ user_id: profile.id, role: "super_admin" })
@@ -253,10 +286,14 @@ router.post("/create-team-member", optionalAuth, requireAuth, async (req, res) =
           error: "Super Admin accounts cannot be added as restaurant staff.",
         });
       }
-    }
 
-    if (!profile) {
-      const hash = await bcrypt.hash(String(password), 10);
+      // Reuse existing account for another restaurant — do not remove other memberships
+      await knex("profiles").where({ id: profile.id }).update({
+        password_hash: hash,
+        full_name: (typeof full_name === "string" && full_name.trim()) || profile.full_name,
+        updated_at: new Date(),
+      });
+    } else {
       const [newProf] = await knex("profiles")
         .insert({
           id: randomUUID(),
@@ -267,40 +304,19 @@ router.post("/create-team-member", optionalAuth, requireAuth, async (req, res) =
         })
         .returning("*");
       profile = newProf;
+    }
 
-      await knex("user_roles").insert({ user_id: profile.id, role: memberRole });
-    } else {
-      if (password) {
-        const hash = await bcrypt.hash(String(password), 10);
-        await knex("profiles").where({ id: profile.id }).update({
-          password_hash: hash,
-          full_name: full_name?.trim() || profile.full_name,
-        });
-      }
-      await knex("user_roles").where({ user_id: profile.id }).del();
+    const anyRole = await knex("user_roles").where({ user_id: profile.id }).first();
+    if (!anyRole) {
       await knex("user_roles").insert({ user_id: profile.id, role: memberRole });
     }
 
-    // Staff belong to one restaurant portal only
-    await knex("restaurant_members").where({ user_id: profile.id }).whereNot({ restaurant_id: rid }).del();
-
-    // Add or update restaurant_members
-    const existingMembership = await knex("restaurant_members")
-      .where({ user_id: profile.id, restaurant_id: rid })
-      .first();
-
-    if (existingMembership) {
-      await knex("restaurant_members")
-        .where({ id: existingMembership.id })
-        .update({ member_role: memberRole });
-    } else {
-      await knex("restaurant_members").insert({
-        id: randomUUID(),
-        user_id: profile.id,
-        restaurant_id: rid,
-        member_role: memberRole,
-      });
-    }
+    await knex("restaurant_members").insert({
+      id: randomUUID(),
+      user_id: profile.id,
+      restaurant_id: rid,
+      member_role: memberRole,
+    });
 
     return res.status(201).json({
       success: true,
@@ -328,11 +344,15 @@ router.delete("/delete-team-member/:id", optionalAuth, requireAuth, async (req, 
       isSuperAdmin ||
       req.user?.roles?.includes("admin") ||
       req.user?.role === "admin" ||
-      req.user?.memberships?.some((m) => m.member_role === "admin" || m.member_role === "owner");
+      req.user?.roles?.includes("manager") ||
+      req.user?.role === "manager" ||
+      req.user?.memberships?.some((m) =>
+        ["admin", "owner", "manager"].includes(String(m.member_role || "").toLowerCase()),
+      );
 
-    // Strictly enforce: roles/members can ONLY be deleted by restaurant admin or super admin
+    // Strictly enforce: roles/members can ONLY be deleted by restaurant admin/manager or super admin
     if (!isRestaurantAdmin) {
-      return res.status(403).json({ error: "Only restaurant admins can delete team members and roles" });
+      return res.status(403).json({ error: "Only restaurant admins or managers can delete team members and roles" });
     }
 
     // 1. Try deleting from restaurant_members
@@ -346,6 +366,21 @@ router.delete("/delete-team-member/:id", optionalAuth, requireAuth, async (req, 
           return res.status(403).json({ error: "You are not authorized to delete members from this restaurant" });
         }
       }
+
+      // Owner cannot delete themselves, and the restaurant owner membership is protected
+      if (targetMember.user_id === req.user?.id) {
+        return res.status(400).json({ error: "You cannot delete your own account" });
+      }
+      if (String(targetMember.member_role || "").toLowerCase() === "owner") {
+        return res.status(400).json({ error: "Restaurant owner cannot be removed" });
+      }
+      if (
+        isManagerOnly(req) &&
+        ["admin", "manager"].includes(String(targetMember.member_role || "").toLowerCase())
+      ) {
+        return res.status(403).json({ error: "Managers cannot remove admin or manager accounts" });
+      }
+
       await knex("restaurant_members").where({ id }).del();
       // If no other memberships exist for this user, also remove their user_roles
       const otherMemberships = await knex("restaurant_members").where({ user_id: targetMember.user_id }).first();
@@ -384,8 +419,23 @@ function canManageTeam(req) {
     isSuperAdmin ||
     req.user?.roles?.includes("admin") ||
     req.user?.role === "admin" ||
-    req.user?.memberships?.some((m) => m.member_role === "admin" || m.member_role === "owner");
+    req.user?.roles?.includes("manager") ||
+    req.user?.role === "manager" ||
+    req.user?.memberships?.some((m) =>
+      ["admin", "owner", "manager"].includes(String(m.member_role || "").toLowerCase()),
+    );
   return { isSuperAdmin, isRestaurantAdmin };
+}
+
+function isManagerOnly(req) {
+  const roles = req.user?.roles || [];
+  if (roles.includes("super_admin") || roles.includes("admin") || req.user?.role === "admin") {
+    return false;
+  }
+  const hasManagerMembership = req.user?.memberships?.some(
+    (m) => String(m.member_role || "").toLowerCase() === "manager",
+  );
+  return roles.includes("manager") || req.user?.role === "manager" || !!hasManagerMembership;
 }
 
 /** Update a team member's name, email, password, and role. */
@@ -419,17 +469,45 @@ router.put("/update-team-member", optionalAuth, requireAuth, async (req, res) =>
       }
     }
 
-    const emailTaken = await knex("profiles")
-      .whereRaw("lower(email) = lower(?)", [em])
-      .whereNot({ id: userId })
-      .first();
-    if (emailTaken) return res.status(400).json({ error: "That email is already used by another account" });
+    // Only block if another member of THIS restaurant already has the email
+    if (membership?.restaurant_id) {
+      const usedHere = await emailUsedInRestaurant(knex, em, membership.restaurant_id, userId);
+      if (usedHere) {
+        return res.status(409).json({
+          error: "Email already taken in this restaurant. Please use a different email.",
+          code: "email_taken",
+        });
+      }
+    }
+
+    const currentProfile = await knex("profiles").where({ id: userId }).first();
+    if (!currentProfile) return res.status(404).json({ error: "Member not found" });
+
+    const currentEmail = String(currentProfile.email || "").trim().toLowerCase();
+    const emailChanged = currentEmail !== em;
+
+    // Keep current email as-is when unchanged (avoids false conflicts from legacy duplicate rows).
+    // Only when changing email, ensure no other profile already owns it.
+    if (emailChanged) {
+      const globalOwner = await knex("profiles")
+        .whereRaw("lower(email) = lower(?)", [em])
+        .whereNot({ id: userId })
+        .first();
+      if (globalOwner) {
+        return res.status(409).json({
+          error: "Email already taken. Please use a different email.",
+          code: "email_taken",
+        });
+      }
+    }
 
     const profileUpdates = {
-      email: em,
       full_name: typeof full_name === "string" && full_name.trim() ? full_name.trim() : null,
       updated_at: new Date(),
     };
+    if (emailChanged) {
+      profileUpdates.email = em;
+    }
     if (password) {
       profileUpdates.password_hash = await bcrypt.hash(String(password), 10);
     }
@@ -440,6 +518,17 @@ router.put("/update-team-member", optionalAuth, requireAuth, async (req, res) =>
     if (membership && currentRole !== "owner" && nextRole && nextRole !== currentRole) {
       if (!EDITABLE_MEMBER_ROLES.has(nextRole)) {
         return res.status(400).json({ error: "Choose Admin, Manager, Kitchen Staff, Receptionist, or Staff." });
+      }
+      if (
+        isManagerOnly(req) &&
+        (nextRole === "admin" ||
+          nextRole === "manager" ||
+          currentRole === "admin" ||
+          currentRole === "manager")
+      ) {
+        return res.status(403).json({
+          error: "Managers cannot create or modify admin/manager accounts.",
+        });
       }
       await knex("restaurant_members").where({ id: membership.id }).update({ member_role: nextRole });
       await knex("user_roles").where({ user_id: userId }).del();
@@ -465,15 +554,11 @@ router.put("/update-team-member-role", optionalAuth, requireAuth, async (req, re
       req.user?.roles?.includes("super_admin") ||
       req.user?.role === "super_admin";
 
-    const isRestaurantAdmin =
-      isSuperAdmin ||
-      req.user?.roles?.includes("admin") ||
-      req.user?.role === "admin" ||
-      req.user?.memberships?.some((m) => m.member_role === "admin" || m.member_role === "owner");
+    const { isRestaurantAdmin } = canManageTeam(req);
 
-    // Only restaurant admin or super admin can update team member roles
+    // Only restaurant admin/manager or super admin can update team member roles
     if (!isRestaurantAdmin) {
-      return res.status(403).json({ error: "Only restaurant admins can update team member roles" });
+      return res.status(403).json({ error: "Only restaurant admins or managers can update team member roles" });
     }
 
     let roleToSet = member_role.toLowerCase();
@@ -482,6 +567,9 @@ router.put("/update-team-member-role", optionalAuth, requireAuth, async (req, re
       return res.status(400).json({
         error: "Choose Admin, Manager, Kitchen Staff, Receptionist, or Staff.",
       });
+    }
+    if (isManagerOnly(req) && (roleToSet === "admin" || roleToSet === "manager")) {
+      return res.status(403).json({ error: "Managers cannot assign admin or manager roles." });
     }
 
     const knex = getKnex();

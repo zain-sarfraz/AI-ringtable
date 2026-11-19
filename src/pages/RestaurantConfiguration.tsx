@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Bot, Check, Link2, Loader2, Mic, Phone, Plus, RefreshCw, Sparkles, X, Clock, Trash2 } from "lucide-react";
 import { AIChatTest } from "@/components/agents/AIChatTest";
 import { getApiBase } from "@/lib/apiBase";
+import { PageShell } from "@/components/layout/PageShell";
 
 interface Restaurant {
   id: string;
@@ -512,21 +513,23 @@ export default function RestaurantConfiguration() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/restaurants")}>
-          <ArrowLeft className="h-4 w-4 mr-1" />Back
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">{restaurant.name}</h1>
-          <p className="text-sm text-muted-foreground">
-            Configure Telnyx + Synthflow phone AI for this restaurant
-          </p>
+    <PageShell maxWidth="md">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+          <Button variant="outline" size="sm" className="w-full shrink-0 sm:w-auto" onClick={() => navigate("/restaurants")}>
+            <ArrowLeft className="h-4 w-4 mr-1" />Back
+          </Button>
+          <div className="min-w-0 space-y-1">
+            <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{restaurant.name}</h1>
+            <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+              Configure Telnyx + Synthflow phone AI for this restaurant
+            </p>
+          </div>
         </div>
-      </div>
+      </header>
 
       {/* Telnyx + Synthflow (recommended) */}
-      <Card className="border-primary/25">
+      <Card className="rounded-2xl border border-border/80 border-primary/25 shadow-xs overflow-hidden">
         <CardHeader>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="flex items-center gap-2">
@@ -741,7 +744,7 @@ export default function RestaurantConfiguration() {
       {false && (
       <>
       {/* ElevenLabs */}
-      <Card>
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2"><Mic className="h-5 w-5" />ElevenLabs (legacy)</CardTitle>
@@ -779,7 +782,7 @@ export default function RestaurantConfiguration() {
       </Card>
 
       {/* Twilio */}
-      <Card>
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5" />Twilio (legacy)</CardTitle>
@@ -813,7 +816,7 @@ export default function RestaurantConfiguration() {
       </Card>
 
       {/* Agent */}
-      <Card>
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5" />Order-taking Agent</CardTitle>
           <CardDescription>
@@ -908,7 +911,7 @@ export default function RestaurantConfiguration() {
       </Card>
 
       {/* Phone number assignment */}
-      <Card>
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5" />Phone Number</CardTitle>
           <CardDescription>
@@ -956,7 +959,7 @@ export default function RestaurantConfiguration() {
       )}
 
       {/* Fulfillment */}
-      <Card>
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader>
           <CardTitle className="text-lg">Fulfillment Options</CardTitle>
           <CardDescription>Choose how this restaurant serves its customers.</CardDescription>
@@ -999,7 +1002,7 @@ export default function RestaurantConfiguration() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-lg flex items-center gap-2"><Clock className="h-5 w-5" />Operating Hours</CardTitle>
@@ -1049,6 +1052,6 @@ export default function RestaurantConfiguration() {
           })}
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }

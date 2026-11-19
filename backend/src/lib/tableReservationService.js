@@ -252,6 +252,9 @@ export function lastSpokenReservationTime(text) {
   return found[found.length - 1].t;
 }
 
+/** Minutes after reservation start before a no-show frees the table. */
+export const RESERVATION_NO_SHOW_GRACE_MINUTES = 15;
+
 /** Current dine-in sitting only blocks a short window around now, not the whole day. */
 export function currentDiningBlockWindow(now = new Date()) {
   const nowMins = now.getHours() * 60 + now.getMinutes();
@@ -259,6 +262,115 @@ export function currentDiningBlockWindow(now = new Date()) {
     s: Math.max(0, nowMins - 30),
     e: Math.min(24 * 60, nowMins + 120),
   };
+}
+
+/**
+ * After the bill is paid / table closed, mark today's seated/confirmed reservations
+ * for that table as completed so the table is free again.
+ */
+export async function completeReservationsForTable(knex, { restaurantId, tableId, tableNumber }) {
+  if (!restaurantId && !tableId && !tableNumber) return 0;
+  const familyIds = restaurantId
+    ? await resolveRestaurantFamilyIds(knex, restaurantId)
+    : [];
+  const ids = familyIds.length ? familyIds : restaurantId ? [restaurantId] : [];
+  const today = localDateStr();
+  const now = new Date();
+
+  const norm = normalizeTableNumber(tableNumber);
+  const matchedTableIds = new Set();
+  if (tableId) matchedTableIds.add(tableId);
+
+  if (tableNumber || norm) {
+    const byNumber = await knex("restaurant_tables")
+      .modify((tq) => {
+        if (ids.length) tq.whereIn("restaurant_id", ids);
+        tq.andWhere(function () {
+          if (tableNumber) this.where({ table_number: tableNumber });
+          if (norm) {
+            this.orWhereRaw(
+              "LOWER(TRIM(regexp_replace(table_number, '^table[[:space:]_.-]*', '', 'i'))) = ?",
+              [norm],
+            );
+          }
+        });
+      })
+      .select("id");
+    for (const row of byNumber) matchedTableIds.add(row.id);
+  }
+
+  if (!matchedTableIds.size) return 0;
+
+  let q = knex("table_reservations")
+    .whereRaw("reservation_date::date = ?::date", [today])
+    .whereIn("status", ["seated", "confirmed", "pending"])
+    .whereIn("table_id", [...matchedTableIds]);
+
+  if (ids.length) q = q.whereIn("restaurant_id", ids);
+
+  const updated = await q.update({ status: "completed", updated_at: now });
+  return Number(updated) || 0;
+}
+
+/**
+ * Free tables when guests never arrive: mark pending/confirmed as no_show after grace.
+ * Also complete seated bookings whose slot ended and the table has no open dine-in bill.
+ */
+export async function reconcileReservationAvailability(knex, restaurantId, now = new Date()) {
+  const familyIds = restaurantId
+    ? await resolveRestaurantFamilyIds(knex, restaurantId)
+    : [];
+  const ids = familyIds.length ? familyIds : restaurantId ? [restaurantId] : [];
+  if (!ids.length) return { no_shows: 0, completed: 0 };
+
+  const today = localDateStr(now);
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const occupied = await getOccupiedDiningTableIds(knex, restaurantId);
+
+  const active = await knex("table_reservations")
+    .whereIn("restaurant_id", ids)
+    .whereRaw("reservation_date::date <= ?::date", [today])
+    .whereIn("status", ["pending", "confirmed", "seated"])
+    .select("id", "table_id", "reservation_date", "start_time", "slot_duration_hours", "status");
+
+  const noShowIds = [];
+  const completedIds = [];
+
+  for (const r of active) {
+    const resDate = String(r.reservation_date).slice(0, 10);
+    const startMins = timeToMins(r.start_time);
+    const durationMins = Math.max(30, (Number(r.slot_duration_hours) || 1) * 60);
+    const graceEnd = startMins + RESERVATION_NO_SHOW_GRACE_MINUTES;
+    const slotEnd = startMins + durationMins;
+    const isPastDay = resDate < today;
+    const isToday = resDate === today;
+    const stillDining = r.table_id && occupied.has(r.table_id);
+
+    if (r.status === "pending" || r.status === "confirmed") {
+      if (isPastDay || (isToday && nowMins >= graceEnd && !stillDining)) {
+        noShowIds.push(r.id);
+      }
+      continue;
+    }
+
+    // seated: free once the dining bill is gone and the slot (or day) has ended
+    if (r.status === "seated" && !stillDining && (isPastDay || (isToday && nowMins >= slotEnd))) {
+      completedIds.push(r.id);
+    }
+  }
+
+  if (noShowIds.length) {
+    await knex("table_reservations")
+      .whereIn("id", noShowIds)
+      .update({ status: "no_show", updated_at: now });
+  }
+  if (completedIds.length) {
+    await knex("table_reservations")
+      .whereIn("id", completedIds)
+      .update({ status: "completed", updated_at: now });
+  }
+
+  return { no_shows: noShowIds.length, completed: completedIds.length };
 }
 
 export function diningOccupancyBlocksSlot(startTime, slotDurationHours = 1, now = new Date()) {
@@ -343,6 +455,13 @@ export async function ensureDefaultTables(knex, restaurantId) {
 export async function findAvailableTable(knex, { restaurantId, partySize, reservationDate, startTime, slotDurationHours }) {
   const pSize = Math.max(1, parseInt(partySize, 10) || 1);
   const duration = Number(slotDurationHours) || 1;
+
+  // Release no-shows / finished sittings before checking availability
+  try {
+    await reconcileReservationAvailability(knex, restaurantId);
+  } catch (err) {
+    console.warn("[reservations] reconcile notice:", err?.message || err);
+  }
 
   // Auto-provision standard tables if restaurant has none
   await ensureDefaultTables(knex, restaurantId);

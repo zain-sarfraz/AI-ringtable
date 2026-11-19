@@ -18,13 +18,13 @@ export function StatsCard({ title, value, change, icon: Icon, iconClassName }: S
   const { t } = useTranslation(["dashboard", "common"]);
 
   return (
-    <Card className="border-border/80 shadow-[0_1px_2px_rgba(31,41,55,0.05),0_10px_28px_-12px_rgba(249,115,22,0.16)] rounded-xl overflow-hidden hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_12px_32px_-12px_rgba(249,115,22,0.28)] transition-all duration-200">
-      <CardContent className="p-5 relative">
+    <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm">
+      <CardContent className="relative p-4 sm:p-5">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-amber-400/80 to-transparent" />
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1.5 min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{title}</p>
-            <p className="text-2xl font-extrabold tracking-tight text-foreground tabular-nums">{value}</p>
+        <div className="flex items-start justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground sm:text-xs">{title}</p>
+            <p className="text-xl font-extrabold tracking-tight text-foreground tabular-nums sm:text-2xl">{value}</p>
             {change && (
               <p
                 className={cn(

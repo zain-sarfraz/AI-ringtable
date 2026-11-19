@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDate } from "@/i18n/formatters";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 type MemberRow = {
   id: string;
@@ -107,27 +108,25 @@ export default function RestaurantOwnersPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <Crown className="h-8 w-8 text-primary" />
-            {t("users:restaurantOwnersTitle", "Restaurant owners")}
-          </h1>
-          <p className="text-muted-foreground mt-1">{t("users:restaurantOwnersSubtitle", "Profiles linked as owner on each restaurant")}</p>
-        </div>
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={t("users:searchOwnersPlaceholder", "Search by restaurant, name, or email…")}
-            className="pl-9"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-      </div>
+    <PageShell maxWidth="lg">
+      <PageHeader
+        icon={<Crown className="h-5 w-5" />}
+        title={t("users:restaurantOwnersTitle", "Restaurant owners")}
+        description={t("users:restaurantOwnersSubtitle", "Profiles linked as owner on each restaurant")}
+        actions={
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={t("users:searchOwnersPlaceholder", "Search by restaurant, name, or email…")}
+              className="pl-9 rounded-xl"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        }
+      />
 
-      <Card className="border-none bg-card/50 backdrop-blur-sm shadow-xl overflow-hidden">
+      <Card className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
         <CardHeader className="border-b border-border/60">
           <CardTitle className="text-lg">{t("users:allOwnerMemberships", "All owner memberships")}</CardTitle>
         </CardHeader>
@@ -182,7 +181,7 @@ export default function RestaurantOwnersPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 

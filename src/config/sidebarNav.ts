@@ -9,6 +9,8 @@ export type SidebarNavSearchItem = {
   hideForSuperAdmin?: boolean;
   /** Omit from command palette / search when active restaurant is a branch */
   hideForBranch?: boolean;
+  /** Omit from command palette / search for restaurant managers */
+  hideForManager?: boolean;
 };
 
 export const SIDEBAR_NAV_SEARCH_ITEMS: SidebarNavSearchItem[] = [
@@ -63,6 +65,7 @@ export const SIDEBAR_NAV_SEARCH_ITEMS: SidebarNavSearchItem[] = [
     keywords: ["branch", "branches", "locations", "multi-branch", "branch portal", "add branch"],
     hideForSuperAdmin: true,
     hideForBranch: true,
+    hideForManager: true,
   },
   {
     label: "Reservations",
@@ -119,7 +122,14 @@ function normalize(s: string) {
 
 export function filterSidebarNavItems(
   query: string,
-  options: { isSuperAdmin: boolean; isBranch?: boolean; isReceptionist?: boolean; isStaff?: boolean; isKitchen?: boolean },
+  options: {
+    isSuperAdmin: boolean;
+    isBranch?: boolean;
+    isReceptionist?: boolean;
+    isStaff?: boolean;
+    isKitchen?: boolean;
+    isManager?: boolean;
+  },
 ): SidebarNavSearchItem[] {
   const base = SIDEBAR_NAV_SEARCH_ITEMS.filter((i) => {
     if (options.isKitchen) {
@@ -141,13 +151,13 @@ export function filterSidebarNavItems(
         i.href === "/tables" ||
         i.href === "/menu" ||
         i.href.startsWith("/menu") ||
-        i.href.startsWith("/orders") ||
-        i.href.startsWith("/reports")
+        i.href.startsWith("/orders")
       );
     }
     if (i.superAdminOnly && !options.isSuperAdmin) return false;
     if (i.hideForSuperAdmin && options.isSuperAdmin) return false;
     if (i.hideForBranch && options.isBranch) return false;
+    if (i.hideForManager && options.isManager) return false;
     return true;
   });
   const q = normalize(query);

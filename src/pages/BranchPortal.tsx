@@ -46,6 +46,7 @@ import { toast } from "sonner";
 import { formatCurrency } from "@/lib/restaurant";
 import { getApiBase } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
+import { PageShell } from "@/components/layout/PageShell";
 
 interface BranchItem extends RestaurantInfo {
   phone?: string | null;
@@ -79,6 +80,8 @@ export default function BranchPortal() {
   const navigate = useNavigate();
   const { user, role } = useAuth();
   const { restaurantId, setRestaurantId, restaurants, refreshRestaurants, activeRestaurant } = useActiveRestaurant();
+  // Managers can view/manage existing branches but cannot create new ones
+  const canCreateBranches = role === "admin" || role === "super_admin";
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -288,6 +291,10 @@ export default function BranchPortal() {
   // Create new branch
   const handleAddBranchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateBranches) {
+      toast.error("Only restaurant owner or admin can create branches.");
+      return;
+    }
     if (!parentRestaurant?.id) {
       toast.error("Parent restaurant not identified");
       return;
@@ -466,10 +473,10 @@ export default function BranchPortal() {
   const parentName = parentRestaurant?.name || activeRestaurant?.name || "Your Restaurant";
 
   return (
-    <div className="space-y-6 pb-16 animate-fade-in text-foreground">
+    <PageShell maxWidth="lg" className="pb-10 text-foreground">
       {/* 1. Top Banner / Header */}
-      <div className="rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-muted/30 p-6 sm:p-7 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+      <div className="rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-muted/30 p-6 sm:p-7 shadow-xs overflow-hidden">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge className="bg-primary/10 text-primary border border-primary/20 font-bold px-2.5 py-0.5 text-xs">
@@ -479,41 +486,43 @@ export default function BranchPortal() {
                 <Store className="h-3.5 w-3.5 text-primary" /> Parent: {parentName}
               </span>
             </div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
+            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
               Branches & Locations
             </h1>
-            <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+            <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed sm:text-sm">
               Manage branches (e.g. Branch A, Branch B) for <strong className="text-foreground">{parentName}</strong>. 
               Orders from your shared AI phone number are automatically geocoded and assigned to the nearest branch.
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
             <Button
               variant="outline"
               size="sm"
               onClick={() => void loadBranches()}
               disabled={refreshing}
-              className="gap-2 h-9 text-xs font-semibold"
+              className="w-full gap-2 h-9 text-xs font-semibold sm:w-auto"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
               Refresh
             </Button>
-            <Button
-              size="sm"
-              onClick={() => setAddOpen(true)}
-              className="gap-2 h-9 text-xs font-bold bg-primary text-primary-foreground shadow-sm px-4"
-            >
-              <Plus className="h-4 w-4" />
-              Add New Branch
-            </Button>
+            {canCreateBranches && (
+              <Button
+                size="sm"
+                onClick={() => setAddOpen(true)}
+                className="w-full gap-2 h-9 text-xs font-bold bg-primary text-primary-foreground shadow-sm px-4 sm:w-auto"
+              >
+                <Plus className="h-4 w-4" />
+                Add New Branch
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
       {/* 2. Top Summary KPI Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-border/70 shadow-2xs bg-card">
+        <Card className="rounded-2xl border border-border/80 shadow-xs bg-card overflow-hidden">
           <CardContent className="p-4 sm:p-5 flex items-center justify-between">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Total Branches</p>
@@ -528,7 +537,7 @@ export default function BranchPortal() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-2xs bg-card">
+        <Card className="rounded-2xl border border-border/80 shadow-xs bg-card overflow-hidden">
           <CardContent className="p-4 sm:p-5 flex items-center justify-between">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Branch Orders</p>
@@ -545,7 +554,7 @@ export default function BranchPortal() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-2xs bg-card">
+        <Card className="rounded-2xl border border-border/80 shadow-xs bg-card overflow-hidden">
           <CardContent className="p-4 sm:p-5 flex items-center justify-between">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Branch Revenue</p>
@@ -560,7 +569,7 @@ export default function BranchPortal() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-2xs bg-card">
+        <Card className="rounded-2xl border border-border/80 shadow-xs bg-card overflow-hidden">
           <CardContent className="p-4 sm:p-5 flex items-center justify-between">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">AI Phone Ordering</p>
@@ -578,7 +587,7 @@ export default function BranchPortal() {
 
       {/* 3. Main Content: Empty State or Tabs */}
       {branches.length === 0 ? (
-        <Card className="border-border/70 shadow-xs bg-card rounded-2xl">
+        <Card className="rounded-2xl border border-border/80 shadow-xs bg-card overflow-hidden">
           <CardContent className="py-16 px-6 text-center max-w-lg mx-auto space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto shadow-inner">
               <Building2 className="h-8 w-8" />
@@ -592,15 +601,21 @@ export default function BranchPortal() {
                 Each branch will have its own staff, inventory, and menu pricing while sharing your AI phone number.
               </p>
             </div>
-            <div className="pt-2">
-              <Button
-                size="default"
-                onClick={() => setAddOpen(true)}
-                className="gap-2 font-bold px-6 h-10 bg-primary text-primary-foreground shadow-sm"
-              >
-                <Plus className="h-4 w-4" /> Create First Branch
-              </Button>
-            </div>
+            {canCreateBranches ? (
+              <div className="pt-2">
+                <Button
+                  size="default"
+                  onClick={() => setAddOpen(true)}
+                  className="gap-2 font-bold px-6 h-10 bg-primary text-primary-foreground shadow-sm"
+                >
+                  <Plus className="h-4 w-4" /> Create First Branch
+                </Button>
+              </div>
+            ) : (
+              <p className="pt-2 text-sm text-muted-foreground">
+                Only restaurant owner or admin can create branches.
+              </p>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -1180,6 +1195,6 @@ export default function BranchPortal() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

@@ -31,6 +31,7 @@ import {
 } from "recharts";
 import { formatCurrency } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 interface EarningStats {
   restaurants: {
@@ -158,17 +159,14 @@ export default function Earnings() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <Wallet className="h-8 w-8 text-primary" />
-            {t("superAdmin:earningsTitle", "Platform Earnings")}
-          </h1>
-          <p className="text-muted-foreground mt-1">{t("superAdmin:earningsSubtitle", "Global revenue and commission analytics")}</p>
-        </div>
+    <PageShell maxWidth="lg">
+      <PageHeader
+        icon={<Wallet className="h-5 w-5" />}
+        title={t("superAdmin:earningsTitle", "Platform Earnings")}
+        description={t("superAdmin:earningsSubtitle", "Global revenue and commission analytics")}
+        actions={
         <Select value={selectedRestaurantId} onValueChange={setSelectedRestaurantId}>
-          <SelectTrigger className="w-full md:w-[280px]">
+          <SelectTrigger className="w-full rounded-xl sm:w-[280px]">
             <SelectValue placeholder={t("reports:filterByRestaurant", "Filter by restaurant")} />
           </SelectTrigger>
           <SelectContent>
@@ -183,7 +181,8 @@ export default function Earnings() {
             ))}
           </SelectContent>
         </Select>
-      </div>
+        }
+      />
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -228,7 +227,7 @@ export default function Earnings() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Revenue Distribution Chart */}
-        <Card className="lg:col-span-2 overflow-hidden border-none bg-card/50 backdrop-blur-sm shadow-xl">
+        <Card className="lg:col-span-2 rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChartIcon className="h-5 w-5 text-primary" />
@@ -257,7 +256,7 @@ export default function Earnings() {
         </Card>
 
         {/* Share Breakdown Pie */}
-        <Card className="overflow-hidden border-none bg-card/50 backdrop-blur-sm shadow-xl">
+        <Card className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <PieChartIcon className="h-5 w-5 text-primary" />
@@ -304,7 +303,7 @@ export default function Earnings() {
       </div>
 
       {/* Detailed Table */}
-      <Card className="border-none bg-card/50 backdrop-blur-sm shadow-xl overflow-hidden">
+      <Card className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
         <CardHeader>
           <CardTitle>{t("superAdmin:detailedRestaurantEarnings", "Detailed Restaurant Earnings")}</CardTitle>
         </CardHeader>
@@ -348,7 +347,7 @@ export default function Earnings() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 
@@ -373,8 +372,8 @@ function StatCard({
 }) {
   return (
     <Card className={cn(
-      "border-none shadow-lg overflow-hidden transition-all duration-300 hover:-translate-y-1",
-      highlight ? "bg-primary text-primary-foreground" : "bg-card/50 backdrop-blur-sm"
+      "rounded-2xl border border-border/80 shadow-xs overflow-hidden transition-all duration-300",
+      highlight ? "bg-primary text-primary-foreground border-primary/30" : "bg-card"
     )}>
       <CardContent className="p-6">
         <div className="flex items-start justify-between">

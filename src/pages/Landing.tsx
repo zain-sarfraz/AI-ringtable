@@ -416,6 +416,30 @@ export default function Landing() {
     };
   }, []);
 
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth >= 1320) setNavOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNavOpen(false);
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [navOpen]);
+
   return (
     <div className="lp" id="top">
       <div className="ann">
@@ -428,10 +452,22 @@ export default function Landing() {
           <a className="brand" href="#top" aria-label={PRODUCT_NAME}>
             <BrandMark variant="wordmark" />
           </a>
-          <button className="nav-toggle" type="button" aria-label="Toggle navigation" aria-expanded={navOpen} onClick={() => setNavOpen((v) => !v)}>
-            ☰
+          <button
+            className={`nav-toggle${navOpen ? " open" : ""}`}
+            type="button"
+            aria-label={navOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={navOpen}
+            aria-controls="landing-nav-menu"
+            onClick={() => setNavOpen((v) => !v)}
+          >
+            <span className="nav-toggle-bar" />
+            <span className="nav-toggle-bar" />
+            <span className="nav-toggle-bar" />
           </button>
-          <div className={`nav-menu${navOpen ? " open" : ""}`}>
+          <div
+            id="landing-nav-menu"
+            className={`nav-menu${navOpen ? " open" : ""}`}
+          >
             <ul className="navlinks">
               {NAV.map((item) => (
                 <li key={item.href}>
@@ -443,15 +479,27 @@ export default function Landing() {
             </ul>
             <div className="nav-actions">
               {user ? (
-                <Link to="/dashboard" className="btn-login">
+                <Link
+                  to="/dashboard"
+                  className="btn-login"
+                  onClick={() => setNavOpen(false)}
+                >
                   Dashboard
                 </Link>
               ) : (
-                <Link to="/login" className="btn-login">
+                <Link
+                  to="/login"
+                  className="btn-login"
+                  onClick={() => setNavOpen(false)}
+                >
                   Login
                 </Link>
               )}
-              <a href="#demo" className="btn btn-or py-2 px-3" onClick={() => setNavOpen(false)}>
+              <a
+                href="#demo"
+                className="btn btn-or py-2 px-3"
+                onClick={() => setNavOpen(false)}
+              >
                 Get Free Audit
               </a>
             </div>

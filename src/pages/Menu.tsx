@@ -23,6 +23,7 @@ import { getToken } from "@/lib/authStorage";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { syncRestaurantMenuToVoiceAgent } from "@/lib/syncRestaurantMenuToVoiceAgent";
+import { PageShell } from "@/components/layout/PageShell";
 
 interface Category { id: string; restaurant_id?: string; name: string; description: string | null; sort_order: number; is_active: boolean }
 interface SubCategory { id: string; restaurant_id: string; category_id: string; name: string; description: string | null; sort_order: number; is_active: boolean }
@@ -165,6 +166,7 @@ function MenuItemsTable({
   addonSummary,
   itemAddonCount,
   emptyMessage,
+  canManageMenu = true,
 }: {
   items: MenuItem[];
   categories?: Category[];
@@ -176,6 +178,7 @@ function MenuItemsTable({
   addonSummary?: Record<string, string>;
   itemAddonCount?: Record<string, number>;
   emptyMessage?: string;
+  canManageMenu?: boolean;
 }) {
   const { t } = useTranslation(["menu", "common"]);
   return (
@@ -315,11 +318,17 @@ function MenuItemsTable({
 
                 {/* 9. Status Switch */}
                 <td className="py-3 px-4 align-middle text-center">
-                  <Switch
-                    checked={it.is_available}
-                    onCheckedChange={() => onToggleAvailability?.(it)}
-                    className="data-[state=checked]:bg-primary"
-                  />
+                  {canManageMenu ? (
+                    <Switch
+                      checked={it.is_available}
+                      onCheckedChange={() => onToggleAvailability?.(it)}
+                      className="data-[state=checked]:bg-primary"
+                    />
+                  ) : (
+                    <Badge variant="outline" className="text-[10px]">
+                      {it.is_available ? t("common:available", "Available") : t("menu:outOfStock", "Unavailable")}
+                    </Badge>
+                  )}
                 </td>
 
                 {/* Actions Column */}
@@ -336,24 +345,28 @@ function MenuItemsTable({
                         <Eye className="h-3.5 w-3.5" />
                       </Link>
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-8 p-0 rounded-lg border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted"
-                      onClick={() => onEdit(it)}
-                      title={t("common:edit", "Edit")}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-8 p-0 rounded-lg border-red-200/60 bg-red-50/40 dark:bg-red-950/20 text-red-600 hover:bg-red-100/80 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/50"
-                      onClick={() => onDelete(it.id)}
-                      title={t("common:delete", "Delete")}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {canManageMenu && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-8 p-0 rounded-lg border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted"
+                          onClick={() => onEdit(it)}
+                          title={t("common:edit", "Edit")}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-8 p-0 rounded-lg border-red-200/60 bg-red-50/40 dark:bg-red-950/20 text-red-600 hover:bg-red-100/80 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/50"
+                          onClick={() => onDelete(it.id)}
+                          title={t("common:delete", "Delete")}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -379,6 +392,9 @@ export default function Menu() {
   const { toast } = useToast();
   const { role } = useAuth();
   const isSuperAdmin = role === "super_admin";
+  // Only admin / manager / super_admin can add or edit menu
+  const canManageMenu =
+    role === "admin" || role === "manager" || role === "super_admin";
   const { restaurantId, loading: activeRestaurantLoading } = useActiveRestaurant();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") || "items";
@@ -869,6 +885,10 @@ export default function Menu() {
   };
 
   const saveItem = async (form: Partial<MenuItem> & { addon_ids?: string[]; variants?: Partial<MenuItemVariant>[]; restaurant_id?: string }) => {
+    if (!canManageMenu) {
+      toast({ variant: "destructive", title: t("common:error", "Error"), description: "Only admin or manager can add or edit menu items." });
+      return;
+    }
     const targetRestaurantId = form.restaurant_id || restaurantId;
     if (!targetRestaurantId) return;
     setIsSaving(true);
@@ -1139,11 +1159,11 @@ export default function Menu() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="space-y-1">
+    <PageShell>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight sm:text-2xl flex items-center gap-2">
               {itemsTab ? <UtensilsCrossed className="h-6 w-6" /> :
                 categoriesTab ? <LayoutGrid className="h-6 w-6" /> :
                   subCategoriesTab ? <ListTree className="h-6 w-6" /> :
@@ -1172,7 +1192,7 @@ export default function Menu() {
               </Badge>
             ) : null}
           </div>
-          <p className="text-muted-foreground text-sm max-w-2xl">
+          <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm max-w-2xl">
             {addonsTab
               ? t("menu:addonsDesc", "Add-ons belong only to this restaurant. They never appear on another location’s menu. Link them to items from the Items tab when editing an item.")
               : categoriesTab ? t("menu:categoriesDesc", "Manage menu categories for this restaurant.")
@@ -1182,9 +1202,11 @@ export default function Menu() {
                       : t("menu:categoriesAndItemsDesc", "Categories and items for this restaurant only.")}
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {itemsTab && restaurantId ? <MenuImportButton restaurantId={restaurantId} onImported={load} /> : null}
-          {categoriesTab && (
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+          {canManageMenu && itemsTab && restaurantId ? (
+            <MenuImportButton restaurantId={restaurantId} onImported={load} />
+          ) : null}
+          {canManageMenu && categoriesTab && (
             <Dialog open={catDialog} onOpenChange={(o) => { setCatDialog(o); if (!o) setEditCat(null); }}>
               <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-1" />{t("menu:addCategory", "Add Category")}</Button></DialogTrigger>
               {catDialog && (
@@ -1199,7 +1221,7 @@ export default function Menu() {
               )}
             </Dialog>
           )}
-          {subCategoriesTab && (
+          {canManageMenu && subCategoriesTab && (
             <Dialog open={subCatDialog} onOpenChange={(o) => { setSubCatDialog(o); if (!o) setEditSubCat(null); }}>
               <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-1" />{t("menu:addSubCategory", "Add Sub-category")}</Button></DialogTrigger>
               {subCatDialog && (
@@ -1215,7 +1237,7 @@ export default function Menu() {
               )}
             </Dialog>
           )}
-          {itemsTab && (
+          {canManageMenu && itemsTab && (
             <Button
               onClick={() => {
                 setEditItem(null);
@@ -1226,7 +1248,7 @@ export default function Menu() {
               <Plus className="h-4 w-4 mr-1" />{t("menu:addItem", "Add Item")}
             </Button>
           )}
-          {addonsTab && (
+          {canManageMenu && addonsTab && (
             <Button
               onClick={() => {
                 setEditAddon(null);
@@ -1236,16 +1258,18 @@ export default function Menu() {
               <Plus className="h-4 w-4 mr-1" />{t("menu:addAddOn", "Add Add-on")}
             </Button>
           )}
-          <Button
-            variant="outline"
-            onClick={() => void triggerMenuSync(true)}
-            title="Sync menu & inventory to Synthflow (or ElevenLabs) AI agent"
-          >
-            <RefreshCw className="h-4 w-4 mr-1" />
-            {t("menu:syncAi", "Sync AI")}
-          </Button>
+          {canManageMenu && (
+            <Button
+              variant="outline"
+              onClick={() => void triggerMenuSync(true)}
+              title="Sync menu & inventory to Synthflow (or ElevenLabs) AI agent"
+            >
+              <RefreshCw className="h-4 w-4 mr-1" />
+              {t("menu:syncAi", "Sync AI")}
+            </Button>
+          )}
         </div>
-      </div>
+      </header>
 
       <Dialog open={itemDialog} onOpenChange={(o) => {
         setItemDialog(o);
@@ -1357,8 +1381,12 @@ export default function Menu() {
                           )}
                         </td>
                         <td className="p-2">
-                          <Button size="sm" variant="ghost" onClick={() => { setEditAddon(ad); setAddonDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
-                          <Button size="sm" variant="ghost" onClick={() => deleteAddon(ad.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                          {canManageMenu && (
+                            <>
+                              <Button size="sm" variant="ghost" onClick={() => { setEditAddon(ad); setAddonDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                              <Button size="sm" variant="ghost" onClick={() => deleteAddon(ad.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     );
@@ -1403,8 +1431,12 @@ export default function Menu() {
                         {cat.is_active ? <Badge variant="outline" className="bg-green-500/15 text-green-700">{t("common:yes", "Yes")}</Badge> : <Badge variant="secondary">{t("common:no", "No")}</Badge>}
                       </td>
                       <td className="p-2">
-                        <Button size="sm" variant="ghost" onClick={() => { setEditCat(cat); setCatDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => deleteCategory(cat.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        {canManageMenu && (
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => { setEditCat(cat); setCatDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteCategory(cat.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1445,8 +1477,12 @@ export default function Menu() {
                         {sc.is_active ? <Badge variant="outline" className="bg-green-500/15 text-green-700">{t("common:yes", "Yes")}</Badge> : <Badge variant="secondary">{t("common:no", "No")}</Badge>}
                       </td>
                       <td className="p-2">
-                        <Button size="sm" variant="ghost" onClick={() => { setEditSubCat(sc); setSubCatDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => deleteSubCategory(sc.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        {canManageMenu && (
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => { setEditSubCat(sc); setSubCatDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteSubCategory(sc.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1495,7 +1531,11 @@ export default function Menu() {
                             <div className="flex items-center gap-2">
                               <Switch
                                 checked={tracked}
-                                disabled={savingItemId === it.id || (isSuperAdmin && restaurantFilterId === 'all')}
+                                disabled={
+                                  !canManageMenu ||
+                                  savingItemId === it.id ||
+                                  (isSuperAdmin && restaurantFilterId === "all")
+                                }
                                 onCheckedChange={(checked) =>
                                   void saveInventoryFields(it, {
                                     track_inventory: checked,
@@ -1514,7 +1554,11 @@ export default function Menu() {
                                 min={0}
                                 className="w-24"
                                 defaultValue={stock}
-                                disabled={savingItemId === it.id || (isSuperAdmin && restaurantFilterId === 'all')}
+                                disabled={
+                                  !canManageMenu ||
+                                  savingItemId === it.id ||
+                                  (isSuperAdmin && restaurantFilterId === "all")
+                                }
                                 onBlur={(e) =>
                                   void saveInventoryFields(it, {
                                     track_inventory: true,
@@ -1557,7 +1601,7 @@ export default function Menu() {
               ⚠️ {t("menu:selectRestaurantWarning", "To set and edit maximum order quantities, please select a specific restaurant using the filter dropdown above.")}
             </div>
           )}
-          <Card className="border shadow-sm">
+          <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
             <CardHeader className="p-4 pb-3 border-b bg-card">
               <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
                 {/* Search input */}
@@ -1778,15 +1822,17 @@ export default function Menu() {
                                   <Eye className="h-3.5 w-3.5" />
                                 </Link>
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 w-8 p-0 rounded-lg border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted"
-                                onClick={() => beginEditItem(it)}
-                                title={t("common:edit", "Edit")}
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
+                              {canManageMenu && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 w-8 p-0 rounded-lg border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted"
+                                  onClick={() => beginEditItem(it)}
+                                  title={t("common:edit", "Edit")}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1825,7 +1871,7 @@ export default function Menu() {
           </Card>
         </div>
       ) : (
-        <Card className="border shadow-sm">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           <CardHeader className="p-4 pb-3 border-b bg-card">
             <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
               {/* Search by name */}
@@ -1920,16 +1966,19 @@ export default function Menu() {
               onToggleAvailability={toggleItemAvailability}
               addonSummary={addonSummary}
               itemAddonCount={itemAddonCount}
+              canManageMenu={canManageMenu}
               emptyMessage={
                 hasActiveFilters
                   ? "No menu items match your current search and filter criteria."
-                  : "No menu items found. Click 'Add Item' to create your first item."
+                  : canManageMenu
+                    ? "No menu items found. Click 'Add Item' to create your first item."
+                    : "No menu items found."
               }
             />
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageShell>
   );
 }
 

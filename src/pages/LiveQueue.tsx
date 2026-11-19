@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PhoneIncoming, PhoneOutgoing, Loader2, Activity } from "lucide-react";
 import { CallDetailDialog } from "@/components/calls/CallDetailDialog";
 import { formatTime } from "@/i18n/formatters";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 function formatElapsed(start: string | null): string {
   if (!start) return "—";
@@ -112,18 +113,15 @@ export default function LiveQueue() {
   const outboundActive = liveCalls.filter((c) => c.direction === "outbound");
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Activity className="h-7 w-7 text-primary" /> {t("calls:liveQueue", "Live Call Queue")}
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Real-time view of every active call across inbound and outbound channels.
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("calls:liveQueue", "Live Call Queue")}
+        description="Real-time view of every active call across inbound and outbound channels."
+        icon={<Activity className="h-5 w-5" />}
+      />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 sm:gap-4">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -134,7 +132,7 @@ export default function LiveQueue() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -145,7 +143,7 @@ export default function LiveQueue() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -156,7 +154,7 @@ export default function LiveQueue() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           <CardContent className="pt-6">
             <div>
               <p className="text-xs text-muted-foreground">{t("calls:todayCalls", "Completed Today")}</p>
@@ -169,15 +167,16 @@ export default function LiveQueue() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
+      <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+        <CardHeader className="border-b bg-muted/30 pb-4">
           <CardTitle>Currently In-Flight ({(activeCalls || []).length})</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 sm:p-6">
           {(!activeCalls || activeCalls.length === 0) ? (
             <p className="text-center text-muted-foreground py-8">{t("calls:noCalls", "No active calls right now.")}</p>
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("calls:colDirection", "Direction")}</TableHead>
@@ -218,6 +217,7 @@ export default function LiveQueue() {
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -227,7 +227,7 @@ export default function LiveQueue() {
         open={!!selectedCall}
         onOpenChange={(open) => !open && setSelectedCall(null)}
       />
-    </div>
+    </PageShell>
   );
 }
 

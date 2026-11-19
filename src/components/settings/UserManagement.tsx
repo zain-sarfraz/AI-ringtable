@@ -186,7 +186,7 @@ export function UserManagement() {
         {loading ? (
           <div className="py-12 text-center text-muted-foreground">{t("settings:loadingUsers", "Loading users...")}</div>
         ) : filteredProfiles.map((p) => (
-          <Card key={p.id} className="overflow-hidden border-none shadow-sm hover:shadow-md transition-shadow bg-card/50">
+          <Card key={p.id} className="rounded-2xl border border-border/80 shadow-xs overflow-hidden hover:border-border transition-colors">
             <CardContent className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">

@@ -26,6 +26,7 @@ import { formatCurrency } from "@/lib/restaurant";
 import { getOrderStatusLabel } from "@/i18n/formatters";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 type OrderItem = {
   id: string;
@@ -245,31 +246,27 @@ export default function StaffTables() {
 
   return (
     <div>
-    <div className="no-print space-y-6 max-w-7xl mx-auto pb-10">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground flex items-center gap-2.5">
-            <TableProperties className="h-7 w-7 text-primary" />
-            Tables
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Floor view for {activeRestaurant?.name || "your restaurant"} — see every table, its orders, and add the next round.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
-          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          Refresh
-        </Button>
-      </div>
+    <PageShell className="no-print space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Tables"
+        description={`Floor view for ${activeRestaurant?.name || "your restaurant"} — see every table, its orders, and add the next round.`}
+        icon={<TableProperties className="h-5 w-5" />}
+        actions={
+          <Button variant="outline" size="sm" className="w-full gap-1.5 sm:w-auto" onClick={load}>
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            Refresh
+          </Button>
+        }
+      />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
         {[
           { label: "Total tables", value: tables.length || data?.summary.total_tables || 0, icon: TableProperties, tone: "text-foreground" },
           { label: "Occupied", value: tables.filter((t) => t.occupied).length, icon: UtensilsCrossed, tone: "text-amber-600" },
           { label: "Available", value: tables.filter((t) => !t.occupied).length, icon: CheckCircle2, tone: "text-emerald-600" },
           { label: "Open bills", value: data?.summary.open_bills ?? tables.filter((t) => t.occupied).length, icon: Receipt, tone: "text-violet-600" },
         ].map((card) => (
-          <Card key={card.label} className="border-border/70 rounded-2xl shadow-2xs">
+          <Card key={card.label} className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
             <CardContent className="p-4">
               {loading && !data ? (
                 <Skeleton className="h-12 w-full" />
@@ -288,8 +285,8 @@ export default function StaffTables() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,320px)_1fr] gap-5">
-        <Card className="border-border/70 rounded-2xl shadow-2xs overflow-hidden">
-          <CardHeader className="py-3 px-4 border-b border-border/50">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+          <CardHeader className="border-b border-border/80 bg-muted/30 px-4 py-3 pb-4">
             <CardTitle className="text-sm font-bold">All tables ({tables.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-3 max-h-[70vh] overflow-y-auto space-y-2">
@@ -357,13 +354,13 @@ export default function StaffTables() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 rounded-2xl shadow-2xs overflow-hidden">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           {!selected ? (
             <CardContent className="py-16 text-center text-sm text-muted-foreground">Select a table to see details and orders.</CardContent>
           ) : (
             <>
-              <CardHeader className="py-4 px-5 border-b border-border/50 space-y-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+              <CardHeader className="space-y-3 border-b border-border/80 bg-muted/30 px-5 py-4 pb-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                   <div>
                     <CardTitle className="text-xl font-black">{displayTable(selected.table_number)}</CardTitle>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mt-1.5">
@@ -378,8 +375,8 @@ export default function StaffTables() {
                       {selected.notes && <span>{selected.notes}</span>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" className="gap-1.5 font-bold" onClick={() => setOrderOpen(true)}>
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                    <Button size="sm" className="w-full gap-1.5 font-bold sm:w-auto" onClick={() => setOrderOpen(true)}>
                       <Plus className="h-4 w-4" /> New order
                     </Button>
                     {allOrders.length > 0 && (
@@ -473,7 +470,7 @@ export default function StaffTables() {
           )}
         </Card>
       </div>
-      </div>
+    </PageShell>
 
       {(heldReceipt || allOrders[0]) && (
         <OrderReceipt

@@ -24,6 +24,7 @@ import {
   Camera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 function roleLabel(role: string | null | undefined) {
   if (!role) return "User";
@@ -157,18 +158,15 @@ export default function Profile() {
     (fullName?.charAt(0) || user?.email?.charAt(0) || "U").toUpperCase();
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8 animate-fade-in pb-10">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-          {t("auth:profileTitle", "Profile")}
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          {t("auth:profileSubtitle", "Manage your personal information, credentials, and access settings.")}
-        </p>
-      </div>
+    <PageShell maxWidth="md" className="space-y-8">
+      <PageHeader
+        icon={<User className="h-5 w-5" />}
+        title={t("auth:profileTitle", "Profile")}
+        description={t("auth:profileSubtitle", "Manage your personal information, credentials, and access settings.")}
+      />
 
       {/* Hero card */}
-      <Card className="overflow-hidden border-border/80 shadow-md">
+      <Card className="rounded-2xl overflow-hidden border border-border/80 shadow-xs">
         <div className="h-28 gradient-hero relative" style={{
             background: "linear-gradient(135deg, hsl(var(--primary) / 0.9) 0%, hsl(18 92% 42%) 55%, hsl(217 28% 17%) 100%)",
           }}>
@@ -224,7 +222,7 @@ export default function Profile() {
       </Card>
 
       {/* Personal info */}
-      <Card className="border-border/70">
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader className="space-y-1">
           <CardTitle className="flex items-center gap-2 text-lg">
             <User className="h-5 w-5 text-primary" />
@@ -268,7 +266,7 @@ export default function Profile() {
             >
               {t("common:reset", "Reset")}
             </Button>
-            <Button type="button" className="h-11 min-w-[140px] gap-2" disabled={loading} onClick={() => void handleSave()}>
+            <Button type="button" className="h-11 min-w-[140px] w-full sm:w-auto gap-2" disabled={loading} onClick={() => void handleSave()}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {loading ? t("common:saving", "Saving…") : t("common:saveChanges", "Save changes")}
             </Button>
@@ -277,7 +275,7 @@ export default function Profile() {
       </Card>
 
       {/* Password */}
-      <Card className="border-border/70">
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader className="space-y-1">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Lock className="h-5 w-5 text-primary" />
@@ -316,8 +314,8 @@ export default function Profile() {
               autoComplete="new-password"
             />
 
-            <div className="flex justify-end pt-1">
-              <Button type="submit" className="h-11 min-w-[160px] gap-2" disabled={passwordBusy}>
+            <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+              <Button type="submit" className="h-11 min-w-[160px] w-full sm:w-auto gap-2" disabled={passwordBusy}>
                 {passwordBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
                 {passwordBusy ? t("common:saving", "Updating…") : t("auth:updateProfile", "Update password")}
               </Button>
@@ -325,7 +323,7 @@ export default function Profile() {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 

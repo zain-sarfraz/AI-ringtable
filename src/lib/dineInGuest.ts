@@ -5,6 +5,8 @@ export type DineInGuest = {
   customer_name: string;
   customer_phone: string;
   customer_email: string;
+  order_ids?: string[];
+  table_session_id?: string | null;
 };
 
 function storageKey(restaurantId: string, tableId?: string | null, tableNumber?: string | null) {
@@ -50,8 +52,32 @@ export function loadDineInGuest(
       customer_name: String(parsed.customer_name || ""),
       customer_phone: String(parsed.customer_phone || ""),
       customer_email: String(parsed.customer_email || ""),
+      order_ids: Array.isArray(parsed.order_ids)
+        ? parsed.order_ids.map((id: unknown) => String(id)).filter(Boolean)
+        : [],
+      table_session_id: parsed.table_session_id ? String(parsed.table_session_id) : null,
     };
   } catch {
     return null;
   }
+}
+
+/** Remember this browser's dine-in orders for the same table visit. */
+export function rememberDineInOrder(
+  restaurantId: string,
+  tableId: string | null | undefined,
+  tableNumber: string | null | undefined,
+  orderId: string,
+  tableSessionId?: string | null,
+) {
+  if (!restaurantId || !orderId) return;
+  const existing = loadDineInGuest(restaurantId, tableId, tableNumber);
+  const order_ids = [...new Set([...(existing?.order_ids || []), orderId])];
+  saveDineInGuest(restaurantId, tableId, tableNumber, {
+    customer_name: existing?.customer_name || "",
+    customer_phone: existing?.customer_phone || "",
+    customer_email: existing?.customer_email || "",
+    order_ids,
+    table_session_id: tableSessionId || existing?.table_session_id || null,
+  });
 }

@@ -52,7 +52,7 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
     return <Navigate to="/dashboard" replace />;
   }
 
-  // Staff: dashboard, orders, menu, deals, reports, settings
+  // Staff: dashboard, orders, menu, deals, tables, settings (no POS / reports)
   if (isStaff) {
     const path = location.pathname;
     const staffAllowed =
@@ -63,9 +63,16 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
       path === "/tables" ||
       path === "/menu" ||
       path.startsWith("/menu/") ||
-      path.startsWith("/orders") ||
-      path.startsWith("/reports");
+      path.startsWith("/orders");
     if (!staffAllowed) {
+      return <Navigate to="/dashboard" replace />;
+    }
+  }
+
+  // Managers cannot access the Branches module
+  if (role === "manager") {
+    const path = location.pathname;
+    if (path === "/branches" || path.startsWith("/branches/") || path === "/branch-portal" || path.startsWith("/branch-portal/")) {
       return <Navigate to="/dashboard" replace />;
     }
   }

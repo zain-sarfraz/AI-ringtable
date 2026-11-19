@@ -17,6 +17,7 @@ import { getApiBase, resolveMediaUrl } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 interface Restaurant {
   id: string; name: string; slug: string; phone: string | null;
@@ -576,18 +577,20 @@ export default function Restaurants() {
   const isEdit = mode?.kind === "edit";
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-start flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Store className="h-6 w-6" />{t("superAdmin:restaurants", "Restaurants")}</h1>
-          <p className="text-muted-foreground text-sm">
+    <PageShell maxWidth="lg">
+      <PageHeader
+        icon={<Store className="h-5 w-5" />}
+        title={t("superAdmin:restaurants", "Restaurants")}
+        description={
+          <>
             {t("superAdmin:restaurantsSubtitle", "Each restaurant has one dashboard owner. Provision tenants and manage their login here.")}
             {!loading ? ` · ${list.length} total` : ""}
-          </p>
-        </div>
+          </>
+        }
+        actions={
         <Dialog open={!!mode} onOpenChange={(o) => { if (!o) closeDialog(); }}>
           <DialogTrigger asChild>
-            <Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" />{t("superAdmin:newRestaurant", "New restaurant")}</Button>
+            <Button className="w-full sm:w-auto" onClick={openCreate}><Plus className="h-4 w-4 mr-2" />{t("superAdmin:newRestaurant", "New restaurant")}</Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
@@ -901,16 +904,17 @@ export default function Restaurants() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       {loading ? (
         <p className="text-muted-foreground text-sm">{t("common:loading", "Loading…")}</p>
       ) : list.length === 0 ? (
-        <Card>
+        <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
           <CardContent className="py-10 text-center text-muted-foreground">{t("superAdmin:noRestaurants", "No restaurants yet")}</CardContent>
         </Card>
       ) : (
-        <Card>
+        <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
@@ -1034,6 +1038,6 @@ export default function Restaurants() {
         </DialogContent>
       </Dialog>
 
-    </div>
+    </PageShell>
   );
 }

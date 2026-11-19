@@ -64,8 +64,8 @@ export default function DriverPortal() {
 
   if (!driverId) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card className="max-w-md w-full"><CardContent className="py-10 text-center space-y-3">
+      <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 py-4">
+        <Card className="max-w-md w-full rounded-2xl border border-border/80 shadow-xs"><CardContent className="py-10 text-center space-y-3">
           <Truck className="h-10 w-10 mx-auto text-muted-foreground" />
           <h2 className="text-lg font-semibold">No driver profile linked</h2>
           <p className="text-sm text-muted-foreground">Your account ({profile?.email || user?.email}) hasn't been linked to a driver. Ask an admin to link you in the Drivers section.</p>
@@ -81,7 +81,7 @@ export default function DriverPortal() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b sticky top-0 bg-background z-10">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2"><Truck className="h-5 w-5" /><span className="font-semibold">{t("drivers:driverPortal", "Driver portal")}</span></div>
           <div className="flex items-center gap-3">
             <LanguageSwitcher />
@@ -91,7 +91,7 @@ export default function DriverPortal() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto p-4 space-y-6">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-4 space-y-6">
         <Card className="border-primary/40">
           <CardHeader><CardTitle className="text-base">{t("drivers:myDeliveries", "Current delivery")}</CardTitle></CardHeader>
           <CardContent>

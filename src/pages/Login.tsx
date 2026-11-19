@@ -259,7 +259,7 @@ export default function Login() {
         </p>
       </aside>
 
-      <main className="relative flex min-h-screen flex-col items-center justify-center p-6 sm:p-10">
+      <main className="relative flex min-h-screen flex-col items-center justify-center px-4 sm:px-6 py-6 sm:py-10">
         {/* Language switcher on sign-in side */}
         <div className="absolute top-5 right-5 sm:top-8 sm:right-8 z-20">
           <LanguageSwitcher />

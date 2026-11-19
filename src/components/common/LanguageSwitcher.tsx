@@ -35,18 +35,18 @@ export function LanguageSwitcher({
       size={size}
       onClick={handleToggle}
       className={cn(
-        "flex items-center gap-2 h-10 rounded-lg border border-border/80 bg-card/80 px-3 text-sm font-medium hover:bg-muted/80 shadow-sm transition-all cursor-pointer select-none active:scale-95",
+        "flex h-9 w-9 shrink-0 cursor-pointer select-none items-center justify-center gap-0 rounded-lg border border-border/80 bg-card/80 px-0 text-sm font-medium shadow-xs transition-all hover:bg-muted/80 active:scale-95 sm:h-10 sm:w-auto sm:gap-2 sm:px-3",
         className
       )}
       title={`Current: ${currentLangObj.name}. Click to switch to ${currentLang === "fr" ? "English" : "Français"}`}
       aria-label="Toggle Language"
     >
-      <Globe className="h-4 w-4 text-primary shrink-0" />
-      {showLabel && (
-        <span className="font-semibold text-foreground text-xs sm:text-sm">
+      <Globe className="h-4 w-4 shrink-0 text-primary" />
+      {showLabel ? (
+        <span className="hidden font-semibold text-foreground text-xs sm:inline sm:text-sm">
           {currentLangObj.name}
         </span>
-      )}
+      ) : null}
     </Button>
   );
 }

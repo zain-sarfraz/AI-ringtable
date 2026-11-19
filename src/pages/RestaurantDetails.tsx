@@ -52,6 +52,7 @@ import { useToast } from "@/hooks/use-toast";
 import { resolveMediaUrl, getApiBase } from "@/lib/apiBase";
 import { formatCurrency, ORDER_STATUS_COLORS, ORDER_STATUS_LABELS, type OrderStatus } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
+import { PageShell } from "@/components/layout/PageShell";
 
 type Restaurant = {
   id: string;
@@ -511,9 +512,9 @@ export default function RestaurantDetails() {
   const twilioConnected = Boolean(restaurant.twilio_phone_number || restaurant.twilio_connected_at);
 
   return (
-    <div className="space-y-8 animate-fade-in pb-10">
+    <PageShell maxWidth="lg" className="space-y-8">
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
         <div className="h-40 sm:h-52 relative">
           {coverSrc ? (
             <img src={coverSrc} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -536,8 +537,8 @@ export default function RestaurantDetails() {
                 )}
               </div>
               <div className="pb-1 min-w-0">
-                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight truncate">{restaurant.name}</h1>
-                <p className="text-muted-foreground text-sm mt-0.5">/{restaurant.slug}</p>
+                <h1 className="text-xl font-bold tracking-tight truncate sm:text-2xl">{restaurant.name}</h1>
+                <p className="text-xs text-muted-foreground mt-0.5 sm:text-sm">/{restaurant.slug}</p>
                 <div className="flex flex-wrap gap-2 mt-2">
                   <Badge variant={restaurant.is_active ? "default" : "secondary"}>
                     {restaurant.is_active ? "Active" : "Inactive"}
@@ -553,12 +554,12 @@ export default function RestaurantDetails() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 sm:pb-1">
-              <Button variant="outline" size="sm" onClick={() => navigate("/restaurants")}>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:pb-1">
+              <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => navigate("/restaurants")}>
                 <ArrowLeft className="h-4 w-4 mr-1.5" />
                 All restaurants
               </Button>
-              <Button size="sm" asChild>
+              <Button size="sm" className="w-full sm:w-auto" asChild>
                 <Link to={`/restaurants/${restaurant.id}/configuration`}>
                   <Settings className="h-4 w-4 mr-1.5" />
                   Configure
@@ -1243,7 +1244,7 @@ export default function RestaurantDetails() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
 
@@ -1259,7 +1260,7 @@ function StatCard({
   className?: string;
 }) {
   return (
-    <Card className={cn("border shadow-sm", className)}>
+    <Card className={cn("rounded-xl border border-border/80 shadow-xs overflow-hidden", className)}>
       <CardContent className="p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">

@@ -47,6 +47,7 @@ import { useReportRestaurants } from "@/hooks/useReportRestaurants";
 import { formatCurrency } from "@/lib/restaurant";
 import { formatDate } from "@/i18n/formatters";
 import { cn } from "@/lib/utils";
+import { PageShell } from "@/components/layout/PageShell";
 
 type CustomerRow = {
   restaurant_id: string;
@@ -386,7 +387,7 @@ export default function CustomerAnalyticsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-16 max-w-7xl mx-auto px-2 sm:px-4">
+    <PageShell className="pb-16">
       {/* ── Header ────────────────────────────────────────────── */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-1">
         <div className="flex items-center gap-3.5">
@@ -404,11 +405,11 @@ export default function CustomerAnalyticsPage() {
         </div>
 
         {/* Top Controls - Single Row */}
-        <div className="flex items-center gap-2.5 flex-nowrap shrink-0">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
           {/* Restaurant Selector for multi-restaurant */}
           {restaurants.length > 1 && (
             <Select value={restaurantId} onValueChange={setRestaurantId}>
-              <SelectTrigger className="h-10 bg-card border-border/80 rounded-xl px-3 text-xs w-[170px]">
+              <SelectTrigger className="h-10 bg-card border-border/80 rounded-xl px-3 text-xs w-full sm:w-[170px]">
                 <SelectValue placeholder="Select restaurant" />
               </SelectTrigger>
               <SelectContent>
@@ -1150,7 +1151,7 @@ export default function CustomerAnalyticsPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 

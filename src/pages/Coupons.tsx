@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Pencil, Plus, Ticket, Trash2, Search, Calendar, Hash } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/restaurant";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
 import { DealsImportButton } from "@/components/deals/DealsImportButton";
@@ -127,29 +128,27 @@ export default function Coupons() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Ticket className="h-6 w-6 text-primary" />
-            {t("coupons:title", "Coupon Codes")}
-          </h1>
-          <p className="text-muted-foreground text-sm">{t("coupons:subtitle", "Manage promotional discounts and vouchers")}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <DealsImportButton restaurantId={restaurantId} type="discounts" onImported={() => void load()} />
-          <Dialog open={discDialog} onOpenChange={(o) => { setDiscDialog(o); if (!o) setEditDisc(null); }}>
-            <DialogTrigger asChild>
-              <Button onClick={() => setEditDisc(null)} className="gradient-primary">
-                <Plus className="h-4 w-4 mr-1" /> {t("coupons:newCoupon", "New Coupon")}
-              </Button>
-            </DialogTrigger>
-            <DiscountForm initial={editDisc} onSubmit={saveDiscount} />
-          </Dialog>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("coupons:title", "Coupon Codes")}
+        description={t("coupons:subtitle", "Manage promotional discounts and vouchers")}
+        icon={<Ticket className="h-5 w-5" />}
+        actions={
+          <>
+            <DealsImportButton restaurantId={restaurantId} type="discounts" onImported={() => void load()} />
+            <Dialog open={discDialog} onOpenChange={(o) => { setDiscDialog(o); if (!o) setEditDisc(null); }}>
+              <DialogTrigger asChild>
+                <Button onClick={() => setEditDisc(null)} className="gradient-primary w-full sm:w-auto">
+                  <Plus className="h-4 w-4 mr-1" /> {t("coupons:newCoupon", "New Coupon")}
+                </Button>
+              </DialogTrigger>
+              <DiscountForm initial={editDisc} onSubmit={saveDiscount} />
+            </Dialog>
+          </>
+        }
+      />
 
-      <Card className="border-none shadow-sm">
+      <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
         <CardContent className="p-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -163,10 +162,10 @@ export default function Coupons() {
         </CardContent>
       </Card>
 
-      <Card className="border-none shadow-xl overflow-hidden bg-card/50 backdrop-blur-sm">
+      <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
+            <table className="w-full min-w-[800px] text-sm text-left">
               <thead className="bg-muted/50 text-muted-foreground font-medium border-y">
                 <tr>
                   <th className="px-6 py-4">{t("coupons:colCode", "Code")}</th>
@@ -250,7 +249,7 @@ export default function Coupons() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 

@@ -19,9 +19,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { formatCurrency } from "@/lib/restaurant";
 import { resolveMediaUrl } from "@/lib/apiBase";
 import { cn } from "@/lib/utils";
+import { PageShell } from "@/components/layout/PageShell";
 
 type MenuItemRow = {
   id: string;
@@ -76,6 +78,9 @@ export default function MenuItemDetail() {
   const { itemId } = useParams<{ itemId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { role } = useAuth();
+  const canManageMenu =
+    role === "admin" || role === "manager" || role === "super_admin";
 
   const [loading, setLoading] = useState(true);
   const [item, setItem] = useState<MenuItemRow | null>(null);
@@ -196,9 +201,9 @@ export default function MenuItemDetail() {
   const displayImage = imageSrc && !imgFailed ? imageSrc : "/menu-item-placeholder.svg";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+    <PageShell maxWidth="lg" className="space-y-5 sm:space-y-6">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-2">
           <Button variant="ghost" size="sm" asChild>
             <Link to="/menu">
               <ArrowLeft className="mr-1 h-4 w-4" />
@@ -208,7 +213,7 @@ export default function MenuItemDetail() {
           <Separator orientation="vertical" className="hidden h-6 sm:block" />
           <div>
             <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{item.name}</h1>
-            <p className="text-xs text-muted-foreground sm:text-sm">
+            <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
               {restaurantName ? (
                 <span className="inline-flex items-center gap-1">
                   <Store className="h-3.5 w-3.5" />
@@ -220,23 +225,26 @@ export default function MenuItemDetail() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant={item.is_available ? "default" : "secondary"}>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <Badge variant={item.is_available ? "default" : "secondary"} className="w-fit">
             {item.is_available ? t("menu:available", "Available") : t("menu:unavailable", "Unavailable")}
           </Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(`/menu?tab=items&editItem=${item.id}`)}
-          >
-            <Pencil className="mr-1 h-4 w-4" />
-            {t("common:edit", "Edit")}
-          </Button>
+          {canManageMenu && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => navigate(`/menu?tab=items&editItem=${item.id}`)}
+            >
+              <Pencil className="mr-1 h-4 w-4" />
+              {t("common:edit", "Edit")}
+            </Button>
+          )}
         </div>
-      </div>
+      </header>
 
-      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-        <Card className="overflow-hidden">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           <div className="aspect-square bg-muted/40">
             <img
               src={displayImage}
@@ -283,8 +291,8 @@ export default function MenuItemDetail() {
         </Card>
 
         <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-2">
+          <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+            <CardHeader className="border-b bg-muted/30 pb-4">
               <CardTitle className="text-base">{t("common:overview", "Overview")}</CardTitle>
             </CardHeader>
             <CardContent>
@@ -321,8 +329,8 @@ export default function MenuItemDetail() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
+          <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+            <CardHeader className="border-b bg-muted/30 pb-4">
               <CardTitle className="text-base">{t("menu:tabInventory", "Inventory & ordering")}</CardTitle>
             </CardHeader>
             <CardContent>
@@ -345,8 +353,8 @@ export default function MenuItemDetail() {
 
           {/* Sizes Card */}
           {variants.filter((v) => v.variant_type === "size").length > 0 && (
-            <Card>
-              <CardHeader className="pb-3 border-b">
+            <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+              <CardHeader className="border-b bg-muted/30 pb-4">
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <Boxes className="h-4 w-4 text-blue-500" />
                   Sizes & Variations ({variants.filter((v) => v.variant_type === "size").length})
@@ -421,8 +429,8 @@ export default function MenuItemDetail() {
           {/* Standalone Flavors Card (for items without sizes or with standalone variations) */}
           {(variants.filter((v) => v.variant_type === "size").length === 0 ||
             variants.filter((v) => v.variant_type !== "size" && !v.parent_id).length > 0) && (
-            <Card>
-              <CardHeader className="pb-3 border-b">
+            <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+              <CardHeader className="border-b bg-muted/30 pb-4">
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <Sparkles className="h-4 w-4 text-primary" />
                   Flavors & Variations{" "}
@@ -467,8 +475,8 @@ export default function MenuItemDetail() {
             </Card>
           )}
 
-          <Card>
-            <CardHeader className="pb-3 border-b">
+          <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+            <CardHeader className="border-b bg-muted/30 pb-4">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <Package className="h-4 w-4 text-primary" />
                 Sauces & Add-ons {addons.length > 0 ? `(${addons.length})` : ""}
@@ -504,6 +512,6 @@ export default function MenuItemDetail() {
           </Card>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -236,7 +236,10 @@ router.get("/track/:code", async (req, res) => {
         .where({ restaurant_id: order.restaurant_id })
         .select("name", "logo_url", "phone")
         .first(),
-      knex("restaurants").where({ id: order.restaurant_id }).select("id", "slug", "is_branch", "parent_restaurant_id").first(),
+      knex("restaurants")
+        .where({ id: order.restaurant_id })
+        .select("id", "slug", "name", "phone", "logo_url", "is_branch", "parent_restaurant_id")
+        .first(),
     ]);
 
     let menuPath = null;
@@ -259,82 +262,29 @@ router.get("/track/:code", async (req, res) => {
       }
     }
 
+    // Dine-in: one open table session = one guest page + one combined invoice.
+    // Scoped to this table_session_id only (never old historical table orders).
     let tableSession = null;
-    const familyIds = await resolveRestaurantFamilyIds(knex, order.restaurant_id);
-    if (order.table_session_id) {
+    const isDineInTrack = order.fulfillment_type === "dine_in" || Boolean(order.table_id || order.table_number);
+
+    if (isDineInTrack && order.table_session_id) {
       tableSession = await loadSessionBill(knex, order.table_session_id);
-    } else if (order.fulfillment_type === "dine_in" && (order.table_id || order.table_number)) {
-      const openSessions = await findOpenSessionsForTable(knex, {
-        restaurantId: order.restaurant_id,
-        restaurantIds: familyIds,
-        tableId: order.table_id,
-        tableNumber: order.table_number,
-      });
-      const phoneNorm = normalizePhone(order.customer_phone);
-      const match = openSessions.find((s) => !phoneNorm || s.customer_phone_normalized === phoneNorm) || openSessions[0];
-      if (match) tableSession = await loadSessionBill(knex, match.id);
     }
 
-    if (order.fulfillment_type === "dine_in" && (order.table_id || order.table_number)) {
-      let siblingQ = knex("orders")
-        .whereIn("restaurant_id", familyIds.length ? familyIds : [order.restaurant_id])
-        .where({ fulfillment_type: "dine_in" })
-        .whereNot({ status: "cancelled" });
-      if (order.table_id) siblingQ = siblingQ.andWhere({ table_id: order.table_id });
-      else siblingQ = siblingQ.andWhere({ table_number: order.table_number });
-      const siblings = await siblingQ.orderBy("created_at", "asc");
-      const phoneNorm = normalizePhone(order.customer_phone);
-      const sameGuest = siblings.filter((o) => {
-        const other = normalizePhone(o.customer_phone);
-        return !phoneNorm || !other || other === phoneNorm;
-      });
-      const known = new Set((tableSession?.orders || []).map((o) => o.id));
-      const extra = sameGuest.filter((o) => !known.has(o.id));
-      if (extra.length) {
-        const extraItems = await knex("order_items").whereIn("order_id", extra.map((o) => o.id)).orderBy("created_at", "asc");
-        const byOrder = {};
-        for (const item of extraItems) {
-          if (!byOrder[item.order_id]) byOrder[item.order_id] = [];
-          byOrder[item.order_id].push(item);
-        }
-        const extraBilled = extra.map((o) => ({ ...o, items: byOrder[o.id] || [] }));
-        const mergedOrders = [...(tableSession?.orders || extraBilled.length ? (tableSession?.orders || []) : []), ...extraBilled];
-        if (!tableSession) {
-          tableSession = {
-            session: {
-              id: order.table_session_id,
-              customer_name: order.customer_name,
-              customer_phone: order.customer_phone,
-              table_number: order.table_number,
-              status: extra.some((o) => o.status !== "delivered") ? "open" : "closed",
-            },
-            orders: extraBilled,
-            totals: extraBilled.reduce((acc, o) => {
-              acc.subtotal += Number(o.subtotal || 0);
-              acc.tax_amount += Number(o.tax_amount || 0);
-              acc.total_amount += Number(o.total_amount || 0);
-              acc.order_count += 1;
-              return acc;
-            }, { subtotal: 0, tax_amount: 0, total_amount: 0, order_count: 0 }),
-          };
-        } else {
-          tableSession.orders = mergedOrders;
-          tableSession.totals = mergedOrders.reduce((acc, o) => {
-            acc.subtotal += Number(o.subtotal || 0);
-            acc.tax_amount += Number(o.tax_amount || 0);
-            acc.total_amount += Number(o.total_amount || 0);
-            acc.order_count += 1;
-            return acc;
-          }, { subtotal: 0, tax_amount: 0, delivery_fee: 0, discount_amount: 0, total_amount: 0, order_count: 0 });
-        }
-      }
-    }
+    const trackSettings = withAbsoluteMedia(
+      {
+        name: settings?.name || restRow?.name || null,
+        phone: settings?.phone || restRow?.phone || null,
+        logo_url: settings?.logo_url || restRow?.logo_url || null,
+      },
+      ["logo_url"],
+    );
 
     return res.json({
       order,
       items,
       history,
-      settings: settings || null,
+      settings: trackSettings,
       table_session: tableSession,
       menu_path: menuPath,
     });
@@ -343,7 +293,7 @@ router.get("/track/:code", async (req, res) => {
   }
 });
 
-/** GET /api/public/table-session — QR guest looks up open table bill by phone */
+/** GET /api/public/table-session — QR guest looks up open table bill (by table; phone optional) */
 router.get("/table-session", async (req, res) => {
   try {
     const knex = getKnex();
@@ -351,10 +301,9 @@ router.get("/table-session", async (req, res) => {
     const tableId = req.query.table_id && isValidUUID(String(req.query.table_id)) ? String(req.query.table_id) : null;
     const tableNumber = req.query.table_number ? String(req.query.table_number).trim() : null;
     const phone = req.query.phone ? String(req.query.phone).trim() : "";
-    if (!restaurantId || (!tableId && !tableNumber) || isPlaceholderPhone(phone)) {
-      return res.status(400).json({ error: "restaurant, table, and phone are required" });
+    if (!restaurantId || (!tableId && !tableNumber)) {
+      return res.status(400).json({ error: "restaurant and table are required" });
     }
-    const phoneNorm = normalizePhone(phone);
     const familyIds = await resolveRestaurantFamilyIds(knex, restaurantId);
     const openSessions = await findOpenSessionsForTable(knex, {
       restaurantId,
@@ -362,7 +311,17 @@ router.get("/table-session", async (req, res) => {
       tableId,
       tableNumber,
     });
-    const session = openSessions.find((s) => s.customer_phone_normalized === phoneNorm);
+    let session = null;
+    if (!isPlaceholderPhone(phone)) {
+      const phoneNorm = normalizePhone(phone);
+      session = openSessions.find((s) => s.customer_phone_normalized === phoneNorm) || null;
+    }
+    if (!session) {
+      session =
+        openSessions.find((s) => !s.customer_phone_normalized) ||
+        openSessions[0] ||
+        null;
+    }
     if (!session) return res.json({ session: null, orders: [], totals: null });
     const bill = await loadSessionBill(knex, session.id);
     return res.json(bill);
@@ -406,14 +365,16 @@ router.post("/orders", async (req, res) => {
       effectiveAddress = "Pickup";
     }
 
-    if (!restaurant_id || !customer_name || !effectiveAddress) {
+    const dineInGuestName =
+      (customer_name && String(customer_name).trim()) ||
+      (table_number ? `Table ${String(table_number).trim()}` : "Dine-in Guest");
+    const effectiveCustomerName = isDineIn ? dineInGuestName : customer_name;
+
+    if (!restaurant_id || !effectiveCustomerName || !effectiveAddress) {
       await trx.rollback();
       return res.status(400).json({ error: "Missing required fields" });
     }
-    if (isDineIn && isPlaceholderPhone(customer_phone)) {
-      await trx.rollback();
-      return res.status(400).json({ error: "Mobile number is required before placing a dine-in order" });
-    }
+    // Dine-in QR orders do not require guest name/phone/email
     if (!isDineIn && isPlaceholderPhone(customer_phone)) {
       await trx.rollback();
       return res.status(400).json({ error: "Missing required fields" });
@@ -494,7 +455,9 @@ router.post("/orders", async (req, res) => {
 
     const trackingCode = "TRK-" + Math.random().toString(36).substring(2, 8).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
 
-    const finalPhone = String(customer_phone).trim();
+    const finalPhone = isDineIn
+      ? (isPlaceholderPhone(customer_phone) ? "" : String(customer_phone || "").trim())
+      : String(customer_phone || "").trim();
 
     let tableSession = null;
     if (isDineIn) {
@@ -502,7 +465,7 @@ router.post("/orders", async (req, res) => {
         restaurantId: targetRestaurantId,
         tableId: table_id && isValidUUID(table_id) ? table_id : null,
         tableNumber: table_number,
-        customerName: customer_name,
+        customerName: effectiveCustomerName,
         customerPhone: finalPhone,
         source: "qr",
       });
@@ -518,9 +481,9 @@ router.post("/orders", async (req, res) => {
         restaurant_id: targetRestaurantId,
         order_number: orderNumber,
         tracking_code: trackingCode,
-        customer_name: String(customer_name).trim(),
+        customer_name: String(effectiveCustomerName).trim(),
         customer_phone: finalPhone,
-        customer_email: customer_email ? String(customer_email).trim() : null,
+        customer_email: isDineIn ? null : (customer_email ? String(customer_email).trim() : null),
         delivery_address: effectiveAddress,
         delivery_notes: notes || null,
         fulfillment_type: effectiveFulfillmentType,

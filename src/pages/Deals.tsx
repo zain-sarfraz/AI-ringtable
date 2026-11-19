@@ -22,6 +22,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 import { formatDate, formatTime } from "@/i18n/formatters";
 import { syncRestaurantMenuToVoiceAgent } from "@/lib/syncRestaurantMenuToVoiceAgent";
 
@@ -433,23 +434,20 @@ export default function Deals() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Tag className="h-6 w-6 text-primary" />
-            {t("deals:title", "Deals & Offers")}
-          </h1>
-          <p className="text-muted-foreground text-sm">{t("deals:subtitle", "Combo deals and promotional offers")}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <DealsImportButton restaurantId={restaurantId} type="deals" onImported={() => void load()} />
-          <Dialog open={dealDialog} onOpenChange={(o) => { setDealDialog(o); if (!o) setEditDeal(null); }}>
-            <DialogTrigger asChild>
-              <Button type="button" onClick={() => setEditDeal(null)}>
-                <Plus className="h-4 w-4 mr-1" />{t("deals:addDeal", "New deal")}
-              </Button>
-            </DialogTrigger>
+    <PageShell>
+      <PageHeader
+        title={t("deals:title", "Deals & Offers")}
+        description={t("deals:subtitle", "Combo deals and promotional offers")}
+        icon={<Tag className="h-5 w-5" />}
+        actions={
+          <>
+            <DealsImportButton restaurantId={restaurantId} type="deals" onImported={() => void load()} />
+            <Dialog open={dealDialog} onOpenChange={(o) => { setDealDialog(o); if (!o) setEditDeal(null); }}>
+              <DialogTrigger asChild>
+                <Button type="button" className="w-full sm:w-auto" onClick={() => setEditDeal(null)}>
+                  <Plus className="h-4 w-4 mr-1" />{t("deals:addDeal", "New deal")}
+                </Button>
+              </DialogTrigger>
             <DealForm
               initial={editDeal}
               initialRestaurantIds={editDeal ? dealRestaurantIdsMap[editDeal.id] ?? [editDeal.restaurant_id] : [restaurantId]}
@@ -460,10 +458,11 @@ export default function Deals() {
               onSubmit={saveDeal}
             />
           </Dialog>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <Card>
+      <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm min-w-[720px]">
             <thead className="text-left bg-muted/50">
@@ -577,7 +576,7 @@ export default function Deals() {
           </table>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 

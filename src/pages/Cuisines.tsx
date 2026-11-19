@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 type Cuisine = { id: string; name: string };
 type RestaurantCuisine = { id?: string; restaurant_id: string; cuisine_id: string };
@@ -177,32 +178,26 @@ export default function Cuisines() {
   const isLoading = cuisinesLoading || linksLoading;
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-12">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground flex items-center gap-2.5">
-            <Layers className="h-7 w-7 text-primary" />
-            {t("cuisines:title", "Cuisines")}
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            {t(
-              "cuisines:subtitle",
-              "Manage cuisine types and food categories for your restaurant."
-            )}
-          </p>
-        </div>
-
-        {currentRestaurant && (
-          <div className="flex items-center gap-2 bg-card px-3.5 py-1.5 rounded-xl border border-border/70 shadow-xs text-xs font-semibold text-foreground">
-            <Store className="h-4 w-4 text-primary" />
-            <span>{currentRestaurant.name}</span>
-          </div>
+    <PageShell maxWidth="lg">
+      <PageHeader
+        icon={<Layers className="h-5 w-5" />}
+        title={t("cuisines:title", "Cuisines")}
+        description={t(
+          "cuisines:subtitle",
+          "Manage cuisine types and food categories for your restaurant.",
         )}
-      </div>
+        actions={
+          currentRestaurant ? (
+            <div className="flex w-full items-center gap-2 rounded-xl border border-border/80 bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground shadow-xs sm:w-auto">
+              <Store className="h-4 w-4 text-primary" />
+              <span className="truncate">{currentRestaurant.name}</span>
+            </div>
+          ) : undefined
+        }
+      />
 
       {/* Add Cuisine Card */}
-      <Card className="border border-border/70 shadow-xs bg-card rounded-2xl">
+      <Card className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
         <CardHeader className="py-4 px-6 border-b border-border/40 bg-muted/10">
           <CardTitle className="text-sm font-bold">
             {t("cuisines:addCuisine", "Add New Cuisine")}
@@ -238,7 +233,7 @@ export default function Cuisines() {
       </Card>
 
       {/* Cuisines Table Card */}
-      <Card className="border border-border/70 shadow-xs bg-card rounded-2xl overflow-hidden">
+      <Card className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
         <CardHeader className="py-4 px-6 border-b border-border/40 bg-muted/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <CardTitle className="text-sm font-bold">
@@ -336,6 +331,6 @@ export default function Cuisines() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }

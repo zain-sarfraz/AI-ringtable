@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { getApiBase, resolveMediaUrl } from "@/lib/apiBase";
-import { loadDineInGuest, saveDineInGuest } from "@/lib/dineInGuest";
+import { loadDineInGuest, rememberDineInOrder } from "@/lib/dineInGuest";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -400,10 +400,9 @@ export default function Order() {
 
   useEffect(() => {
     const isDineIn = fulfillmentType === "dine_in" || Boolean(tableInfo || tableParam);
-    const phone = form.customer_phone.trim();
     const restaurantId = (settings as any)?.restaurant_id || restaurant?.id;
     const tableNumber = tableInfo?.table_number || tableParam;
-    if (!isDineIn || !restaurantId || !tableNumber || phone.replace(/\D/g, "").length < 7) {
+    if (!isDineIn || !restaurantId || !tableNumber) {
       setTableBill(null);
       return;
     }
@@ -412,8 +411,7 @@ export default function Order() {
       try {
         const q = new URLSearchParams({
           restaurant_id: restaurantId,
-          table_number: tableNumber,
-          phone,
+          table_number: String(tableNumber),
         });
         if (tableInfo?.id || tableIdParam) q.set("table_id", tableInfo?.id || tableIdParam || "");
         const res = await fetch(`${getApiBase()}/api/public/table-session?${q.toString()}`, { signal: ctrl.signal });
@@ -428,18 +426,16 @@ export default function Order() {
       ctrl.abort();
       clearTimeout(timer);
     };
-  }, [form.customer_phone, fulfillmentType, tableInfo, tableParam, tableIdParam, settings, restaurant]);
+  }, [fulfillmentType, tableInfo, tableParam, tableIdParam, settings, restaurant]);
 
   const submitOrder = async () => {
     if (cart.length === 0) return toast.error("Your cart is empty");
     const isDineIn = fulfillmentType === "dine_in";
-    if (!form.customer_name.trim()) {
+    if (!isDineIn && !form.customer_name.trim()) {
       return toast.error("Please enter your name");
     }
-    if (!form.customer_phone.trim()) {
-      return toast.error(isDineIn
-        ? "Please enter your mobile number so this table bill can be linked to you"
-        : "Please enter required name and contact details");
+    if (!isDineIn && !form.customer_phone.trim()) {
+      return toast.error("Please enter required name and contact details");
     }
     if (fulfillmentType === "delivery" && !form.delivery_address) {
       return toast.error("Please enter required name and contact details");
@@ -471,6 +467,8 @@ export default function Order() {
       });
       const tableNumber = tableInfo?.table_number || tableParam || null;
       const tableId = tableInfo?.id || tableIdParam || null;
+      const dineInName = `Table ${tableNumber || "Guest"}`;
+      const dineInPhone = "";
 
       const res = await fetch(`${getApiBase()}/api/public/orders`, {
         method: "POST",
@@ -478,9 +476,9 @@ export default function Order() {
         body: JSON.stringify({
           restaurant_id: restaurantId,
           branch_id: selectedBranchId || (restaurant?.id !== restaurantId ? restaurant?.id : null),
-          customer_name: form.customer_name,
-          customer_phone: form.customer_phone.trim(),
-          customer_email: form.customer_email || null,
+          customer_name: isDineIn ? dineInName : form.customer_name,
+          customer_phone: isDineIn ? dineInPhone : form.customer_phone.trim(),
+          customer_email: isDineIn ? null : form.customer_email || null,
           delivery_address: isDineIn
             ? `Dine-in (Table ${tableNumber || "Assigned"})`
             : fulfillmentType === "delivery"
@@ -501,12 +499,14 @@ export default function Order() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Order failed");
       const order = body.order;
-      if (isDineIn) {
-        saveDineInGuest(restaurantId, tableId, tableNumber, {
-          customer_name: form.customer_name.trim(),
-          customer_phone: form.customer_phone.trim(),
-          customer_email: form.customer_email.trim(),
-        });
+      if (isDineIn && order?.id) {
+        rememberDineInOrder(
+          restaurantId,
+          tableId,
+          tableNumber,
+          order.id,
+          order.table_session_id || body.session?.id || null,
+        );
       }
       toast.success(isDineIn ? "Dine-in order placed to kitchen!" : "Order placed! We sent a tracking link to your phone.");
       navigate(`/track/${order.tracking_code}`);
@@ -567,7 +567,7 @@ export default function Order() {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <header className="border-b bg-card">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
             <div>
               <h1 className="text-xl font-bold text-foreground">{settings?.name || "Restaurant"}</h1>
               <p className="text-xs text-muted-foreground">Staff order</p>
@@ -577,7 +577,7 @@ export default function Order() {
             </Button>
           </div>
         </header>
-        <main className="max-w-3xl mx-auto w-full px-4 py-10 space-y-6">
+        <main className="max-w-3xl mx-auto w-full px-4 sm:px-6 py-10 space-y-6">
           <div>
             <h2 className="text-2xl font-black tracking-tight">Where is this order?</h2>
             <p className="text-sm text-muted-foreground mt-1">
@@ -611,7 +611,7 @@ export default function Order() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b bg-card sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
               <span>{settings?.name || "Restaurant"}</span>
@@ -645,7 +645,7 @@ export default function Order() {
 
       {/* Dine-In Table Banner */}
       {(fulfillmentType === "dine_in" || tableInfo || tableParam) && (
-        <section className="bg-primary/10 border-b border-primary/20 py-3 px-4">
+        <section className="bg-primary/10 border-b border-primary/20 py-3 px-4 sm:px-6">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0">
@@ -668,7 +668,7 @@ export default function Order() {
       )}
 
       {/* Hero / Banner */}
-      <section className="bg-muted/40 border-b py-6 px-4">
+      <section className="bg-muted/40 border-b py-6 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h2 className="text-2xl font-black tracking-tight text-foreground">{t("ordering:heroTitle", "Delicious Food Delivered Fast")}</h2>
@@ -676,7 +676,10 @@ export default function Order() {
               {t("ordering:heroSubtitle", "Choose from our chef-crafted deals, specialty pizzas, and authentic meals.")}
             </p>
           </div>
-          {restaurant?.elevenlabs_agent_id ? (
+          {restaurant?.elevenlabs_agent_id &&
+          fulfillmentType !== "dine_in" &&
+          !tableInfo &&
+          !tableParam ? (
             <AIChatTest agentId={restaurant.elevenlabs_agent_id} />
           ) : null}
         </div>
@@ -684,7 +687,7 @@ export default function Order() {
 
       {/* Category Pills Nav */}
       <nav className="border-b bg-card sticky top-[57px] z-10 overflow-x-auto">
-        <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center gap-2">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2.5 flex items-center gap-2">
           {deals.length > 0 && (
             <Button
               size="sm"
@@ -710,13 +713,13 @@ export default function Order() {
       </nav>
 
       {/* Main Content Area */}
-      <main className="max-w-6xl mx-auto px-4 py-6 flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 w-full">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 w-full">
         {/* Menu Items Grid */}
         <section className="space-y-4">
           {activeCat === "deals" && deals.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {deals.map((d) => (
-                <Card key={d.id} className="overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
+                <Card key={d.id} className="flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 shadow-xs transition-shadow hover:shadow-sm">
                   {d.image_url && <img src={resolveMediaUrl(d.image_url) || d.image_url} alt={d.name} className="h-40 w-full object-cover" />}
                   <CardContent className="p-4 flex flex-col justify-between flex-1">
                     <div>
@@ -760,7 +763,7 @@ export default function Order() {
                 const minSizePrice = sizePrices.length > 0 ? Math.min(...sizePrices) : Number(it.price);
 
                 return (
-                  <Card key={it.id} className={cn("overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow", isOutOfStock && "opacity-60")}>
+                  <Card key={it.id} className={cn("flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 shadow-xs transition-shadow hover:shadow-sm", isOutOfStock && "opacity-60")}>
                     {it.image_url && <img src={resolveMediaUrl(it.image_url) || it.image_url} alt={it.name} className="h-40 w-full object-cover" />}
                     <CardContent className="p-4 flex flex-col justify-between flex-1">
                       <div>
@@ -873,10 +876,12 @@ export default function Order() {
                   <span>{t("ordering:tax", "Tax")}</span>
                   <span>{formatCurrency(tax, settings?.currency)}</span>
                 </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>{t("ordering:deliveryFee", "Delivery")}</span>
-                  <span>{formatCurrency(deliveryFee, settings?.currency)}</span>
-                </div>
+                {fulfillmentType !== "dine_in" && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{t("ordering:deliveryFee", "Delivery")}</span>
+                    <span>{formatCurrency(deliveryFee, settings?.currency)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-bold text-base pt-2 border-t text-foreground">
                   <span>{t("ordering:total", "Total")}</span>
                   <span>{formatCurrency(total, settings?.currency)}</span>
@@ -924,26 +929,29 @@ export default function Order() {
                   )
                 )}
 
-                <div>
-                  <Label>{t("ordering:customerName", "Your Name")} *</Label>
-                  <Input value={form.customer_name} onChange={(e) => setForm({ ...form, customer_name: e.target.value })} placeholder="John Doe" />
-                </div>
-                <div>
-                  <Label>
-                    {t("ordering:customerPhone", "Phone Number")} *
-                  </Label>
-                  <Input
-                    value={form.customer_phone}
-                    onChange={(e) => setForm({ ...form, customer_phone: e.target.value })}
-                    placeholder="03XXXXXXXXX"
-                    required
-                  />
-                  {fulfillmentType === "dine_in" && (
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      Required. Use the same number if you order again from this table so all items go on one bill.
-                    </p>
-                  )}
-                </div>
+                {fulfillmentType !== "dine_in" && (
+                  <>
+                    <div>
+                      <Label>{t("ordering:customerName", "Your Name")} *</Label>
+                      <Input value={form.customer_name} onChange={(e) => setForm({ ...form, customer_name: e.target.value })} placeholder="John Doe" />
+                    </div>
+                    <div>
+                      <Label>
+                        {t("ordering:customerPhone", "Phone Number")} *
+                      </Label>
+                      <Input
+                        value={form.customer_phone}
+                        onChange={(e) => setForm({ ...form, customer_phone: e.target.value })}
+                        placeholder="03XXXXXXXXX"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label>{t("ordering:customerEmail", "Email")}</Label>
+                      <Input type="email" value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} />
+                    </div>
+                  </>
+                )}
                 {fulfillmentType === "dine_in" && tableBill?.orders && tableBill.orders.length > 0 && (
                   <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 space-y-2">
                     <p className="text-xs font-bold text-emerald-800 dark:text-emerald-200">
@@ -964,10 +972,6 @@ export default function Order() {
                     </p>
                   </div>
                 )}
-                <div>
-                  <Label>{t("ordering:customerEmail", "Email")}</Label>
-                  <Input type="email" value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} />
-                </div>
 
                 {fulfillmentType === "dine_in" ? (
                   <div className="p-2.5 rounded-lg bg-muted text-xs flex items-center justify-between">

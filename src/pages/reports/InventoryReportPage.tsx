@@ -11,6 +11,7 @@ import { Table, TableHeader, TableRow, TableCell } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ReportFilters } from "@/components/reports/ReportFilters";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 import { useReportRestaurants } from "@/hooks/useReportRestaurants";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -171,23 +172,19 @@ export default function InventoryReportPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10 max-w-7xl mx-auto">
-      {/* Header + Filters */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <Boxes className="h-8 w-8 text-primary" /> {t("reports:inventoryReport", "Inventory Report")}
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            {t("reports:inventoryReportDesc", "Stock levels, sales, and remaining quantities for each tracked item.")}
-          </p>
-        </div>
-        <ReportFilters
-          restaurants={restaurants}
-          restaurantId={restaurantId}
-          onRestaurantChange={setRestaurantId}
-        />
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("reports:inventoryReport", "Inventory Report")}
+        description={t("reports:inventoryReportDesc", "Stock levels, sales, and remaining quantities for each tracked item.")}
+        icon={<Boxes className="h-5 w-5" />}
+        actions={
+          <ReportFilters
+            restaurants={restaurants}
+            restaurantId={restaurantId}
+            onRestaurantChange={setRestaurantId}
+          />
+        }
+      />
 
       {/* Error handling */}
       {error ? (
@@ -306,6 +303,6 @@ export default function InventoryReportPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageShell>
   );
 }

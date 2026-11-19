@@ -56,6 +56,7 @@ import { formatDate } from "@/i18n/formatters";
 import { getApiBase } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
 import { cn } from "@/lib/utils";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 interface TeamMemberRow {
   id: string; // restaurant_members.id
@@ -76,10 +77,24 @@ interface RestaurantOption {
 export default function TeamMembersPage() {
   const { t } = useTranslation(["users", "common", "settings"]);
   const { toast } = useToast();
-  const { role: authRole } = useAuth();
+  const { user, role: authRole } = useAuth();
   const isSuperAdmin = authRole === "super_admin";
   const isRestaurantAdmin = authRole === "admin" || authRole === "super_admin";
+  // Owner/admin and managers can add & manage team members
+  const canManageMembers =
+    authRole === "admin" || authRole === "super_admin" || authRole === "manager";
   const { restaurantId: activeRestaurantId } = useActiveRestaurant();
+
+  const canDeleteMember = (row: TeamMemberRow) => {
+    if (!canManageMembers) return false;
+    if (row.member_role === "owner") return false;
+    if (user?.id && row.user_id === user.id) return false;
+    // Managers cannot remove admin/manager accounts
+    if (authRole === "manager" && (row.member_role === "admin" || row.member_role === "manager")) {
+      return false;
+    }
+    return true;
+  };
 
   const [members, setMembers] = useState<TeamMemberRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +106,8 @@ export default function TeamMembersPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("manager");
+  const defaultNewMemberRole = authRole === "manager" ? "staff" : "manager";
+  const [role, setRole] = useState(defaultNewMemberRole);
   const [editing, setEditing] = useState<TeamMemberRow | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
@@ -223,8 +239,8 @@ export default function TeamMembersPage() {
 
   useEffect(() => {
     loadData();
-    setRole("manager");
-  }, [activeRestaurantId, isSuperAdmin]);
+    setRole(authRole === "manager" ? "staff" : "manager");
+  }, [activeRestaurantId, isSuperAdmin, authRole]);
 
   const handleCreateMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,6 +287,9 @@ export default function TeamMembersPage() {
 
       const json = await res.json();
       if (!res.ok) {
+        if (json.code === "email_taken" || /email already taken/i.test(String(json.error || ""))) {
+          throw new Error(json.error || "Email already taken in this restaurant. Please change the email.");
+        }
         throw new Error(json.error || "Failed to add team member");
       }
 
@@ -283,7 +302,7 @@ export default function TeamMembersPage() {
       setFullName("");
       setEmail("");
       setPassword("");
-      setRole("manager");
+      setRole(authRole === "manager" ? "staff" : "manager");
       loadData();
     } catch (err: any) {
       toast({
@@ -342,7 +361,12 @@ export default function TeamMembersPage() {
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to update team member");
+      if (!res.ok) {
+        if (json.code === "email_taken" || /email already taken/i.test(String(json.error || ""))) {
+          throw new Error(json.error || "Email already taken in this restaurant. Please change the email.");
+        }
+        throw new Error(json.error || "Failed to update team member");
+      }
       toast({ title: "Team member updated" });
       setEditing(null);
       loadData();
@@ -353,14 +377,25 @@ export default function TeamMembersPage() {
     }
   };
 
-  const handleDeleteMember = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to remove ${name || "this member"}?`)) {
+  const handleDeleteMember = async (row: TeamMemberRow) => {
+    if (!canDeleteMember(row)) {
+      toast({
+        variant: "destructive",
+        title: t("common:error", "Error"),
+        description:
+          row.member_role === "owner" || (user?.id && row.user_id === user.id)
+            ? "Owner cannot delete their own account."
+            : "You cannot remove this member.",
+      });
+      return;
+    }
+    if (!confirm(`Are you sure you want to remove ${row.full_name || row.email || "this member"}?`)) {
       return;
     }
 
     try {
       const token = getToken();
-      const res = await fetch(`${getApiBase()}/api/auth/delete-team-member/${id}`, {
+      const res = await fetch(`${getApiBase()}/api/auth/delete-team-member/${row.id}`, {
         method: "DELETE",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -481,27 +516,19 @@ export default function TeamMembersPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12 max-w-7xl mx-auto">
-      {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground flex items-center gap-3">
-            <Users className="h-7 w-7 text-primary" />
-            {t("users:teamMembersTitle", "Team Members")}
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            {t(
-              "users:teamMembersSubtitle",
-              "Manage restaurant staff and team members with access to edit restaurant menu, orders, inventory and settings."
-            )}
-          </p>
-        </div>
-
-        {/* Add Member Dialog - Only visible to Restaurant Admins */}
-        {isRestaurantAdmin && (
+    <PageShell maxWidth="lg">
+      <PageHeader
+        icon={<Users className="h-5 w-5" />}
+        title={t("users:teamMembersTitle", "Team Members")}
+        description={t(
+          "users:teamMembersSubtitle",
+          "Manage restaurant staff and team members with access to edit restaurant menu, orders, inventory and settings.",
+        )}
+        actions={
+          canManageMembers ? (
           <Dialog open={openDialog} onOpenChange={setOpenDialog}>
             <DialogTrigger asChild>
-              <Button className="gradient-primary text-primary-foreground gap-2 shadow-sm rounded-xl font-semibold">
+              <Button className="w-full sm:w-auto gradient-primary text-primary-foreground gap-2 shadow-sm rounded-xl font-semibold">
                 <UserPlus className="h-4 w-4" />
                 {t("users:addTeamMember", "Add Team Member")}
               </Button>
@@ -572,8 +599,12 @@ export default function TeamMembersPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">{t("users:roleOptionAdmin", "Admin (All modules)")}</SelectItem>
-                    <SelectItem value="manager">{t("users:roleOptionManager", "Manager (Operations, Menu, Orders & Inventory)")}</SelectItem>
+                    {isRestaurantAdmin && (
+                      <SelectItem value="admin">{t("users:roleOptionAdmin", "Admin (All modules)")}</SelectItem>
+                    )}
+                    {isRestaurantAdmin && (
+                      <SelectItem value="manager">{t("users:roleOptionManager", "Manager (Operations, Menu, Orders & Inventory)")}</SelectItem>
+                    )}
                     <SelectItem value="kitchen">{t("users:roleOptionKitchen", "Kitchen Staff (Order Fulfillment)")}</SelectItem>
                     <SelectItem value="receptionist">{t("users:roleOptionReceptionist", "Receptionist (Table Reservations & Guest Check-in)")}</SelectItem>
                     <SelectItem value="staff">{t("users:roleOptionStaff", "Staff (Table orders, menu, deals, reports)")}</SelectItem>
@@ -600,11 +631,12 @@ export default function TeamMembersPage() {
             </form>
           </DialogContent>
         </Dialog>
-        )}
-      </div>
+          ) : undefined
+        }
+      />
 
       {/* Filter and Search Bar */}
-      <div className="bg-card p-4 rounded-2xl border border-border/70 shadow-xs flex flex-col sm:flex-row items-center gap-3 justify-between">
+      <div className="bg-card p-4 rounded-2xl border border-border/80 shadow-xs flex flex-col sm:flex-row items-center gap-3 justify-between">
         <div className="relative w-full max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -621,7 +653,7 @@ export default function TeamMembersPage() {
       </div>
 
       {/* Table Card */}
-      <Card className="border border-border/70 bg-card rounded-2xl shadow-xs overflow-hidden">
+      <Card className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
         <CardHeader className="border-b border-border/40 py-4 px-6 bg-muted/10 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-bold flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-primary" />
@@ -659,7 +691,7 @@ export default function TeamMembersPage() {
                     <TableHead className="py-3.5 px-4 font-bold text-xs uppercase tracking-wider text-muted-foreground">
                       {t("users:colDateAdded", "Date Added")}
                     </TableHead>
-                    {isRestaurantAdmin && (
+                    {canManageMembers && (
                       <TableHead className="py-3.5 px-6 text-right font-bold text-xs uppercase tracking-wider text-muted-foreground">
                         {t("users:colActions", "Actions")}
                       </TableHead>
@@ -701,7 +733,12 @@ export default function TeamMembersPage() {
                       <TableCell className="py-4 px-4">
                         <div className="flex items-center gap-2">
                           {getRoleBadge(row.member_role)}
-                          {isRestaurantAdmin && row.member_role !== "owner" && (
+                          {canManageMembers &&
+                            row.member_role !== "owner" &&
+                            !(
+                              authRole === "manager" &&
+                              (row.member_role === "admin" || row.member_role === "manager")
+                            ) && (
                             <Select
                               defaultValue={row.member_role}
                               onValueChange={(v) => handleUpdateRole(row.id, v)}
@@ -710,8 +747,12 @@ export default function TeamMembersPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="admin">{t("users:roleAdmin", "Admin")}</SelectItem>
-                                <SelectItem value="manager">{t("users:roleManager", "Manager")}</SelectItem>
+                                {isRestaurantAdmin && (
+                                  <SelectItem value="admin">{t("users:roleAdmin", "Admin")}</SelectItem>
+                                )}
+                                {isRestaurantAdmin && (
+                                  <SelectItem value="manager">{t("users:roleManager", "Manager")}</SelectItem>
+                                )}
                                 <SelectItem value="kitchen">{t("users:roleKitchen", "Kitchen")}</SelectItem>
                                 <SelectItem value="receptionist">{t("users:roleReceptionist", "Receptionist")}</SelectItem>
                                 <SelectItem value="staff">{t("users:roleStaff", "Staff")}</SelectItem>
@@ -726,10 +767,14 @@ export default function TeamMembersPage() {
                         {formatDate(row.created_at, { month: "short", day: "numeric", year: "numeric" })}
                       </TableCell>
 
-                      {/* Actions (Only Restaurant Admin can delete roles/members) */}
-                      {isRestaurantAdmin && (
+                      {/* Actions (Admins and managers can manage members) */}
+                      {canManageMembers && (
                         <TableCell className="py-4 px-6 text-right">
                           <div className="inline-flex items-center justify-end gap-1">
+                            {!(
+                              authRole === "manager" &&
+                              (row.member_role === "admin" || row.member_role === "manager")
+                            ) && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -739,15 +784,32 @@ export default function TeamMembersPage() {
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:bg-destructive/10 rounded-lg"
-                              title="Remove Team Member"
-                              onClick={() => handleDeleteMember(row.id, row.full_name || row.email)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            )}
+                            {canDeleteMember(row) ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:bg-destructive/10 rounded-lg"
+                                title="Remove Team Member"
+                                onClick={() => handleDeleteMember(row)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg opacity-40 cursor-not-allowed"
+                                title={
+                                  row.member_role === "owner"
+                                    ? "Owner cannot be removed"
+                                    : "You cannot delete your own account"
+                                }
+                                disabled
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       )}
@@ -813,8 +875,12 @@ export default function TeamMembersPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">Admin (All modules)</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
+                    {isRestaurantAdmin && (
+                      <SelectItem value="admin">Admin (All modules)</SelectItem>
+                    )}
+                    {isRestaurantAdmin && (
+                      <SelectItem value="manager">Manager</SelectItem>
+                    )}
                     <SelectItem value="kitchen">Kitchen Staff</SelectItem>
                     <SelectItem value="receptionist">Receptionist</SelectItem>
                     <SelectItem value="staff">Staff</SelectItem>
@@ -834,7 +900,7 @@ export default function TeamMembersPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
 

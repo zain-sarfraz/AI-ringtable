@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { getKnex } from "../db.js";
 import { requireAuth, optionalAuth } from "../middleware/auth.js";
-import { getOccupiedDiningTableIds, diningOccupancyBlocksSlot, localDateStr, timeToMins } from "../lib/tableReservationService.js";
+import {
+  getOccupiedDiningTableIds,
+  diningOccupancyBlocksSlot,
+  localDateStr,
+  timeToMins,
+  reconcileReservationAvailability,
+} from "../lib/tableReservationService.js";
 import { notifyNewReservationLater } from "../lib/orderAlerts.js";
 
 const router = Router();
@@ -94,6 +100,11 @@ router.get("/restaurants/:id/reservations", optionalAuth, requireAuth, async (re
   try {
     const knex = getKnex();
     const { date, status } = req.query;
+    try {
+      await reconcileReservationAvailability(knex, req.params.id);
+    } catch (err) {
+      console.warn("[reservations] reconcile notice:", err?.message || err);
+    }
     const children = await knex("restaurants").where({ parent_restaurant_id: req.params.id }).select("id");
     const restaurantIds = [req.params.id, ...children.map((row) => row.id)];
     let q = knex("table_reservations")
@@ -202,6 +213,12 @@ router.get("/restaurants/:id/reservations/availability", optionalAuth, requireAu
       .where({ restaurant_id: req.params.id, is_active: true })
       .where("capacity", ">=", Number(party_size))
       .orderBy("capacity", "asc");
+
+    try {
+      await reconcileReservationAvailability(knex, req.params.id);
+    } catch (err) {
+      console.warn("[reservations] reconcile notice:", err?.message || err);
+    }
 
     const diningOccupied = String(date) === localDateStr()
       ? await getOccupiedDiningTableIds(knex, req.params.id)

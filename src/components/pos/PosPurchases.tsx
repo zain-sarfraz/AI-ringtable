@@ -98,58 +98,67 @@ export function PosPurchases({
   const totalSuppliersSpent = suppliers.reduce((sum, s) => sum + (Number(s.total_spent) || 0), 0);
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* ── Top Bar with Tab Switcher ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-card p-4 rounded-2xl border border-border">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4 text-primary" />
-              Purchasing & Suppliers
-            </h3>
-            <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border/60 text-xs">
-              <button
-                type="button"
-                onClick={() => setActiveTab("invoices")}
-                className={`px-3 py-1 rounded-md font-semibold transition-all flex items-center gap-1.5 ${
-                  activeTab === "invoices"
-                    ? "bg-background text-foreground shadow-xs font-bold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <FileText className="h-3.5 w-3.5 text-primary" />
-                <span>Invoices ({purchases.length})</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("suppliers")}
-                className={`px-3 py-1 rounded-md font-semibold transition-all flex items-center gap-1.5 ${
-                  activeTab === "suppliers"
-                    ? "bg-background text-foreground shadow-xs font-bold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Building2 className="h-3.5 w-3.5 text-primary" />
-                <span>All Suppliers ({suppliers.length})</span>
-              </button>
-            </div>
+      <div className="space-y-3 rounded-2xl border border-border bg-card p-3 sm:p-4">
+        <div className="min-w-0 space-y-2">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+            <ShoppingCart className="h-4 w-4 shrink-0 text-primary" />
+            <span className="leading-tight">Purchasing & Suppliers</span>
+          </h3>
+
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-border/60 bg-muted/60 p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab("invoices")}
+              className={`flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 font-semibold transition-all sm:gap-1.5 sm:px-3 ${
+                activeTab === "invoices"
+                  ? "bg-background font-bold text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+              <span className="truncate">Invoices ({purchases.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("suppliers")}
+              className={`flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 font-semibold transition-all sm:gap-1.5 sm:px-3 ${
+                activeTab === "suppliers"
+                  ? "bg-background font-bold text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Building2 className="h-3.5 w-3.5 shrink-0 text-primary" />
+              <span className="truncate">Suppliers ({suppliers.length})</span>
+            </button>
           </div>
-          <p className="text-xs text-muted-foreground">
+
+          <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
             {activeTab === "invoices" ? (
               <>
-                Total Purchased: <strong className="text-foreground">{formatCurrency(totalSpent, activeCurrency)}</strong> across{" "}
-                {purchases.length} invoices.
+                Total Purchased:{" "}
+                <strong className="text-foreground">
+                  {formatCurrency(totalSpent, activeCurrency)}
+                </strong>{" "}
+                across {purchases.length} invoices.
               </>
             ) : (
               <>
-                Active Vendors: <strong className="text-foreground">{suppliers.length} suppliers</strong> · Total Spent:{" "}
-                <strong className="text-foreground">{formatCurrency(totalSuppliersSpent, activeCurrency)}</strong>
+                Active Vendors:{" "}
+                <strong className="text-foreground">
+                  {suppliers.length} suppliers
+                </strong>{" "}
+                · Total Spent:{" "}
+                <strong className="text-foreground">
+                  {formatCurrency(totalSuppliersSpent, activeCurrency)}
+                </strong>
               </>
             )}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:flex sm:flex-wrap sm:items-center">
           {activeTab === "invoices" ? (
             <>
               <Button
@@ -157,17 +166,17 @@ export function PosPurchases({
                 variant="outline"
                 size="sm"
                 onClick={() => setActiveTab("suppliers")}
-                className="h-9 text-xs gap-1.5"
+                className="h-9 w-full gap-1.5 text-xs sm:w-auto"
               >
-                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                Manage Suppliers ({suppliers.length})
+                <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">Manage Suppliers ({suppliers.length})</span>
               </Button>
               <Button
                 type="button"
                 onClick={onOpenNewPurchase}
-                className="h-9 text-xs font-semibold gap-1.5 gradient-primary shadow-sm"
+                className="h-9 w-full gap-1.5 text-xs font-semibold gradient-primary shadow-xs sm:w-auto"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-3.5 w-3.5 shrink-0" />
                 Record Purchase
               </Button>
             </>
@@ -178,18 +187,18 @@ export function PosPurchases({
                 variant="outline"
                 size="sm"
                 onClick={() => setActiveTab("invoices")}
-                className="h-9 text-xs gap-1.5"
+                className="h-9 w-full gap-1.5 text-xs sm:w-auto"
               >
-                <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                View Invoices ({purchases.length})
+                <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">View Invoices ({purchases.length})</span>
               </Button>
               {onOpenSupplierDialog && (
                 <Button
                   type="button"
                   onClick={() => onOpenSupplierDialog(null)}
-                  className="h-9 text-xs font-semibold gap-1.5 gradient-primary shadow-sm"
+                  className="h-9 w-full gap-1.5 text-xs font-semibold gradient-primary shadow-xs sm:w-auto"
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Plus className="h-3.5 w-3.5 shrink-0" />
                   Add Supplier
                 </Button>
               )}
@@ -199,17 +208,17 @@ export function PosPurchases({
       </div>
 
       {/* ── Search Bar ── */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className="relative min-w-0">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder={
             activeTab === "invoices"
-              ? "Search by supplier, PO #, notes..."
-              : "Search suppliers by name, company, phone, email, address..."
+              ? "Search supplier, PO #, notes..."
+              : "Search suppliers..."
           }
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 h-9 text-xs bg-card"
+          className="h-9 bg-card pl-9 text-xs"
         />
       </div>
 
@@ -240,46 +249,50 @@ export function PosPurchases({
                 return (
                   <Card
                     key={p.id}
-                    className="border border-border/80 bg-card overflow-hidden transition-all hover:border-primary/30"
+                    className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs transition-all hover:border-primary/30"
                   >
                     <div
                       onClick={() => setExpandedId(isExpanded ? null : p.id)}
-                      className="p-4 flex flex-wrap items-center justify-between gap-3 cursor-pointer select-none"
+                      className="flex cursor-pointer select-none flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-4"
                     >
-                      <div className="flex items-center gap-3 min-w-[200px]">
-                        <div className="h-10 w-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-xs font-bold text-blue-600 dark:text-blue-400">
                           PO
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-extrabold text-sm text-foreground">
+                        <div className="min-w-0 flex-1">
+                          <div className="min-w-0">
+                            <span className="block truncate text-sm font-extrabold text-foreground">
                               {p.supplier_name || "Unknown Supplier"}
                             </span>
-                            {p.supplier_company && (
-                              <span className="text-xs text-muted-foreground truncate">({p.supplier_company})</span>
-                            )}
+                            {p.supplier_company ? (
+                              <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                {p.supplier_company}
+                              </span>
+                            ) : null}
                           </div>
-                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground">
                             <span className="font-mono">PO #{p.id.slice(0, 8)}</span>
-                            <span>·</span>
+                            <span aria-hidden>·</span>
                             <span>{formatDate(p.purchase_date, { dateStyle: "medium" })}</span>
-                            <span>·</span>
-                            <span>{itemsCount} item{itemsCount === 1 ? "" : "s"}</span>
+                            <span aria-hidden>·</span>
+                            <span>
+                              {itemsCount} item{itemsCount === 1 ? "" : "s"}
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <div className="text-base font-black text-foreground">
+                      <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-4">
+                        <div className="text-left sm:text-right">
+                          <div className="text-base font-black tabular-nums text-foreground">
                             {formatCurrency(p.total_amount, activeCurrency)}
                           </div>
                           <Badge
                             variant="secondary"
-                            className={`text-[10px] uppercase font-bold h-4 px-1.5 ${
+                            className={`mt-0.5 h-5 px-1.5 text-[10px] font-bold uppercase ${
                               p.status === "received"
-                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                                : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                                ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                : "border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400"
                             }`}
                           >
                             {p.status === "received" ? "✓ Stock Received" : "Pending"}
@@ -288,52 +301,85 @@ export function PosPurchases({
 
                         <button
                           type="button"
-                          className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
                         >
-                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
                         </button>
                       </div>
                     </div>
 
-                    {/* Expanded Invoice Line Items */}
                     {isExpanded && (
-                      <div className="border-t border-border bg-muted/10 p-4 space-y-3 animate-fade-in">
-                        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      <div className="animate-fade-in space-y-3 border-t border-border bg-muted/10 p-3 sm:p-4">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground sm:text-xs">
                           Purchased Raw Materials Breakdown
                         </div>
 
                         {p.items && p.items.length > 0 ? (
-                          <div className="border border-border rounded-xl divide-y divide-border overflow-hidden bg-background">
-                            <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-muted/40 text-[11px] font-semibold text-muted-foreground">
-                              <div className="col-span-6">Material Item</div>
-                              <div className="col-span-2 text-center">Quantity</div>
-                              <div className="col-span-2 text-right">Unit Price</div>
-                              <div className="col-span-2 text-right">Total</div>
+                          <>
+                            <div className="hidden overflow-hidden rounded-xl border border-border bg-background sm:block">
+                              <div className="grid grid-cols-12 gap-2 bg-muted/40 px-3 py-2 text-[11px] font-semibold text-muted-foreground">
+                                <div className="col-span-6">Material Item</div>
+                                <div className="col-span-2 text-center">Quantity</div>
+                                <div className="col-span-2 text-right">Unit Price</div>
+                                <div className="col-span-2 text-right">Total</div>
+                              </div>
+                              {p.items.map((line) => (
+                                <div
+                                  key={line.id}
+                                  className="grid grid-cols-12 items-center gap-2 border-t border-border px-3 py-2 text-xs"
+                                >
+                                  <div className="col-span-6 font-semibold text-foreground">
+                                    {line.item_name}
+                                  </div>
+                                  <div className="col-span-2 text-center font-medium">
+                                    {line.quantity} {line.item_unit}
+                                  </div>
+                                  <div className="col-span-2 text-right text-muted-foreground">
+                                    {formatCurrency(line.unit_price, activeCurrency)}
+                                  </div>
+                                  <div className="col-span-2 text-right font-bold text-foreground">
+                                    {formatCurrency(line.total_price, activeCurrency)}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
 
-                            {p.items.map((line) => (
-                              <div key={line.id} className="grid grid-cols-12 gap-2 px-3 py-2 text-xs items-center">
-                                <div className="col-span-6 font-semibold text-foreground">
-                                  {line.item_name}
+                            <div className="space-y-2 sm:hidden">
+                              {p.items.map((line) => (
+                                <div
+                                  key={line.id}
+                                  className="rounded-xl border border-border bg-background p-3 text-xs"
+                                >
+                                  <div className="font-semibold text-foreground">
+                                    {line.item_name}
+                                  </div>
+                                  <div className="mt-1.5 flex flex-wrap justify-between gap-2 text-muted-foreground">
+                                    <span>
+                                      {line.quantity} {line.item_unit}
+                                    </span>
+                                    <span>
+                                      {formatCurrency(line.unit_price, activeCurrency)} / unit
+                                    </span>
+                                    <span className="font-bold text-foreground">
+                                      {formatCurrency(line.total_price, activeCurrency)}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="col-span-2 text-center font-medium">
-                                  {line.quantity} {line.item_unit}
-                                </div>
-                                <div className="col-span-2 text-right text-muted-foreground">
-                                  {formatCurrency(line.unit_price, activeCurrency)}
-                                </div>
-                                <div className="col-span-2 text-right font-bold text-foreground">
-                                  {formatCurrency(line.total_price, activeCurrency)}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                              ))}
+                            </div>
+                          </>
                         ) : (
-                          <p className="text-xs text-muted-foreground italic">No line items details recorded.</p>
+                          <p className="text-xs italic text-muted-foreground">
+                            No line items details recorded.
+                          </p>
                         )}
 
                         {p.notes && (
-                          <div className="text-xs text-muted-foreground bg-muted/20 p-2.5 rounded-lg">
+                          <div className="rounded-lg bg-muted/20 p-2.5 text-xs text-muted-foreground">
                             <strong>Invoice Notes:</strong> {p.notes}
                           </div>
                         )}

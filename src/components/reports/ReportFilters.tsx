@@ -36,7 +36,7 @@ export function ReportFilters({
   ];
 
   return (
-    <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+    <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full sm:w-auto">
       {showRestaurantFilter && isSuperAdmin && restaurants.length > 1 && (
         <Select value={restaurantId} onValueChange={onRestaurantChange}>
           <SelectTrigger className="w-full sm:w-[260px]">

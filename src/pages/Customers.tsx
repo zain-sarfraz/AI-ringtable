@@ -31,6 +31,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/i18n/formatters";
+import { PageShell } from "@/components/layout/PageShell";
 
 const AVATAR_TONES = [
   "bg-orange-100 text-orange-800",
@@ -48,7 +49,7 @@ function avatarTone(name: string) {
 }
 
 const CARD_SHADOW =
-  "rounded-xl border-border/80 shadow-[0_1px_2px_rgba(15,40,35,0.04),0_8px_24px_-12px_rgba(15,40,35,0.08)]";
+  "overflow-hidden rounded-2xl border border-border/80 shadow-xs";
 
 export default function Customers() {
   const { t } = useTranslation(["users", "common"]);
@@ -174,7 +175,7 @@ export default function Customers() {
   const potentialCount = wonLeads.length - wonOnly.length;
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 animate-fade-in pb-4">
+    <PageShell className="space-y-5 sm:space-y-6">
       {/* Hero band */}
       <section className="relative overflow-hidden rounded-2xl gradient-hero text-primary-foreground shadow-[0_20px_48px_-18px_rgba(249,115,22,0.45),0_8px_20px_-10px_rgba(31,41,55,0.5)] animate-rise">
         <div
@@ -192,7 +193,7 @@ export default function Customers() {
           <Button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="shrink-0 rounded-lg bg-white text-foreground hover:bg-white/90 shadow-sm"
+            className="w-full shrink-0 rounded-lg bg-white text-foreground shadow-xs hover:bg-white/90 sm:w-auto"
           >
             <Plus className="h-4 w-4 mr-2" aria-hidden />
             {t("users:addCustomer", "Add customer")}
@@ -344,7 +345,7 @@ export default function Customers() {
 
       {/* Customers table */}
       <Card className={cn(CARD_SHADOW, "overflow-hidden")}>
-        <CardHeader className="flex flex-col gap-4 space-y-0 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <CardHeader className="flex flex-col gap-4 space-y-0 border-b border-border/80 bg-muted/30 pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle className="text-base font-bold tracking-tight">{t("users:allCustomers", "All Customers")}</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -353,7 +354,7 @@ export default function Customers() {
               {searchQuery ? ` ${t("users:matchingSearch", "matching your search")}` : ""}
             </p>
           </div>
-          <div className="relative w-full sm:w-[300px]">
+          <div className="relative w-full sm:max-w-xs">
             <Search
               className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
               aria-hidden
@@ -492,6 +493,6 @@ export default function Customers() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }

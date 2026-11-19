@@ -16,6 +16,35 @@ function tenantIds(user) {
   return user.restaurantIds || [];
 }
 
+const MENU_WRITE_TABLES = new Set([
+  "menu_items",
+  "menu_categories",
+  "menu_sub_categories",
+  "menu_addons",
+  "menu_item_addons",
+  "menu_item_variants",
+]);
+
+function canWriteMenu(user) {
+  const roles = user?.roles || [];
+  if (roles.includes("super_admin") || roles.includes("admin") || roles.includes("manager")) {
+    return true;
+  }
+  if (user?.role === "admin" || user?.role === "manager" || user?.role === "super_admin") {
+    return true;
+  }
+  return (user?.memberships || []).some((m) =>
+    ["owner", "admin", "manager"].includes(String(m.member_role || "").toLowerCase()),
+  );
+}
+
+function assertCanWriteMenu(table, user) {
+  if (!MENU_WRITE_TABLES.has(table)) return;
+  if (!canWriteMenu(user)) {
+    throw new Error("Only restaurant admin or manager can modify the menu");
+  }
+}
+
 function applyOrString(q, orStr) {
   const parts = orStr.split(",").map((p) => p.trim()).filter(Boolean);
   q.where((qb) => {
@@ -494,6 +523,7 @@ export async function executeQuery(knex, body, user) {
   }
 
   if (action === "insert") {
+    assertCanWriteMenu(table, user);
     let rows = Array.isArray(body.values) ? body.values : [body.values];
     rows = await validateAndNormalizeInsert(knex, table, rows, user);
     let q = knex(table).insert(rows);
@@ -534,6 +564,7 @@ export async function executeQuery(knex, body, user) {
   }
 
   if (action === "update") {
+    assertCanWriteMenu(table, user);
     let targetOrders = [];
     const newStatus = body.values?.status;
     const isStatusUpdate = table === "orders" && typeof newStatus === "string";
@@ -591,6 +622,7 @@ export async function executeQuery(knex, body, user) {
   }
 
   if (action === "delete") {
+    assertCanWriteMenu(table, user);
     let q = knex(table).del();
     applyScope(knex, q, table, user);
     applyFilters(q, body.filters);

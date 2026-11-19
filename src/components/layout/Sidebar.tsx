@@ -57,9 +57,18 @@ import { Link, useLocation } from "react-router-dom";
 interface SidebarProps {
     collapsed: boolean;
     onToggle: () => void;
+    mobileOpen?: boolean;
+    onMobileClose?: () => void;
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({
+    collapsed: collapsedProp,
+    onToggle,
+    mobileOpen = false,
+    onMobileClose,
+}: SidebarProps) {
+    // Mobile drawer always shows expanded labels even if desktop rail is collapsed.
+    const collapsed = collapsedProp && !mobileOpen;
     const { t } = useTranslation(["sidebar", "common"]);
     const location = useLocation();
     const { role, profile, user } = useAuth();
@@ -283,7 +292,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     : t("sidebar:myRestaurant", "My Restaurant"),
                 href: "/restaurant-settings",
             },
-            ...(!isBranch && planFeatures.branches
+            ...(!isBranch && planFeatures.branches && role !== "manager"
                 ? [
                       {
                           icon: Building2,
@@ -298,7 +307,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 href: "/settings",
             },
         ],
-        [t, isBranch, planFeatures.branches, planFeatures.staff_management],
+        [t, isBranch, planFeatures.branches, planFeatures.staff_management, role],
     );
 
     useEffect(() => {
@@ -403,6 +412,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         const content = (
             <Link
                 to={href}
+                onClick={() => onMobileClose?.()}
                 className={cn(
                     "group relative flex items-center rounded-lg transition-colors duration-150 overflow-hidden",
                     "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -519,9 +529,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     return (
         <aside
             className={cn(
-                "fixed left-0 top-0 h-screen bg-sidebar text-sidebar-foreground flex flex-col transition-[width] duration-300 ease-in-out z-40 overflow-hidden",
-                "border-r border-sidebar-border select-none",
-                collapsed ? "w-16" : "w-64",
+                "fixed left-0 top-0 z-50 flex h-screen flex-col overflow-hidden bg-sidebar text-sidebar-foreground select-none",
+                "border-r border-sidebar-border transition-[transform,width] duration-300 ease-in-out",
+                "w-64 lg:z-40",
+                collapsedProp ? "lg:w-16" : "lg:w-64",
+                mobileOpen
+                    ? "translate-x-0"
+                    : "-translate-x-full lg:translate-x-0",
             )}
         >
             <div className="relative overflow-hidden">
@@ -536,20 +550,20 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     <div className="flex items-center gap-2.5 overflow-hidden min-w-0 flex-1">
                         <button
                             type="button"
-                            onClick={collapsed ? onToggle : undefined}
+                            onClick={collapsedProp ? onToggle : undefined}
                             className={cn(
                                 "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden shadow-lg shadow-black/20 focus:outline-none",
-                                collapsed
+                                collapsedProp
                                     ? "cursor-pointer hover:opacity-90 focus-visible:ring-2 focus-visible:ring-sidebar-primary"
                                     : "cursor-default",
                             )}
                             title={
-                                collapsed
+                                collapsedProp
                                     ? t("sidebar:expand", "Click to expand")
                                     : PRODUCT_NAME
                             }
                             aria-label={
-                                collapsed ? "Expand sidebar" : PRODUCT_NAME
+                                collapsedProp ? "Expand sidebar" : PRODUCT_NAME
                             }
                         >
                             <img
@@ -619,9 +633,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                         size="icon"
                         onClick={onToggle}
                         className={cn(
-                            "h-8 w-8 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex-shrink-0 rounded-lg transition-opacity duration-200",
+                            "hidden h-8 w-8 shrink-0 rounded-lg text-sidebar-foreground/60 transition-opacity duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:inline-flex",
                             collapsed
-                                ? "opacity-0 pointer-events-none hidden"
+                                ? "pointer-events-none opacity-0 lg:hidden"
                                 : "opacity-100",
                         )}
                         title={t("sidebar:collapse", "Collapse sidebar")}
@@ -695,13 +709,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                             </>
                         )}
 
-                        <NavItem
-                            icon={Calculator}
-                            label={t("sidebar:pos", "Point of Sale (POS)")}
-                            href="/pos"
-                            activeOverride={posGroupActive}
-                        />
-
                         {collapsed ? (
                             <NavItem
                                 icon={UtensilsCrossed}
@@ -740,40 +747,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                             )}
                             href="/deals"
                         />
-
-                        {collapsed ? (
-                            <div className="pt-2 mt-2 border-t border-sidebar-border space-y-0.5">
-                                <NavItem
-                                    icon={FileBarChart}
-                                    label={t("sidebar:reports", "Reports")}
-                                    href="/reports/items"
-                                    activeOverride={reportsGroupActive}
-                                />
-                            </div>
-                        ) : (
-                            <div className="pt-2 mt-2 border-t border-sidebar-border">
-                                <GroupButton
-                                    open={reportsOpen}
-                                    onToggleOpen={() =>
-                                        setReportsOpen((v) => !v)
-                                    }
-                                    active={reportsGroupActive}
-                                    icon={FileBarChart}
-                                    label={t("sidebar:reports", "Reports")}
-                                />
-                                {reportsOpen && (
-                                    <div className="space-y-0.5 mt-0.5">
-                                        {reportsChildren.map((item) => (
-                                            <NavItem
-                                                key={item.href}
-                                                {...item}
-                                                indent
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
 
                         <div
                             className={cn(

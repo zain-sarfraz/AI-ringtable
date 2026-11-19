@@ -74,6 +74,18 @@ async function canManageRestaurant(knex, user, restaurantId) {
   return false;
 }
 
+/** Only owner/admin (not manager) can create new branches under a parent restaurant */
+async function canCreateBranches(knex, user, parentRestaurantId) {
+  if (!user?.id || !isValidUUID(parentRestaurantId)) return false;
+  if (user.roles?.includes("super_admin")) return true;
+
+  const membership = await knex("restaurant_members")
+    .where({ restaurant_id: parentRestaurantId, user_id: user.id })
+    .whereIn("member_role", ["owner", "admin"])
+    .first();
+  return !!membership;
+}
+
 /**
  * POST /api/restaurants/:parentId/branches
  * Create a new branch under parent restaurant
@@ -87,9 +99,11 @@ router.post("/restaurants/:parentId/branches", optionalAuth, requireAuth, async 
       return res.status(400).json({ error: "Invalid parent restaurant ID" });
     }
 
-    const allowed = await canManageRestaurant(knex, req.user, parentId);
+    const allowed = await canCreateBranches(knex, req.user, parentId);
     if (!allowed) {
-      return res.status(403).json({ error: "Unauthorized: You cannot add branches to this restaurant" });
+      return res.status(403).json({
+        error: "Only restaurant owner or admin can create branches. Managers cannot create branches.",
+      });
     }
 
     const parent = await knex("restaurants").where({ id: parentId }).first();

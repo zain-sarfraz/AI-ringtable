@@ -65,6 +65,7 @@ import { getToken } from "@/lib/authStorage";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { getOrderStatusLabel, formatDate } from "@/i18n/formatters";
+import { PageShell } from "@/components/layout/PageShell";
 
 function asOrderStatus(s: string): OrderStatus {
   return (ORDER_STATUSES as readonly string[]).includes(s) ? (s as OrderStatus) : "pending";
@@ -877,7 +878,7 @@ export default function OrderDetail() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16 animate-fade-in text-foreground">
+    <PageShell className="space-y-5 pb-10 text-foreground sm:space-y-6">
       {isReservationOrder && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           This is a table reservation, not a food order. It has no price and should not be prepared in the kitchen.
@@ -885,17 +886,17 @@ export default function OrderDetail() {
         </div>
       )}
       {/* 1. Top Navigation Bar */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button
           variant="ghost"
           size="sm"
-          className="gap-2 h-9 text-muted-foreground hover:text-foreground font-semibold -ml-2"
+          className="gap-2 h-9 w-full text-muted-foreground hover:text-foreground font-semibold sm:w-auto -ml-0 sm:-ml-2"
           onClick={() => navigate("/orders")}
         >
           <ArrowLeft className="h-4 w-4" /> {t("orders:title", "Orders")}
         </Button>
 
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           <Button
             variant="outline"
             size="sm"
@@ -937,8 +938,8 @@ export default function OrderDetail() {
       </div>
 
       {/* 2. Hero Header Card */}
-      <Card className="border border-border/70 shadow-xs bg-card rounded-2xl overflow-hidden">
-        <CardContent className="p-6 sm:p-7">
+      <Card className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
+        <CardContent className="p-5 sm:p-7">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-3.5">
               {/* Badges row */}
@@ -1032,11 +1033,11 @@ export default function OrderDetail() {
             </div>
 
             {/* Quick Status Action Button */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center shrink-0">
               {st === "pending" && (
                 <Button
                   size="default"
-                  className="font-bold gradient-primary text-primary-foreground shadow-sm px-6 h-10 rounded-xl"
+                  className="font-bold gradient-primary text-primary-foreground shadow-xs w-full px-6 h-10 rounded-xl sm:w-auto"
                   onClick={() => updateStatus("confirmed", { verified_at: new Date().toISOString() })}
                 >
                   {isDineIn ? "✓ Confirm Table Order" : "✓ Confirm Order"}
@@ -1045,7 +1046,7 @@ export default function OrderDetail() {
               {st === "confirmed" && (
                 <Button
                   size="default"
-                  className="font-bold gradient-primary text-primary-foreground shadow-sm px-6 h-10 rounded-xl"
+                  className="font-bold gradient-primary text-primary-foreground shadow-xs w-full px-6 h-10 rounded-xl sm:w-auto"
                   onClick={() => updateStatus("preparing")}
                 >
                   🍳 Start Preparing
@@ -1078,7 +1079,7 @@ export default function OrderDetail() {
               {st === "ready" && isDineIn && (
                 <Button
                   size="default"
-                  className="font-bold gradient-primary text-primary-foreground shadow-sm px-6 h-10 rounded-xl"
+                  className="font-bold gradient-primary text-primary-foreground shadow-xs w-full px-6 h-10 rounded-xl sm:w-auto"
                   onClick={() => updateStatus("out_for_delivery")}
                 >
                   🍽️ Serve Table
@@ -1087,7 +1088,7 @@ export default function OrderDetail() {
               {st === "assigned" && (
                 <Button
                   size="default"
-                  className="font-bold gradient-primary text-primary-foreground shadow-sm px-6 h-10 rounded-xl"
+                  className="font-bold gradient-primary text-primary-foreground shadow-xs w-full px-6 h-10 rounded-xl sm:w-auto"
                   onClick={() => updateStatus("out_for_delivery")}
                 >
                   {isDineIn ? "🍽️ Serve Table" : "🚚 Out for Delivery"}
@@ -1096,7 +1097,7 @@ export default function OrderDetail() {
               {st === "out_for_delivery" && (
                 <Button
                   size="default"
-                  className="font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm px-6 h-10 rounded-xl"
+                  className="font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs w-full px-6 h-10 rounded-xl sm:w-auto"
                   onClick={() => updateStatus("delivered", { delivered_at: new Date().toISOString() })}
                 >
                   {isDineIn ? "✓ Mark Complete / Paid" : "✓ Mark Delivered"}
@@ -1137,7 +1138,7 @@ export default function OrderDetail() {
 
       {/* 3. Order Fulfillment Timeline Card */}
       <Card className="border border-border/70 shadow-xs bg-card rounded-2xl overflow-hidden">
-        <CardHeader className="py-4 px-6 border-b border-border/40 bg-muted/10">
+        <CardHeader className="border-b border-border/80 bg-muted/30 px-5 py-4 pb-4 sm:px-6">
           <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
             <Clock className="h-4 w-4 text-orange-500" />
             {t("orders:orderFulfillmentTimeline", "Order Fulfillment Timeline")}
@@ -1330,7 +1331,7 @@ export default function OrderDetail() {
 
           {/* Card 2: Customer Information */}
           <Card className="border border-border/70 shadow-xs bg-card rounded-2xl overflow-hidden">
-            <CardHeader className="py-4 px-6 border-b border-border/40 bg-muted/10">
+            <CardHeader className="border-b border-border/80 bg-muted/30 px-5 py-4 pb-4 sm:px-6">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <User className="h-4 w-4 text-orange-500" />
                 {t("orders:customerInfo", "Customer Information")}
@@ -1419,7 +1420,7 @@ export default function OrderDetail() {
 
           {/* Card 3: Delivery Information / Table Information */}
           <Card className="border border-border/70 shadow-xs bg-card rounded-2xl overflow-hidden">
-            <CardHeader className="py-4 px-6 border-b border-border/40 bg-muted/10">
+            <CardHeader className="border-b border-border/80 bg-muted/30 px-5 py-4 pb-4 sm:px-6">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 {isDineIn ? (
                   <>
@@ -1512,7 +1513,7 @@ export default function OrderDetail() {
         <div className="lg:col-span-5 space-y-6">
           {/* Card 1: Payment & Order Summary */}
           <Card className="border border-border/70 shadow-xs bg-card rounded-2xl overflow-hidden">
-            <CardHeader className="py-4 px-6 border-b border-border/40 bg-muted/10">
+            <CardHeader className="border-b border-border/80 bg-muted/30 px-5 py-4 pb-4 sm:px-6">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <Receipt className="h-4 w-4 text-orange-500" />
                 {t("orders:paymentSummary", "Payment & Order Summary")}
@@ -1626,7 +1627,7 @@ export default function OrderDetail() {
             </Card>
           ) : (
             <Card className="border border-border/70 shadow-xs bg-card rounded-2xl overflow-hidden">
-              <CardHeader className="py-4 px-6 border-b border-border/40 bg-muted/10">
+              <CardHeader className="border-b border-border/80 bg-muted/30 px-5 py-4 pb-4 sm:px-6">
                 <CardTitle className="text-sm font-bold flex items-center gap-2">
                   <Truck className="h-4 w-4 text-orange-500" />
                   {t("orders:deliveryRider", "Delivery Rider")}
@@ -1726,6 +1727,6 @@ export default function OrderDetail() {
 
       {/* Hidden Print Target (Thermal / POS 80mm clean print) */}
       <OrderReceipt order={order} items={items} restaurantName={restaurantName} isPrintOnly={true} tableSession={tableBill} />
-    </div>
+    </PageShell>
   );
 }

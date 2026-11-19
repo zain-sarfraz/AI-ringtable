@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/restaurant";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 interface EarningStats {
   restaurants: {
@@ -84,33 +85,31 @@ export default function RestaurantReportPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <Store className="h-8 w-8 text-primary" />
-            {t("reports:restaurantReport", "Restaurant report")}
-          </h1>
-          <p className="text-muted-foreground mt-1">{t("reports:restaurantReportDesc", "Sales and commission by restaurant")}</p>
-        </div>
-        {isSuperAdmin && restaurants.length > 1 && (
-          <Select value={restaurantId} onValueChange={setRestaurantId}>
-            <SelectTrigger className="w-full md:w-[280px]">
-              <SelectValue placeholder={t("reports:filterByRestaurant", "Filter by restaurant")} />
-            </SelectTrigger>
-            <SelectContent>
-              {restaurants.map((r) => (
-                <SelectItem key={r.restaurant_id} value={r.restaurant_id}>
-                  {r.restaurant_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("reports:restaurantReport", "Restaurant report")}
+        description={t("reports:restaurantReportDesc", "Sales and commission by restaurant")}
+        icon={<Store className="h-5 w-5" />}
+        actions={
+          isSuperAdmin && restaurants.length > 1 ? (
+            <Select value={restaurantId} onValueChange={setRestaurantId}>
+              <SelectTrigger className="w-full sm:w-[280px]">
+                <SelectValue placeholder={t("reports:filterByRestaurant", "Filter by restaurant")} />
+              </SelectTrigger>
+              <SelectContent>
+                {restaurants.map((r) => (
+                  <SelectItem key={r.restaurant_id} value={r.restaurant_id}>
+                    {r.restaurant_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null
+        }
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-card/50 backdrop-blur-sm border-none shadow-lg">
+        <Card className="rounded-2xl border border-border/80 shadow-xs">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -121,7 +120,7 @@ export default function RestaurantReportPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-card/50 backdrop-blur-sm border-none shadow-lg">
+        <Card className="rounded-2xl border border-border/80 shadow-xs">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -132,7 +131,7 @@ export default function RestaurantReportPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-card/50 backdrop-blur-sm border-none shadow-lg">
+        <Card className="rounded-2xl border border-border/80 shadow-xs">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -145,7 +144,7 @@ export default function RestaurantReportPage() {
         </Card>
       </div>
 
-      <Card className="border-none bg-card/50 backdrop-blur-sm shadow-xl overflow-hidden">
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader>
           <CardTitle>{t("reports:reportDetails", "Restaurant report details")}</CardTitle>
         </CardHeader>
@@ -187,7 +186,7 @@ export default function RestaurantReportPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 

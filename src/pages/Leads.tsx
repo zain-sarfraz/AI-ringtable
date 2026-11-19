@@ -38,6 +38,7 @@ import { LeadDetailDialog } from "@/components/leads/LeadDetailDialog";
 import { formatDistanceToNow } from "date-fns";
 import type { Tables } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 import { formatDate } from "@/i18n/formatters";
 
 type Lead = Tables<"leads">;
@@ -325,15 +326,12 @@ export default function Leads() {
   }, [leads]);
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("calls:leadsTitle", "Leads")}</h1>
-          <p className="text-muted-foreground">
-            {t("calls:leadsSubtitle", "Manage inbound and auto-dialer leads")}
-          </p>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("calls:leadsTitle", "Leads")}
+        description={t("calls:leadsSubtitle", "Manage inbound and auto-dialer leads")}
+        icon={<Users className="h-5 w-5" />}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -465,6 +463,7 @@ export default function Leads() {
               {t("calls:noLeadsFound", "No leads found")}
             </div>
           ) : (
+            <div className="overflow-x-auto -mx-1 px-1">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -635,6 +634,7 @@ export default function Leads() {
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -646,6 +646,6 @@ export default function Leads() {
         open={!!selectedLead}
         onOpenChange={(open) => !open && setSelectedLead(null)}
       />
-    </div>
+    </PageShell>
   );
 }

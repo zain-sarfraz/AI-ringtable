@@ -56,6 +56,7 @@ import { getApiBase } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
 import { formatCurrency } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
+import { PageShell } from "@/components/layout/PageShell";
 import { format, isToday } from "date-fns";
 import {
     AlertCircle,
@@ -848,6 +849,22 @@ export default function TableReservations() {
         };
     }, [dateScopedReservations]);
 
+    // KPI cards always reflect today + upcoming (not past history)
+    const liveReservations = useMemo(() => {
+        return reservations.filter((r) => {
+            const d = getReservationDateOnly(r.reservation_date);
+            return !d || d >= todayStr;
+        });
+    }, [reservations, todayStr, getReservationDateOnly]);
+
+    const liveStatusCounts = useMemo(() => {
+        return {
+            confirmed: liveReservations.filter((r) => r.status === "confirmed")
+                .length,
+            seated: liveReservations.filter((r) => r.status === "seated").length,
+        };
+    }, [liveReservations]);
+
     const filtered = useMemo(() => {
         const q = searchTerm.trim().toLowerCase();
         return dateScopedReservations
@@ -873,12 +890,33 @@ export default function TableReservations() {
                 const db = getReservationDateOnly(b.reservation_date);
                 const ta = a.start_time || "";
                 const tb = b.start_time || "";
+                const dateGroup = (d: string) => {
+                    if (!d || d === todayStr) return 0; // today first
+                    if (d > todayStr) return 1; // upcoming next
+                    return 2; // past last
+                };
+
                 if (dateFilterMode === "past") {
-                    // Show most recent past reservation first
+                    // Most recent past first
                     if (da !== db) return db.localeCompare(da);
                     return tb.localeCompare(ta);
                 }
-                // Show earliest upcoming reservation first
+
+                if (dateFilterMode === "all") {
+                    const ga = dateGroup(da);
+                    const gb = dateGroup(db);
+                    if (ga !== gb) return ga - gb;
+                    if (ga === 2) {
+                        // Past bucket: newest first
+                        if (da !== db) return db.localeCompare(da);
+                        return tb.localeCompare(ta);
+                    }
+                    // Today / upcoming: earliest first
+                    if (da !== db) return da.localeCompare(db);
+                    return ta.localeCompare(tb);
+                }
+
+                // Today & Upcoming / Today / custom: earliest first
                 if (da !== db) return da.localeCompare(db);
                 return ta.localeCompare(tb);
             });
@@ -887,6 +925,7 @@ export default function TableReservations() {
         searchTerm,
         statusFilter,
         dateFilterMode,
+        todayStr,
         getReservationDateOnly,
     ]);
 
@@ -916,9 +955,9 @@ export default function TableReservations() {
     }, [reservations, todayStr]);
 
     return (
-        <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        <PageShell className="space-y-5 sm:space-y-6">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-border/40">
+            <header className="flex flex-col gap-3 border-b border-border/40 pb-2 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1">
                     <div className="flex items-center gap-2">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20">
@@ -928,41 +967,41 @@ export default function TableReservations() {
                             {activeRestaurant?.name || "Restaurant"}
                         </span>
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2.5">
+                    <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2.5 sm:text-2xl">
                         <CalendarDays className="h-7 w-7 text-primary" />
                         Table Reservations
                     </h1>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
+                    <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
                         Manage live guest bookings, arrivals, table allocation,
                         and dining status.
                     </p>
                 </div>
 
-                <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                     <Button
                         id="btn-add-reservation"
                         onClick={openAddReservation}
-                        className="gradient-primary text-primary-foreground font-semibold shadow-md gap-2 h-10 px-5 rounded-xl flex-1 sm:flex-initial"
+                        className="gradient-primary text-primary-foreground font-semibold shadow-xs gap-2 h-10 w-full px-5 rounded-xl sm:w-auto"
                     >
                         <Plus className="h-4 w-4" /> New Reservation
                     </Button>
                 </div>
-            </div>
+            </header>
 
             {/* KPI Overview Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 sm:gap-4">
                 {[
                     {
                         label: "Today's Bookings",
                         value: todayRes,
-                        desc: `${statusCounts.confirmed} confirmed · ${statusCounts.seated} seated`,
+                        desc: `${liveStatusCounts.confirmed} confirmed · ${liveStatusCounts.seated} seated`,
                         icon: CalendarDays,
                         color: "text-emerald-600 dark:text-emerald-400",
                         bg: "bg-emerald-500/10 border-emerald-500/20",
                     },
                     {
                         label: "Awaiting Arrival",
-                        value: statusCounts.confirmed,
+                        value: liveStatusCounts.confirmed,
                         desc: "Ready for check-in",
                         icon: Clock,
                         color: "text-amber-600 dark:text-amber-400",
@@ -970,7 +1009,7 @@ export default function TableReservations() {
                     },
                     {
                         label: "Currently Seated",
-                        value: statusCounts.seated,
+                        value: liveStatusCounts.seated,
                         desc: "Guests dining right now",
                         icon: UtensilsCrossed,
                         color: "text-blue-600 dark:text-blue-400",
@@ -1047,11 +1086,11 @@ export default function TableReservations() {
                 {/* ─── RESERVATIONS TAB ─────────────────────── */}
                 <TabsContent value="reservations" className="space-y-4 pt-1">
                     {/* ─── Unified Modern Control & Filter Bar ─── */}
-                    <div className="bg-card border border-border/80 rounded-2xl p-4 sm:p-4.5 shadow-2xs space-y-3.5">
+                    <div className="bg-card border border-border/80 rounded-2xl p-4 sm:p-4.5 shadow-2xs space-y-3.5 overflow-hidden">
                         {/* Top Row: Date Scope Segmented Bar + View Switcher + Search & Refresh */}
-                        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                        <div className="flex flex-col gap-3 min-w-0 2xl:flex-row 2xl:items-center 2xl:justify-between">
                             {/* Left: Date Scope Filter Controls */}
-                            <div className="flex items-center gap-2 overflow-x-auto pb-1 xl:pb-0 scrollbar-none flex-nowrap shrink-0">
+                            <div className="flex items-center gap-2 overflow-x-auto pb-1 2xl:pb-0 scrollbar-none flex-nowrap min-w-0 max-w-full">
                                 {/* Segmented Control */}
                                 <div className="inline-flex flex-nowrap items-center p-1 bg-muted/60 dark:bg-muted/30 rounded-xl border border-border/60 shadow-2xs shrink-0 gap-1">
                                     <button
@@ -1212,12 +1251,12 @@ export default function TableReservations() {
                             </div>
 
                             {/* Right: Search, Refresh & View Mode Switcher */}
-                            <div className="flex items-center gap-2 w-full xl:w-auto">
-                                <div className="relative flex-1 xl:w-64">
+                            <div className="flex items-center gap-2 w-full min-w-0 2xl:w-auto 2xl:max-w-[min(100%,28rem)] 2xl:shrink-0">
+                                <div className="relative flex-1 min-w-0 2xl:w-56 2xl:flex-none">
                                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                                     <Input
                                         placeholder="Search guest, phone, table..."
-                                        className="pl-8 pr-7 h-8.5 text-xs rounded-xl bg-background border-border/70 focus-visible:ring-primary/20 shadow-2xs"
+                                        className="pl-8 pr-7 h-8.5 text-xs rounded-xl bg-background border-border/70 focus-visible:ring-primary/20 shadow-2xs w-full"
                                         value={searchTerm}
                                         onChange={(e) =>
                                             setSearchTerm(e.target.value)
@@ -1240,7 +1279,7 @@ export default function TableReservations() {
                                         type="button"
                                         onClick={() => setViewMode("table")}
                                         className={cn(
-                                            "flex items-center gap-1.5 px-2.5 h-7.5 rounded-lg text-xs font-semibold transition-all",
+                                            "flex items-center gap-1.5 px-2 h-7.5 rounded-lg text-xs font-semibold transition-all",
                                             viewMode === "table"
                                                 ? "bg-background text-foreground shadow-xs font-bold border border-border/70"
                                                 : "text-muted-foreground hover:text-foreground",
@@ -1248,7 +1287,7 @@ export default function TableReservations() {
                                         title="Table View"
                                     >
                                         <TableProperties className="h-3.5 w-3.5" />
-                                        <span className="hidden sm:inline">
+                                        <span className="hidden md:inline">
                                             Table
                                         </span>
                                     </button>
@@ -1256,7 +1295,7 @@ export default function TableReservations() {
                                         type="button"
                                         onClick={() => setViewMode("cards")}
                                         className={cn(
-                                            "flex items-center gap-1.5 px-2.5 h-7.5 rounded-lg text-xs font-semibold transition-all",
+                                            "flex items-center gap-1.5 px-2 h-7.5 rounded-lg text-xs font-semibold transition-all",
                                             viewMode === "cards"
                                                 ? "bg-background text-foreground shadow-xs font-bold border border-border/70"
                                                 : "text-muted-foreground hover:text-foreground",
@@ -1264,7 +1303,7 @@ export default function TableReservations() {
                                         title="Cards View"
                                     >
                                         <LayoutGrid className="h-3.5 w-3.5" />
-                                        <span className="hidden sm:inline">
+                                        <span className="hidden md:inline">
                                             Cards
                                         </span>
                                     </button>
@@ -2304,7 +2343,7 @@ export default function TableReservations() {
                             return (
                                 <div
                                     key={t.id}
-                                    className={`border rounded-xl p-4 shadow-sm transition-all ${
+                                    className={`border rounded-xl p-4 shadow-xs transition-all ${
                                         occupied
                                             ? "bg-amber-500/5 border-amber-500/30"
                                             : t.is_active
@@ -2790,7 +2829,7 @@ export default function TableReservations() {
                             {/* Customer Info Card */}
                             <div className="bg-muted/40 rounded-xl p-4 border border-border/60 space-y-3">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 border border-primary/20 flex items-center justify-center font-bold text-base text-primary shadow-sm shrink-0">
+                                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 border border-primary/20 flex items-center justify-center font-bold text-base text-primary shadow-xs shrink-0">
                                         {getInitials(
                                             detailReservation.customer_name,
                                         )}
@@ -3013,7 +3052,7 @@ export default function TableReservations() {
                                             </Button>
                                             <Button
                                                 size="sm"
-                                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-sm"
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-xs"
                                                 onClick={() => {
                                                     handleCustomerArrived(
                                                         detailReservation,
@@ -3037,7 +3076,7 @@ export default function TableReservations() {
                                         "confirmed" && (
                                         <Button
                                             size="sm"
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-sm hover:brightness-105"
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-xs hover:brightness-105"
                                             onClick={() => {
                                                 handleCustomerArrived(
                                                     detailReservation,
@@ -3061,7 +3100,7 @@ export default function TableReservations() {
                                     {detailReservation.status === "seated" && (
                                         <Button
                                             size="sm"
-                                            className="bg-slate-900 hover:bg-black text-white font-medium gap-1.5 shadow-sm"
+                                            className="bg-slate-900 hover:bg-black text-white font-medium gap-1.5 shadow-xs"
                                             onClick={() => {
                                                 quickStatus(
                                                     detailReservation.id,
@@ -3355,6 +3394,6 @@ export default function TableReservations() {
                     )}
                 </DialogContent>
             </Dialog>
-        </div>
+        </PageShell>
     );
 }

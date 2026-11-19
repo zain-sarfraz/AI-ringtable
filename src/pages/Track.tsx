@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { getApiBase } from "@/lib/apiBase";
+import { getApiBase, resolveMediaUrl } from "@/lib/apiBase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { getOrderStatusLabel } from "@/i18n/formatters";
 import { LanguageSwitcher } from "@/components/common/LanguageSwitcher";
 import { OrderReceipt } from "@/components/orders/OrderReceipt";
 import { OrderFulfillmentTimeline } from "@/components/orders/OrderFulfillmentTimeline";
+import { cn } from "@/lib/utils";
 
 export default function Track() {
   const { t } = useTranslation(["track", "orders", "common"]);
@@ -23,6 +24,7 @@ export default function Track() {
   const [restaurant, setRestaurant] = useState<any>(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [menuPath, setMenuPath] = useState<string | null>(null);
+  const [logoBroken, setLogoBroken] = useState(false);
 
   const load = async () => {
     if (!code) return;
@@ -35,6 +37,7 @@ export default function Track() {
       setRestaurant(j.settings || null);
       setTableSession(j.table_session || null);
       setMenuPath(j.menu_path || null);
+      setLogoBroken(false);
     } else {
       setOrder(null);
       setItems([]);
@@ -42,6 +45,7 @@ export default function Track() {
       setRestaurant(null);
       setTableSession(null);
       setMenuPath(null);
+      setLogoBroken(false);
     }
     setLoading(false);
   };
@@ -58,15 +62,21 @@ export default function Track() {
   }, [order?.id, code]);
 
   const sessionOrders = tableSession?.orders?.length ? tableSession.orders : null;
-  const displayOrders = useMemo(() => {
-    if (sessionOrders) return sessionOrders;
-    if (!order) return [];
-    return [{ ...order, items }];
+  const lineItems = useMemo(() => {
+    if (sessionOrders?.length) {
+      return sessionOrders.flatMap((sessOrder: any) =>
+        (sessOrder.items || (sessOrder.id === order?.id ? items : [])).map((it: any) => ({
+          ...it,
+          _key: `${sessOrder.id || "o"}-${it.id}`,
+        })),
+      );
+    }
+    return (items || []).map((it: any) => ({ ...it, _key: it.id }));
   }, [sessionOrders, order, items]);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   if (!order) return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 py-4">
       <Card className="max-w-md w-full"><CardContent className="py-10 text-center space-y-2">
         <Package className="h-10 w-10 mx-auto text-muted-foreground" />
         <h2 className="text-lg font-semibold">{t("track:orderNotFound", "Order not found")}</h2>
@@ -85,6 +95,7 @@ export default function Track() {
   const paid = String(order.payment_status || "").toLowerCase() === "paid" || order.status === "delivered"
     || String(tableSession?.session?.status || "") === "closed";
   const billTotal = tableSession?.totals?.total_amount ?? order.total_amount;
+  const logoSrc = resolveMediaUrl(restaurant?.logo_url) || restaurant?.logo_url || null;
   const orderMorePath = (() => {
     if (!menuPath) return null;
     const [path, qs] = menuPath.split("?");
@@ -102,9 +113,20 @@ export default function Track() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            {restaurant?.logo_url && <img src={restaurant.logo_url} alt="" className="h-8 w-8 rounded" />}
+            {logoSrc && !logoBroken ? (
+              <img
+                src={logoSrc}
+                alt={restaurant?.name || "Restaurant"}
+                className="h-9 w-9 rounded-lg object-cover border border-border/60 bg-muted"
+                onError={() => setLogoBroken(true)}
+              />
+            ) : (
+              <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-sm font-bold border border-primary/20">
+                {String(restaurant?.name || "R").charAt(0).toUpperCase()}
+              </div>
+            )}
             <div>
               <h1 className="font-semibold">{restaurant?.name || t("track:title", "Order tracking")}</h1>
               {restaurant?.phone && <a href={`tel:${restaurant.phone}`} className="text-xs text-primary">{restaurant.phone}</a>}
@@ -113,12 +135,12 @@ export default function Track() {
           <LanguageSwitcher />
         </div>
       </header>
-      <main className="max-w-2xl mx-auto p-4 space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="font-mono">{order.order_number}</span>
-              <Badge className={ORDER_STATUS_COLORS[order.status as OrderStatus]} variant="outline">
+      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-4 space-y-4">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+          <CardHeader className="border-b bg-muted/30 pb-4">
+            <CardTitle className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span className="break-all font-mono text-base sm:text-lg">{order.order_number}</span>
+              <Badge className={cn(ORDER_STATUS_COLORS[order.status as OrderStatus], "w-fit")} variant="outline">
                 {isDineIn && order.status === "out_for_delivery"
                   ? "🍽️ Served to Table"
                   : isDineIn && order.status === "delivered"
@@ -126,32 +148,27 @@ export default function Track() {
                   : getOrderStatusLabel(order.status, t)}
               </Badge>
             </CardTitle>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
               {order.customer_name} • {isDineIn ? `Dine-In (${cleanTableDisplay})` : order.delivery_address}
             </p>
-            {isDineIn && sessionOrders && sessionOrders.length > 1 && (
-              <p className="text-xs text-muted-foreground">
-                All orders for this table appear here, including items added by staff.
-              </p>
-            )}
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 pt-4">
             <p className="text-xs text-muted-foreground">
               Save this page. Quote <span className="font-mono font-semibold text-foreground">{order.order_number}</span> if you call us to hear the latest status.
             </p>
           </CardContent>
         </Card>
 
-        <Card className="border border-border/70 shadow-xs bg-card rounded-2xl overflow-hidden">
-          <CardHeader className="py-4 px-6 border-b border-border/40 bg-muted/10">
-            <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
+          <CardHeader className="border-b border-border/40 bg-muted/30 px-4 py-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground">
               <Clock className="h-4 w-4 text-orange-500" />
               {t("orders:orderFulfillmentTimeline", "Order Fulfillment Timeline")}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             {cancelled ? (
-              <p className="text-sm text-red-600 text-center py-6">{t("orders:orderCancelledAt", "This order was cancelled.")}</p>
+              <p className="py-6 text-center text-sm text-red-600">{t("orders:orderCancelledAt", "This order was cancelled.")}</p>
             ) : (
               <OrderFulfillmentTimeline order={order} history={history} />
             )}
@@ -159,65 +176,58 @@ export default function Track() {
         </Card>
 
         {restaurant?.phone && (
-          <Card>
-            <CardContent className="py-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-bold flex items-center gap-1.5">
+          <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+            <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-sm font-bold">
                   <Phone className="h-4 w-4" /> Call to track
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Tell the agent your order number {order.order_number} and they will read the status.
                 </p>
               </div>
-              <Button asChild variant="outline" className="font-bold">
+              <Button asChild variant="outline" className="w-full font-bold sm:w-auto">
                 <a href={`tel:${restaurant.phone}`}>Call {restaurant.phone}</a>
               </Button>
             </CardContent>
           </Card>
         )}
 
-        {displayOrders.map((sessOrder: any, index: number) => (
-          <Card key={sessOrder.id || index}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">
-                {displayOrders.length > 1 ? `Order ${index + 1} · ${sessOrder.order_number || ""}` : t("orders:items", "Items")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1.5 text-sm">
-              {(sessOrder.items || (sessOrder.id === order.id ? items : [])).map((it: any) => (
-                <div key={it.id} className="flex justify-between">
-                  <span>{it.quantity}× {it.item_name}</span>
-                  <span>{formatCurrency(it.line_total)}</span>
-                </div>
-              ))}
-              {displayOrders.length > 1 && (
-                <div className="flex justify-between text-xs font-semibold pt-2 border-t">
-                  <span>Section total</span>
-                  <span>{formatCurrency(sessOrder.total_amount)}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+          <CardHeader className="border-b bg-muted/30 pb-3">
+            <CardTitle className="text-sm">{t("orders:items", "Items")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1.5 pt-4 text-sm">
+            {lineItems.map((it: any) => (
+              <div key={it._key} className="flex justify-between gap-3">
+                <span className="min-w-0">{it.quantity}× {it.item_name}</span>
+                <span className="shrink-0 tabular-nums">{formatCurrency(it.line_total)}</span>
+              </div>
+            ))}
+            {lineItems.length === 0 && (
+              <p className="text-xs text-muted-foreground">No items</p>
+            )}
+          </CardContent>
+        </Card>
 
-        <Card>
-          <CardContent className="pt-4 space-y-1.5 text-sm">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+          <CardContent className="space-y-1.5 pt-4 text-sm">
             <div className="flex justify-between text-muted-foreground"><span>{t("orders:subtotal", "Subtotal")}</span><span>{formatCurrency(tableSession?.totals?.subtotal ?? order.subtotal)}</span></div>
             <div className="flex justify-between text-muted-foreground"><span>{t("orders:tax", "Tax")}</span><span>{formatCurrency(tableSession?.totals?.tax_amount ?? order.tax_amount)}</span></div>
             {!isDineIn && <div className="flex justify-between text-muted-foreground"><span>{t("orders:deliveryFee", "Delivery")}</span><span>{formatCurrency(order.delivery_fee)}</span></div>}
             {order.discount_amount > 0 && <div className="flex justify-between text-green-600"><span>{t("orders:discount", "Discount")}</span><span>-{formatCurrency(order.discount_amount)}</span></div>}
-            <div className="flex justify-between font-semibold pt-1"><span>{t("orders:total", "Total")}</span><span>{formatCurrency(billTotal)}</span></div>
+            <div className="flex justify-between pt-1 font-semibold"><span>{t("orders:total", "Total")}</span><span>{formatCurrency(billTotal)}</span></div>
           </CardContent>
         </Card>
 
         {isDineIn && !cancelled && orderMorePath && !paid && (
-          <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <Card className="overflow-hidden rounded-2xl border border-primary/30 bg-primary/5 shadow-xs">
+            <CardContent className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center">
               <div>
                 <p className="text-sm font-bold">Want something else?</p>
-                <p className="text-xs text-muted-foreground">Place another order for this table. It will be added to the same bill.</p>
+                <p className="text-xs text-muted-foreground">Place another order for this table.</p>
               </div>
-              <Button asChild className="font-bold gap-1.5">
+              <Button asChild className="w-full gap-1.5 font-bold sm:w-auto">
                 <Link to={orderMorePath}>
                   <Plus className="h-4 w-4" /> Order more
                 </Link>
@@ -226,10 +236,10 @@ export default function Track() {
           </Card>
         )}
 
-        <Card>
-          <CardContent className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+          <CardContent className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center">
             <div>
-              <p className="text-sm font-bold flex items-center gap-1.5">
+              <p className="flex items-center gap-1.5 text-sm font-bold">
                 <Receipt className="h-4 w-4" /> {paid ? "Invoice ready" : "Invoice"}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -244,7 +254,7 @@ export default function Track() {
             </div>
             <Button
               variant={paid ? "default" : "outline"}
-              className="gap-1.5 font-bold"
+              className="w-full gap-1.5 font-bold sm:w-auto"
               onClick={() => {
                 setShowInvoice(true);
                 setTimeout(() => window.print(), 150);

@@ -38,6 +38,7 @@ import { formatCurrency } from "@/lib/restaurant";
 import { getOrderStatusLabel, formatDate, formatNumber, getActiveLocale } from "@/i18n/formatters";
 import { getApiBase } from "@/lib/apiBase";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageShell } from "@/components/layout/PageShell";
 import {
   BarChart,
   Bar,
@@ -339,7 +340,7 @@ function RestaurantBarChart({ data }: { data: { name: string; revenue: number; o
 /* ─── Skeletons ─────────────────────────────────────────────── */
 function StatCardSkeleton() {
   return (
-    <Card className="rounded-xl border-border/80 shadow-sm">
+    <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2 flex-1">
@@ -416,7 +417,7 @@ function SuperAdminDashboard({ firstName }: { firstName: string }) {
   }, [dash, t]);
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 animate-fade-in pb-6">
+    <PageShell className="space-y-6">
       {/* Welcome Hero */}
       <section className="relative overflow-hidden rounded-2xl gradient-hero text-primary-foreground shadow-[0_20px_48px_-18px_rgba(249,115,22,0.45),0_8px_20px_-10px_rgba(31,41,55,0.5)] animate-rise">
         <div className="pointer-events-none absolute inset-0 opacity-40"
@@ -459,12 +460,12 @@ function SuperAdminDashboard({ firstName }: { firstName: string }) {
       </section>
 
       {/* KPI Cards */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
         {isPending ? (
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           kpis.map((k, i) => (
-            <Card key={i} className="rounded-xl border-border/80 shadow-sm hover:border-primary/25 hover:shadow-md transition-all duration-200 animate-rise" style={{ animationDelay: `${i * 60}ms` }}>
+            <Card key={i} className="overflow-hidden rounded-2xl border border-border/80 shadow-xs hover:border-primary/25 hover:shadow-md transition-all duration-200 animate-rise" style={{ animationDelay: `${i * 60}ms` }}>
               <CardContent className="p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 space-y-1">
@@ -485,7 +486,7 @@ function SuperAdminDashboard({ firstName }: { firstName: string }) {
       {/* Charts Row */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
         {/* Monthly Revenue Bar Chart */}
-        <Card className="xl:col-span-7 rounded-xl border-border/80 shadow-sm">
+        <Card className="xl:col-span-7 overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-border/40">
             <div>
               <CardTitle className="text-base font-bold tracking-tight flex items-center gap-2">
@@ -508,7 +509,7 @@ function SuperAdminDashboard({ firstName }: { firstName: string }) {
         </Card>
 
         {/* Order Status Donut */}
-        <Card className="xl:col-span-5 rounded-xl border-border/80 shadow-sm">
+        <Card className="xl:col-span-5 overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-border/40">
             <div>
               <CardTitle className="text-base font-bold tracking-tight flex items-center gap-2">
@@ -529,7 +530,7 @@ function SuperAdminDashboard({ firstName }: { firstName: string }) {
       </div>
 
       {/* Restaurant Sales Breakdown */}
-      <Card className="rounded-xl border-border/80 shadow-sm">
+      <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
         <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-border/40">
           <div>
             <CardTitle className="text-base font-bold tracking-tight flex items-center gap-2">
@@ -575,7 +576,7 @@ function SuperAdminDashboard({ firstName }: { firstName: string }) {
               style={{ animationDelay: `${index * 40}ms` }}
               className={cn(
                 "group flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4",
-                "shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md animate-rise"
+                "shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md animate-rise"
               )}
             >
               <div className="flex items-start justify-between gap-2">
@@ -589,7 +590,7 @@ function SuperAdminDashboard({ firstName }: { firstName: string }) {
           ))}
         </div>
       </section>
-    </div>
+    </PageShell>
   );
 }
 
@@ -960,7 +961,7 @@ function RestaurantDashboard({ firstName }: { firstName: string }) {
   });
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 animate-fade-in pb-4">
+    <PageShell className="space-y-5 sm:space-y-6">
       {/* Welcome band */}
       <section className="relative overflow-hidden rounded-2xl gradient-hero text-primary-foreground shadow-[0_20px_48px_-18px_rgba(249,115,22,0.45),0_8px_20px_-10px_rgba(31,41,55,0.5)] animate-rise">
         <div className="pointer-events-none absolute inset-0 opacity-40"
@@ -986,7 +987,7 @@ function RestaurantDashboard({ firstName }: { firstName: string }) {
 
       <div className="space-y-5">
         {/* Restaurant status */}
-        <Card className="rounded-xl border-border/80 shadow-sm overflow-hidden">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs overflow-hidden">
           <CardContent className="p-0">
             <div className="flex flex-wrap items-center justify-between gap-4 border-l-4 border-l-status-available bg-card px-5 py-4">
               <div className="min-w-0 space-y-1">
@@ -1003,7 +1004,7 @@ function RestaurantDashboard({ firstName }: { firstName: string }) {
         </Card>
 
         {/* Unified Sales & Revenue Overview */}
-        <Card className="rounded-xl border-border/80 shadow-sm overflow-hidden">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-border/40">
             <div>
               <CardTitle className="text-base font-bold tracking-tight flex items-center gap-2">
@@ -1082,7 +1083,7 @@ function RestaurantDashboard({ firstName }: { firstName: string }) {
         </Card>
 
         {/* Orders & Sales Trend Area Chart */}
-        <Card className="rounded-xl border-border/80 shadow-sm overflow-hidden">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-border/40">
             <div>
               <CardTitle className="text-base font-bold tracking-tight flex items-center gap-2">
@@ -1103,7 +1104,7 @@ function RestaurantDashboard({ firstName }: { firstName: string }) {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

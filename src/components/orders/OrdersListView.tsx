@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
+import { PageShell } from "@/components/layout/PageShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -788,12 +789,12 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
 
   return (
     <>
-      <div className="space-y-5">
+      <PageShell className="space-y-5">
         {/* Header Title and Search Bar */}
-        <div className="flex justify-between items-start sm:items-center flex-wrap gap-4">
-          <div>
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl font-bold flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight sm:text-2xl flex items-center gap-2">
                 {icon}
                 {title}
               </h1>
@@ -807,11 +808,13 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                 </Badge>
               )}
             </div>
-            {description && <p className="text-muted-foreground text-sm mt-0.5">{description}</p>}
+            {description && (
+              <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">{description}</p>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-64">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="relative w-full sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={t("orders:searchPlaceholder", "Search name, phone, #...")}
@@ -834,7 +837,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
               variant={showAdvancedFilters || activeFiltersCount > 0 ? "secondary" : "outline"}
               onClick={() => setShowAdvancedFilters((v) => !v)}
               className={cn(
-                "h-10 rounded-lg gap-2 border-border/80",
+                "h-10 w-full rounded-lg gap-2 border-border/80 sm:w-auto",
                 activeFiltersCount > 0 && "border-primary/40 text-primary font-semibold"
               )}
             >
@@ -860,13 +863,13 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
             )}
 
             {role !== "kitchen" && role !== "chef" && role !== "receptionist" && (
-              <div className="flex flex-col items-stretch gap-1.5 min-w-[9.5rem]">
+              <div className="flex w-full flex-col items-stretch gap-1.5 sm:w-auto sm:min-w-[9.5rem]">
                 <CreateManualOrderDialog onOrderCreated={() => void load()} />
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-9 rounded-lg gap-1.5 w-full"
+                  className="h-9 w-full rounded-lg gap-1.5 sm:w-auto"
                   disabled={syncingMarketplace}
                   onClick={() => void syncMarketplaceOrders()}
                 >
@@ -880,7 +883,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
               </div>
             )}
           </div>
-        </div>
+        </header>
 
         {/* Quick Transfer Filter Pills */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -909,7 +912,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
         </div>
 
         {/* Primary Filter Bar */}
-        <Card className="rounded-xl border-border/80 shadow-xs">
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           <CardContent className="p-4 space-y-4">
             <div className={cn(
               "grid grid-cols-1 gap-3",
@@ -1181,7 +1184,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
 
             return (
               <Card key={o.id} className={cn(
-                "hover:border-primary/50 transition-all shadow-xs border-border/80",
+                "overflow-hidden rounded-2xl border border-border/80 shadow-xs hover:border-primary/50 transition-all",
                 isIncomingTransferForMe && "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/[0.03]",
                 isTransferRejected && "border-destructive/40 bg-destructive/[0.02]",
                 isTransferredOrder && !isIncomingTransferForMe && "border-primary/30 bg-primary/[0.01]"
@@ -1551,7 +1554,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
             </Card>
           )}
         </div>
-      </div>
+      </PageShell>
 
       {/* Quick Transfer Order to Branch Modal (HQ Admin) */}
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>

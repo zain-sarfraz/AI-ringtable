@@ -26,6 +26,7 @@ import { CallDetailDialog } from "@/components/calls/CallDetailDialog";
 import { formatDate, formatTime } from "@/i18n/formatters";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 type Call = Tables<"calls">;
 
@@ -117,28 +118,29 @@ export default function Calls() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("calls:title", "Calls")}</h1>
-          <p className="text-muted-foreground">{t("calls:subtitle", "View and manage all call activity")}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
-            onClick={() => syncMutation.mutate()}
-            disabled={syncMutation.isPending}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-            {syncMutation.isPending ? t("calls:syncing", "Syncing...") : t("calls:syncElevenLabs", "Sync from ElevenLabs")}
-          </Button>
-          <Button className="gradient-primary text-primary-foreground">
-            <Phone className="h-4 w-4 mr-2" />
-            {t("calls:newCall", "New Call")}
-          </Button>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("calls:title", "Calls")}
+        description={t("calls:subtitle", "View and manage all call activity")}
+        icon={<Phone className="h-5 w-5" />}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+              {syncMutation.isPending ? t("calls:syncing", "Syncing...") : t("calls:syncElevenLabs", "Sync from ElevenLabs")}
+            </Button>
+            <Button className="gradient-primary text-primary-foreground w-full sm:w-auto">
+              <Phone className="h-4 w-4 mr-2" />
+              {t("calls:newCall", "New Call")}
+            </Button>
+          </>
+        }
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -239,6 +241,7 @@ export default function Calls() {
               {t("calls:noCalls", "No calls found")}
             </div>
           ) : (
+            <div className="overflow-x-auto -mx-1 px-1">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -320,6 +323,7 @@ export default function Calls() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -330,7 +334,7 @@ export default function Calls() {
         open={!!selectedCall}
         onOpenChange={(open) => !open && setSelectedCall(null)}
       />
-    </div>
+    </PageShell>
   );
 }
 

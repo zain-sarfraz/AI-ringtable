@@ -14,7 +14,7 @@ export function GeneralSettings() {
   return (
     <div className="space-y-6">
       {/* Language Preferences Card */}
-      <Card>
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5 text-primary" />
@@ -36,7 +36,7 @@ export function GeneralSettings() {
       </Card>
 
       {/* Profile Settings Card */}
-      <Card>
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
         <CardHeader>
           <CardTitle>{t("auth:profileTitle", "Profile Settings")}</CardTitle>
           <CardDescription>{t("auth:profileSubtitle", "Update your personal information")}</CardDescription>

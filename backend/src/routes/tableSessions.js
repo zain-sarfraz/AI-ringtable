@@ -70,6 +70,12 @@ router.get("/restaurants/:id/floor-tables", optionalAuth, requireAuth, async (re
   try {
     const knex = getKnex();
     const restaurantId = req.params.id;
+    try {
+      const { reconcileReservationAvailability } = await import("../lib/tableReservationService.js");
+      await reconcileReservationAvailability(knex, restaurantId);
+    } catch (err) {
+      console.warn("[floor-tables] reservation reconcile notice:", err?.message || err);
+    }
     const familyIds = await resolveRestaurantFamilyIds(knex, restaurantId);
 
     const tables = await knex("restaurant_tables")

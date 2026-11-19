@@ -5,6 +5,7 @@ import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { NotificationSettings } from "@/components/settings/NotificationSettings";
 import { SecuritySettings } from "@/components/settings/SecuritySettings";
 import { UserManagement } from "@/components/settings/UserManagement";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 export default function Settings() {
   const { t } = useTranslation(["settings", "sidebar", "common"]);
@@ -13,11 +14,11 @@ export default function Settings() {
   const showSecurity = isManagement || isKitchen || isReceptionist || isStaff;
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("settings:title", "Settings")}</h1>
-        <p className="text-muted-foreground mt-1">{t("settings:subtitle", "Manage your preferences and integrations")}</p>
-      </div>
+    <PageShell maxWidth="md">
+      <PageHeader
+        title={t("settings:title", "Settings")}
+        description={t("settings:subtitle", "Manage your preferences and integrations")}
+      />
 
       <Tabs defaultValue="general" className="space-y-6">
         <TabsList className="h-auto flex-wrap justify-start gap-1 w-full sm:w-auto">
@@ -47,7 +48,7 @@ export default function Settings() {
           </TabsContent>
         )}
       </Tabs>
-    </div>
+    </PageShell>
   );
 }
 

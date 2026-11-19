@@ -6,19 +6,19 @@ import { LeadsDialer } from "@/components/outbound/LeadsDialer";
 import { WebsiteAnalysis } from "@/components/outbound/WebsiteAnalysis";
 import { MockupFollowups } from "@/components/outbound/MockupFollowups";
 import { Phone, Upload, Globe, Mail } from "lucide-react";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 export default function OutboundCalls() {
   const { t } = useTranslation(["calls", "common"]);
   const [activeTab, setActiveTab] = useState("campaigns");
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
-      <div>
-        <h1 className="text-3xl font-bold">{t("calls:outbound", "Outbound Calls")}</h1>
-        <p className="text-muted-foreground mt-1">
-          {t("calls:outboundSubtitle", "Manage campaigns, upload leads, and track outbound calling activities")}
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("calls:outbound", "Outbound Calls")}
+        description={t("calls:outboundSubtitle", "Manage campaigns, upload leads, and track outbound calling activities")}
+        icon={<Phone className="h-5 w-5" />}
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
@@ -56,7 +56,7 @@ export default function OutboundCalls() {
           <MockupFollowups />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }
 

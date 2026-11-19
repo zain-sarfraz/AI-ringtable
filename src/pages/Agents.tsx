@@ -35,6 +35,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AgentEditDialog, type AgentEditorValue } from "@/components/agents/AgentEditDialog";
 import { AgentDetailsPanel } from "@/components/agents/AgentDetailsPanel";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
+import { cn } from "@/lib/utils";
 
 type AgentRow = {
   id: string;
@@ -175,39 +177,38 @@ export default function Agents() {
   const inactiveAgents = agents?.filter((a) => !a.is_active) ?? [];
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("calls:agents", "AI Agents")}</h1>
-          <p className="text-muted-foreground">
-            Sync, edit, create, and delete ElevenLabs agents directly from your dashboard
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={openCreate} variant="outline">
-            <Plus className="h-4 w-4 mr-2" /> {t("common:add", "New agent")}
-          </Button>
-          <Button
-            onClick={handleSync}
-            disabled={syncing}
-            className="gradient-primary text-primary-foreground"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? t("calls:syncing", "Syncing...") : t("calls:syncElevenLabs", "Sync from ElevenLabs")}
-          </Button>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("calls:agents", "AI Agents")}
+        description="Sync, edit, create, and delete ElevenLabs agents directly from your dashboard"
+        icon={<Bot className="h-5 w-5" />}
+        actions={
+          <>
+            <Button onClick={openCreate} variant="outline" className="w-full sm:w-auto">
+              <Plus className="h-4 w-4 mr-2" /> {t("common:add", "New agent")}
+            </Button>
+            <Button
+              onClick={handleSync}
+              disabled={syncing}
+              className="gradient-primary text-primary-foreground w-full sm:w-auto"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? t("calls:syncing", "Syncing...") : t("calls:syncElevenLabs", "Sync from ElevenLabs")}
+            </Button>
+          </>
+        }
+      />
 
       {isLoading ? (
-        <Card>
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
           <CardContent className="py-12 text-center text-muted-foreground">
             {t("common:loading", "Loading agents...")}
           </CardContent>
         </Card>
       ) : activeAgents.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center space-y-3">
-            <Bot className="h-12 w-12 mx-auto text-muted-foreground" />
+        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
+          <CardContent className="space-y-3 py-12 text-center">
+            <Bot className="mx-auto h-12 w-12 text-muted-foreground" />
             <div>
               <p className="font-medium">No agents synced yet</p>
               <p className="text-sm text-muted-foreground">
@@ -217,11 +218,14 @@ export default function Agents() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {activeAgents.map((agent) => (
             <Card
               key={agent.id}
-              className={agent.is_default ? "border-primary ring-1 ring-primary/30" : ""}
+              className={cn(
+                "overflow-hidden rounded-2xl border border-border/80 shadow-xs",
+                agent.is_default && "border-primary ring-1 ring-primary/30",
+              )}
             >
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
@@ -437,7 +441,7 @@ export default function Agents() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
 

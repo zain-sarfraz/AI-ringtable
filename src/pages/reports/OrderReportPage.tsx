@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { useReportRestaurants } from "@/hooks/useReportRestaurants";
 import { formatCurrency } from "@/lib/restaurant";
 import { formatDate } from "@/i18n/formatters";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 type BranchOption = { id: string; name: string; is_branch: boolean };
 
@@ -154,28 +155,20 @@ export default function OrderReportPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-16 max-w-7xl mx-auto px-2 sm:px-4">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-1">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-500 to-amber-400 flex items-center justify-center text-white shadow-lg shadow-orange-500/25 flex-shrink-0">
-            <ClipboardList className="h-6 w-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">
-              {t("reports:orderReport", "Order report")}
-            </h1>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-              {t("reports:orderReportDesc", "Which branch each order went to, and how many were transferred.")}
-            </p>
-          </div>
-        </div>
-        <Button variant="outline" className="h-10 rounded-xl" onClick={exportCsv} disabled={!orders.length}>
-          <Download className="h-4 w-4 mr-2" />
-          {t("reports:exportCsv", "Export CSV")}
-        </Button>
-      </div>
+    <PageShell className="pb-16">
+      <PageHeader
+        title={t("reports:orderReport", "Order report")}
+        description={t("reports:orderReportDesc", "Which branch each order went to, and how many were transferred.")}
+        icon={<ClipboardList className="h-5 w-5" />}
+        actions={
+          <Button variant="outline" className="h-10 rounded-xl w-full sm:w-auto" onClick={exportCsv} disabled={!orders.length}>
+            <Download className="h-4 w-4 mr-2" />
+            {t("reports:exportCsv", "Export CSV")}
+          </Button>
+        }
+      />
 
-      <div className="flex flex-col lg:flex-row gap-2.5">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-2.5">
         <Select value={branchId} onValueChange={setBranchId}>
           <SelectTrigger className="h-10 bg-card border-border/80 rounded-xl px-3 text-xs w-full lg:w-[220px]">
             <Building2 className="h-4 w-4 text-muted-foreground mr-1" />
@@ -343,6 +336,6 @@ export default function OrderReportPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }

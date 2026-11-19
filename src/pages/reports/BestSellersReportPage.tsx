@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ReportFilters } from "@/components/reports/ReportFilters";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 import { useReportRestaurants } from "@/hooks/useReportRestaurants";
 import { formatCurrency } from "@/lib/restaurant";
 
@@ -93,15 +94,12 @@ export default function BestSellersReportPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <Award className="h-8 w-8 text-primary" />
-            {t("reports:bestSellingProducts", "Best selling products")}
-          </h1>
-          <p className="text-muted-foreground mt-1">{t("reports:bestSellingProductsDesc", "Top menu items by revenue or units sold")}</p>
-        </div>
+    <PageShell>
+      <PageHeader
+        title={t("reports:bestSellingProducts", "Best selling products")}
+        description={t("reports:bestSellingProductsDesc", "Top menu items by revenue or units sold")}
+        icon={<Award className="h-5 w-5" />}
+        actions={
         <ReportFilters
           restaurants={restaurants}
           restaurantId={restaurantId}
@@ -133,7 +131,8 @@ export default function BestSellersReportPage() {
             </>
           }
         />
-      </div>
+        }
+      />
 
       {error ? (
         <div className="p-6 text-center bg-destructive/10 text-destructive rounded-xl border border-destructive/20">
@@ -233,7 +232,7 @@ export default function BestSellersReportPage() {
           </Card>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -249,7 +248,7 @@ function StatCard({
   sub?: string;
 }) {
   return (
-    <Card className="bg-card/50 backdrop-blur-sm border-none shadow-lg">
+    <Card className="rounded-2xl border border-border/80 shadow-xs">
       <CardContent className="p-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">

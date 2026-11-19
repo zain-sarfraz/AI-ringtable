@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Phone, Mic, Mail, Save, Eye, EyeOff, ExternalLink } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { getApiBase } from "@/lib/apiBase";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 export default function IntegrationConfig() {
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -36,16 +37,17 @@ export default function IntegrationConfig() {
     });
   };
 
+  const cardClass = "rounded-2xl border border-border/80 shadow-xs overflow-hidden";
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Integration Configuration</h1>
-        <p className="text-muted-foreground">Configure your third-party service integrations</p>
-      </div>
+    <PageShell maxWidth="lg">
+      <PageHeader
+        title="Integration Configuration"
+        description="Configure your third-party service integrations"
+      />
 
       <Tabs defaultValue="elevenlabs" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
+        <TabsList className="grid h-auto w-full grid-cols-3 gap-1 sm:w-auto sm:inline-flex">
           <TabsTrigger value="elevenlabs" className="gap-2">
             <Mic className="h-4 w-4" />
             <span className="hidden sm:inline">ElevenLabs</span>
@@ -62,7 +64,7 @@ export default function IntegrationConfig() {
 
         {/* ElevenLabs Configuration */}
         <TabsContent value="elevenlabs">
-          <Card>
+          <Card className={cardClass}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Mic className="h-5 w-5 text-primary" />
@@ -137,7 +139,7 @@ export default function IntegrationConfig() {
                 </div>
               </div>
 
-              <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+              <div className="p-4 bg-muted/50 rounded-xl space-y-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Post-call Webhook URL</Label>
                   <code className="block p-2 bg-background rounded text-xs break-all border">
@@ -170,14 +172,14 @@ export default function IntegrationConfig() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t">
-                <Button variant="outline" asChild>
+              <div className="flex flex-col gap-2 pt-4 border-t sm:flex-row sm:items-center sm:justify-between">
+                <Button variant="outline" className="w-full sm:w-auto" asChild>
                   <a href="https://elevenlabs.io/app/conversational-ai" target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Open ElevenLabs Dashboard
                   </a>
                 </Button>
-                <Button onClick={handleSaveElevenLabs}>
+                <Button className="w-full sm:w-auto" onClick={handleSaveElevenLabs}>
                   <Save className="h-4 w-4 mr-2" />
                   Save Changes
                 </Button>
@@ -188,7 +190,7 @@ export default function IntegrationConfig() {
 
         {/* Twilio Configuration */}
         <TabsContent value="twilio">
-          <Card>
+          <Card className={cardClass}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Phone className="h-5 w-5 text-primary" />
@@ -271,7 +273,7 @@ export default function IntegrationConfig() {
                   </p>
                 </div>
 
-                <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+                <div className="p-4 bg-muted/50 rounded-xl space-y-3">
                   <div className="flex items-center gap-2">
                     <div className="h-2 w-2 rounded-full bg-blue-500" />
                     <Label className="text-sm font-semibold">Native ElevenLabs Integration</Label>
@@ -287,14 +289,14 @@ export default function IntegrationConfig() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t">
-                <Button variant="outline" asChild>
+              <div className="flex flex-col gap-2 pt-4 border-t sm:flex-row sm:items-center sm:justify-between">
+                <Button variant="outline" className="w-full sm:w-auto" asChild>
                   <a href="https://console.twilio.com" target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Open Twilio Console
                   </a>
                 </Button>
-                <Button onClick={handleSaveTwilio}>
+                <Button className="w-full sm:w-auto" onClick={handleSaveTwilio}>
                   <Save className="h-4 w-4 mr-2" />
                   Save Changes
                 </Button>
@@ -305,7 +307,7 @@ export default function IntegrationConfig() {
 
         {/* Resend Configuration */}
         <TabsContent value="resend">
-          <Card>
+          <Card className={cardClass}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Mail className="h-5 w-5 text-primary" />
@@ -359,14 +361,14 @@ export default function IntegrationConfig() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t">
-                <Button variant="outline" asChild>
+              <div className="flex flex-col gap-2 pt-4 border-t sm:flex-row sm:items-center sm:justify-between">
+                <Button variant="outline" className="w-full sm:w-auto" asChild>
                   <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Open Resend Dashboard
                   </a>
                 </Button>
-                <Button onClick={handleSaveResend}>
+                <Button className="w-full sm:w-auto" onClick={handleSaveResend}>
                   <Save className="h-4 w-4 mr-2" />
                   Save Changes
                 </Button>
@@ -375,6 +377,6 @@ export default function IntegrationConfig() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

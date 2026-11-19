@@ -10,6 +10,7 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, Legend,
 } from "recharts";
 import { format, subDays, startOfDay, eachDayOfInterval, eachHourOfInterval, subHours, startOfHour, isSameHour, isSameDay } from "date-fns";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 type Period = "24h" | "7d" | "30d" | "90d";
 
@@ -182,24 +183,25 @@ export default function Analytics() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("dashboard:analytics", "Analytics")}</h1>
-          <p className="text-muted-foreground">{t("reports:subtitle", "Real-time performance metrics")}</p>
-        </div>
-        <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="24h">{t("reports:last24Hours", "Last 24 hours")}</SelectItem>
-            <SelectItem value="7d">{t("reports:last7Days", "Last 7 days")}</SelectItem>
-            <SelectItem value="30d">{t("reports:last30Days", "Last 30 days")}</SelectItem>
-            <SelectItem value="90d">{t("reports:last90Days", "Last 90 days")}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("dashboard:analytics", "Analytics")}
+        description={t("reports:subtitle", "Real-time performance metrics")}
+        icon={<TrendingUp className="h-5 w-5" />}
+        actions={
+          <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="24h">{t("reports:last24Hours", "Last 24 hours")}</SelectItem>
+              <SelectItem value="7d">{t("reports:last7Days", "Last 7 days")}</SelectItem>
+              <SelectItem value="30d">{t("reports:last30Days", "Last 30 days")}</SelectItem>
+              <SelectItem value="90d">{t("reports:last90Days", "Last 90 days")}</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -373,6 +375,6 @@ export default function Analytics() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageShell>
   );
 }

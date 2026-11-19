@@ -131,8 +131,17 @@ export async function findOrCreateTableSession(trx, {
     if (!session) {
       session = openSessions.find((s) => !s.customer_phone_normalized) || null;
     }
-  } else if (openSessions.length === 1) {
-    session = openSessions[0];
+  } else {
+    // Anonymous QR guest: reuse only a fresh empty-phone session (not another guest's bill)
+    const emptyPhoneSessions = openSessions.filter((s) => !s.customer_phone_normalized);
+    session = emptyPhoneSessions[0] || null;
+    if (session) {
+      const openedAt = new Date(session.opened_at || session.created_at || 0).getTime();
+      const maxAgeMs = 12 * 60 * 60 * 1000;
+      if (openedAt && Date.now() - openedAt > maxAgeMs) {
+        session = null;
+      }
+    }
   }
 
   if (session) {
@@ -206,6 +215,18 @@ export async function closeTableSession(trx, sessionId, closedBy) {
         console.warn(`[tableSessions] Stock deduction warning for order ${o.id}:`, err.message);
       }
     }
+
+    // Bill paid → free the reserved table in the reservation portal
+    try {
+      const { completeReservationsForTable } = await import("./tableReservationService.js");
+      await completeReservationsForTable(trx, {
+        restaurantId: session.restaurant_id,
+        tableId: session.table_id,
+        tableNumber: session.table_number,
+      });
+    } catch (err) {
+      console.warn(`[tableSessions] Reservation complete notice:`, err?.message || err);
+    }
   }
   return session;
 }
@@ -259,6 +280,29 @@ export async function closeTableByIdentity(trx, { restaurantId, tableId, tableNu
     } catch (err) {
       console.warn(`[tableSessions] Stock deduction warning for order ${o.id}:`, err.message);
     }
+  }
+
+  // Bill paid → mark matching reservations completed so the table is available again
+  try {
+    const { completeReservationsForTable } = await import("./tableReservationService.js");
+    let resolvedTableId = tableId || null;
+    let resolvedTableNumber = tableNumber || null;
+    if (!resolvedTableId && !resolvedTableNumber && openSessions[0]) {
+      resolvedTableId = openSessions[0].table_id || null;
+      resolvedTableNumber = openSessions[0].table_number || null;
+    }
+    if (!resolvedTableId && !resolvedTableNumber && ordersToDeliver.length) {
+      const sample = await trx("orders").where({ id: ordersToDeliver[0].id }).first();
+      resolvedTableId = sample?.table_id || null;
+      resolvedTableNumber = sample?.table_number || null;
+    }
+    await completeReservationsForTable(trx, {
+      restaurantId,
+      tableId: resolvedTableId,
+      tableNumber: resolvedTableNumber,
+    });
+  } catch (err) {
+    console.warn(`[tableSessions] Reservation complete notice:`, err?.message || err);
   }
 
   return { closed_sessions: openSessions.length, closed_orders: Number(updated) || 0 };

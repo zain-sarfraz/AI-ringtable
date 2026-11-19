@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 // POS Modular Components
 import { PosOverview } from "@/components/pos/PosOverview";
@@ -386,31 +387,25 @@ export default function Pos() {
     }
 
     return (
-        <div className="space-y-5 pb-12 animate-fade-in">
-            {/* ── Page Header & Quick Actions ── */}
-            <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2.5">
-                            <Calculator className="h-7 w-7 text-primary" />
-                            Point of Sale (POS) & Inventory
-                        </h1>
+        <PageShell className="min-w-0 overflow-x-hidden pb-12">
+            <PageHeader
+                className="min-w-0"
+                title={
+                    <span className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+                        <span className="leading-tight">POS & Inventory</span>
                         <Badge
                             variant="outline"
-                            className="font-semibold text-xs px-2.5 py-0.5 border-primary/30 text-primary"
+                            className="w-fit px-2 py-0.5 text-[10px] font-semibold border-primary/30 text-primary sm:text-xs sm:px-2.5"
                         >
-                            {activeRestaurant?.name || "Restaurant"}{" "}
-                            {currency ? `(${currency})` : ""}
+                            {activeRestaurant?.name || "Restaurant"}
+                            {currency ? ` (${currency})` : ""}
                         </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                        Real-time cashier terminal, sales vs purchasing
-                        comparison, raw materials stock, and ingredient
-                        consumption ("wo kaha use hua").
-                    </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
+                    </span>
+                }
+                description='Cashier terminal, purchasing, raw materials stock, and ingredient usage.'
+                icon={<Calculator className="h-5 w-5" />}
+                actions={
+                <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                     {hasNoMaterialsYet && (
                         <Button
                             type="button"
@@ -418,14 +413,14 @@ export default function Pos() {
                             size="sm"
                             onClick={handleSeedDemoData}
                             disabled={seeding}
-                            className="h-9 text-xs font-semibold gap-1.5 border-primary/40 text-primary hover:bg-primary/10 shadow-xs"
+                            className="h-9 w-full text-xs font-semibold gap-1.5 border-primary/40 text-primary hover:bg-primary/10 shadow-xs sm:w-auto"
                         >
                             {seeding ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
                                 <Sparkles className="h-3.5 w-3.5" />
                             )}
-                            {seeding ? "Seeding..." : "⚡ Seed Demo POS Data"}
+                            {seeding ? "Seeding..." : "Seed Demo Data"}
                         </Button>
                     )}
 
@@ -437,10 +432,10 @@ export default function Pos() {
                             setEditingRecipe(null);
                             setShowRecipeDialog(true);
                         }}
-                        className="h-9 text-xs font-semibold gap-1.5"
+                        className="h-9 w-full text-xs font-semibold gap-1.5 sm:w-auto"
                     >
-                        <ChefHat className="h-3.5 w-3.5 text-primary" />+ Add
-                        Recipe
+                        <ChefHat className="h-3.5 w-3.5 text-primary" />
+                        Add Recipe
                     </Button>
 
                     <Button
@@ -451,9 +446,9 @@ export default function Pos() {
                             setEditingMaterial(null);
                             setShowMaterialDialog(true);
                         }}
-                        className="h-9 text-xs font-semibold gap-1.5"
+                        className="h-9 w-full text-xs font-semibold gap-1.5 sm:w-auto"
                     >
-                        <Boxes className="h-3.5 w-3.5 text-muted-foreground" />+
+                        <Boxes className="h-3.5 w-3.5 text-muted-foreground" />
                         Raw Material
                     </Button>
 
@@ -461,37 +456,43 @@ export default function Pos() {
                         type="button"
                         size="sm"
                         onClick={() => setShowPurchaseDialog(true)}
-                        className="h-9 text-xs font-semibold gap-1.5 gradient-primary shadow-sm"
+                        className="h-9 w-full text-xs font-semibold gap-1.5 gradient-primary shadow-xs sm:w-auto"
                     >
-                        <ShoppingCart className="h-3.5 w-3.5" />+ Record
-                        Purchase
+                        <ShoppingCart className="h-3.5 w-3.5" />
+                        Record Purchase
                     </Button>
                 </div>
-            </div>
+                }
+            />
 
             {/* ── Main Tab Navigation Bar ── */}
-            <div className="flex items-center gap-1.5 bg-muted/40 p-1.5 rounded-2xl border border-border overflow-x-auto scrollbar-none">
+            <div className="-mx-1 overflow-x-auto px-1 scrollbar-none">
+                <div className="flex min-w-max items-center gap-1 rounded-2xl border border-border bg-muted/40 p-1 sm:gap-1.5 sm:p-1.5">
                 {[
-                    { id: "terminal", label: "POS Terminal", icon: Calculator },
+                    { id: "terminal", label: "POS", full: "POS Terminal", icon: Calculator },
                     {
                         id: "overview",
-                        label: "Sales vs Purchasing",
+                        label: "Sales",
+                        full: "Sales vs Purchasing",
                         icon: TrendingUp,
                     },
                     {
                         id: "purchases",
-                        label: "Purchases & Invoices",
+                        label: "Purchases",
+                        full: "Purchases & Invoices",
                         icon: ShoppingCart,
                     },
                     {
                         id: "raw-materials",
-                        label: "Raw Materials",
+                        label: "Materials",
+                        full: "Raw Materials",
                         icon: Boxes,
                     },
-                    { id: "usage", label: "Where Used ", icon: History },
+                    { id: "usage", label: "Usage", full: "Where Used", icon: History },
                     {
                         id: "recipes",
-                        label: "Recipes & Costing",
+                        label: "Recipes",
+                        full: "Recipes & Costing",
                         icon: ChefHat,
                     },
                 ].map((tab) => {
@@ -502,19 +503,21 @@ export default function Pos() {
                             key={tab.id}
                             type="button"
                             onClick={() => handleTabChange(tab.id)}
-                            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-150 ${
+                            className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-2 text-[11px] font-bold transition-all duration-150 sm:gap-2 sm:px-3.5 sm:text-xs ${
                                 isActive
-                                    ? "bg-background text-foreground shadow-sm ring-1 ring-border/80"
-                                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                                    ? "bg-background text-foreground shadow-xs ring-1 ring-border/80"
+                                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                             }`}
                         >
                             <Icon
-                                className={`h-4 w-4 ${isActive ? "text-primary" : "text-muted-foreground"}`}
+                                className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${isActive ? "text-primary" : "text-muted-foreground"}`}
                             />
-                            <span>{tab.label}</span>
+                            <span className="sm:hidden">{tab.label}</span>
+                            <span className="hidden sm:inline">{tab.full}</span>
                         </button>
                     );
                 })}
+                </div>
             </div>
 
             {/* ── Tab Views ── */}
@@ -676,6 +679,6 @@ export default function Pos() {
                 currency={currency}
                 onSaved={refetchAll}
             />
-        </div>
+        </PageShell>
     );
 }
