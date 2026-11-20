@@ -190,6 +190,40 @@ export function notifyNewOrderLater(knex, order) {
   notifyNewOrder(knex, order).catch((err) => console.warn("notifyNewOrder:", err.message));
 }
 
+/** Kitchen/staff bell when items are appended to an existing order. Never throws. */
+export async function notifyStaffOrderItemsAdded(knex, order, addedCount = 0) {
+  if (!order?.id || !order.restaurant_id) return null;
+  const count = Math.max(1, Number(addedCount) || 1);
+  const where =
+    order.table_number
+      ? ` for ${displayTableLabel(order.table_number)}`
+      : order.fulfillment_type === "pickup"
+        ? " (takeaway)"
+        : "";
+  return createNotification(knex, {
+    restaurant_id: order.restaurant_id,
+    order_id: order.id,
+    type: "order_items_added",
+    title: "➕ Items added to order",
+    message: `${count} item${count === 1 ? "" : "s"} added to ${order.order_number || "order"}${where}.`,
+    metadata: {
+      order_number: order.order_number,
+      customer_name: order.customer_name,
+      total_amount: Number(order.total_amount || 0),
+      fulfillment_type: order.fulfillment_type || "delivery",
+      table_number: order.table_number || null,
+      added_count: count,
+      source: order.source || "staff",
+    },
+  });
+}
+
+export function notifyOrderItemsAddedLater(knex, order, addedCount = 0) {
+  notifyStaffOrderItemsAdded(knex, order, addedCount).catch((err) =>
+    console.warn("notifyOrderItemsAdded:", err.message),
+  );
+}
+
 export function notifyNewReservationLater(knex, reservation, extra = {}) {
   notifyStaffNewReservation(knex, reservation, extra).catch((err) =>
     console.warn("notifyNewReservation:", err.message),

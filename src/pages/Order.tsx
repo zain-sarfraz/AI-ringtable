@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next";
 import { getApiBase, resolveMediaUrl } from "@/lib/apiBase";
 import { loadDineInGuest, rememberDineInOrder } from "@/lib/dineInGuest";
+import { displayTableLabel } from "@/lib/tableLabel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -93,6 +94,27 @@ type CartLine = {
   price: number;
   quantity: number;
 };
+
+function MenuItemImage({ src, alt }: { src?: string | null; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  const resolved = resolveMediaUrl(src);
+  if (!resolved || failed) {
+    return (
+      <div className="h-40 w-full flex items-center justify-center bg-muted/50 text-muted-foreground">
+        <UtensilsCrossed className="h-8 w-8 opacity-50" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={resolved}
+      alt={alt}
+      className="h-40 w-full object-cover"
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 export default function Order() {
   const { t } = useTranslation(["ordering", "common", "deals", "menu", "orders"]);
@@ -186,7 +208,9 @@ export default function Order() {
             setCheckInNotice(checkInData.message || "Reservation checked in as Seated.");
             toast.success(checkInData.message || "Welcome! You are checked in to your table.");
           } else if (checkInData.table) {
-            setCheckInNotice(`Welcome! You are seated at Table ${checkInData.table.table_number}.`);
+            setCheckInNotice(
+              `Welcome! You are seated at ${displayTableLabel(checkInData.table.table_number)}.`,
+            );
           }
         } catch (err) {
           console.warn("Table check-in request error:", err);
@@ -467,7 +491,7 @@ export default function Order() {
       });
       const tableNumber = tableInfo?.table_number || tableParam || null;
       const tableId = tableInfo?.id || tableIdParam || null;
-      const dineInName = `Table ${tableNumber || "Guest"}`;
+      const dineInName = displayTableLabel(tableNumber || "Guest");
       const dineInPhone = "";
 
       const res = await fetch(`${getApiBase()}/api/public/orders`, {
@@ -480,7 +504,7 @@ export default function Order() {
           customer_phone: isDineIn ? dineInPhone : form.customer_phone.trim(),
           customer_email: isDineIn ? null : form.customer_email || null,
           delivery_address: isDineIn
-            ? `Dine-in (Table ${tableNumber || "Assigned"})`
+            ? `Dine-in (${displayTableLabel(tableNumber || "Assigned")})`
             : fulfillmentType === "delivery"
             ? form.delivery_address
             : "Self Pickup",
@@ -631,14 +655,17 @@ export default function Order() {
             {isOrderStaff && !tableParam && !tableIdParam && (
               <Button variant="outline" size="sm" onClick={() => setStaffChoice("pending")}>
                 {staffChoice === "table"
-                  ? `Table ${tableInfo?.table_number || ""}`
+                  ? displayTableLabel(tableInfo?.table_number || "")
                   : "Online order"}
               </Button>
             )}
             <LanguageSwitcher />
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/login">{t("ordering:adminLogin", "Admin")}</Link>
-            </Button>
+            {/* Hide staff entry on table QR menus — guests must not jump into dashboard/reception */}
+            {!tableParam && !tableIdParam ? (
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/login">{t("ordering:staffLogin", "Staff login")}</Link>
+              </Button>
+            ) : null}
           </div>
         </div>
       </header>
@@ -653,7 +680,7 @@ export default function Order() {
               </div>
               <div>
                 <p className="text-xs font-bold text-primary uppercase tracking-wider">
-                  Dine-In Menu · Table {tableInfo?.table_number || tableParam}
+                  Dine-In Menu · {displayTableLabel(tableInfo?.table_number || tableParam)}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {checkInNotice || "Your table is checked in. Order directly to your table."}
@@ -720,7 +747,7 @@ export default function Order() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {deals.map((d) => (
                 <Card key={d.id} className="flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 shadow-xs transition-shadow hover:shadow-sm">
-                  {d.image_url && <img src={resolveMediaUrl(d.image_url) || d.image_url} alt={d.name} className="h-40 w-full object-cover" />}
+                  {d.image_url ? <MenuItemImage src={d.image_url} alt={d.name} /> : null}
                   <CardContent className="p-4 flex flex-col justify-between flex-1">
                     <div>
                       <div className="flex items-start justify-between gap-2">
@@ -764,7 +791,9 @@ export default function Order() {
 
                 return (
                   <Card key={it.id} className={cn("flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 shadow-xs transition-shadow hover:shadow-sm", isOutOfStock && "opacity-60")}>
-                    {it.image_url && <img src={resolveMediaUrl(it.image_url) || it.image_url} alt={it.name} className="h-40 w-full object-cover" />}
+                    {it.image_url ? (
+                      <MenuItemImage src={it.image_url} alt={it.name} />
+                    ) : null}
                     <CardContent className="p-4 flex flex-col justify-between flex-1">
                       <div>
                         <div className="flex items-start justify-between gap-2">
@@ -897,7 +926,7 @@ export default function Order() {
                         <UtensilsCrossed className="h-3.5 w-3.5" /> Dine-In Order
                       </span>
                       <Badge variant="outline" className="bg-primary/20 border-primary/30 text-[10px] font-bold">
-                        Table {tableInfo?.table_number || tableParam}
+                        {displayTableLabel(tableInfo?.table_number || tableParam)}
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -976,7 +1005,9 @@ export default function Order() {
                 {fulfillmentType === "dine_in" ? (
                   <div className="p-2.5 rounded-lg bg-muted text-xs flex items-center justify-between">
                     <span className="text-muted-foreground">Serving Table:</span>
-                    <span className="font-bold text-foreground">Table {tableInfo?.table_number || tableParam || "Assigned"}</span>
+                    <span className="font-bold text-foreground">
+                      {displayTableLabel(tableInfo?.table_number || tableParam || "Assigned")}
+                    </span>
                   </div>
                 ) : fulfillmentType === "delivery" ? (
                   <div>

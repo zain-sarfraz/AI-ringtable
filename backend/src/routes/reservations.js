@@ -7,6 +7,8 @@ import {
   diningOccupancyBlocksSlot,
   localDateStr,
   timeToMins,
+  toDateOnlyString,
+  toTimeOnlyString,
   reconcileReservationAvailability,
 } from "../lib/tableReservationService.js";
 import { notifyNewReservationLater } from "../lib/orderAlerts.js";
@@ -122,9 +124,15 @@ router.get("/restaurants/:id/reservations", optionalAuth, requireAuth, async (re
         "calls.duration_seconds as call_duration_seconds"
       )
       .orderBy(["reservation_date", "start_time"]);
-    if (date) q = q.where("table_reservations.reservation_date", date);
+    if (date) q = q.whereRaw("table_reservations.reservation_date::date = ?::date", [String(date)]);
     if (status) q = q.where("table_reservations.status", status);
-    const reservations = await q;
+    const rows = await q;
+    const reservations = rows.map((r) => ({
+      ...r,
+      reservation_date: toDateOnlyString(r.reservation_date) || r.reservation_date,
+      start_time: toTimeOnlyString(r.start_time) || r.start_time,
+      status: String(r.status || "").toLowerCase(),
+    }));
     return res.json({ reservations });
   } catch (e) {
     return res.status(500).json({ error: e.message });

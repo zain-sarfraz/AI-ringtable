@@ -234,8 +234,11 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
   const [driverFilter, setDriverFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [fulfillmentFilter, setFulfillmentFilter] = useState<"all" | "dine_in" | "pickup">("all");
   const [sortBy, setSortBy] = useState("newest");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const isStaffRole = role === "staff";
+  const isKitchenRole = role === "kitchen" || role === "chef";
 
   const isAllOrdersPage = status === "all";
   const statuses: OrderStatus[] | null =
@@ -635,6 +638,14 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
           if (o.status !== statusFilter) return false;
         }
 
+        // 8b. Dine-in / Takeaway
+        if (fulfillmentFilter !== "all") {
+          const ft = String(o.fulfillment_type || "").toLowerCase();
+          const isDine = ft === "dine_in" || Boolean(o.table_number);
+          if (fulfillmentFilter === "dine_in" && !isDine) return false;
+          if (fulfillmentFilter === "pickup" && isDine) return false;
+        }
+
         // 9. Transfer Filter
         if (transferFilter !== "all") {
           const isTransferred = Boolean(o.is_transferred || (o.branch_assigned_at && !o.auto_assigned));
@@ -680,6 +691,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
     paymentMethodFilter,
     driverFilter,
     statusFilter,
+    fulfillmentFilter,
     sortBy,
     isAllOrdersPage,
   ]);
@@ -747,6 +759,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
     if (paymentMethodFilter !== "all") count++;
     if (driverFilter !== "all") count++;
     if (isAllOrdersPage && statusFilter !== "all") count++;
+    if (fulfillmentFilter !== "all") count++;
     if (sortBy !== "newest") count++;
     return count;
   }, [
@@ -760,6 +773,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
     paymentMethodFilter,
     driverFilter,
     statusFilter,
+    fulfillmentFilter,
     sortBy,
     isAllOrdersPage,
   ]);
@@ -777,6 +791,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
     setPaymentMethodFilter("all");
     setDriverFilter("all");
     setStatusFilter("all");
+    setFulfillmentFilter("all");
     setSortBy("newest");
   };
 
@@ -976,6 +991,26 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                         {t(`orders:channel_${ch}`, ORDER_CHANNEL_LABELS[ch])}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Order type: Dine-in / Takeaway */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block leading-5">
+                  {t("orders:orderType", "Order Type")}
+                </label>
+                <Select
+                  value={fulfillmentFilter}
+                  onValueChange={(v) => setFulfillmentFilter(v as "all" | "dine_in" | "pickup")}
+                >
+                  <SelectTrigger className="h-9.5">
+                    <SelectValue placeholder={t("orders:allTypes", "All Types")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("orders:allTypes", "All Types")}</SelectItem>
+                    <SelectItem value="dine_in">{t("orders:dineIn", "Dine-in")}</SelectItem>
+                    <SelectItem value="pickup">{t("orders:takeaway", "Takeaway")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1428,7 +1463,23 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                         <Button size="sm" variant="outline" onClick={() => navigate(`/orders/${o.id}`)}>
                           {t("orders:viewDetails", "Details")}
                         </Button>
-                        {siblingBranches.length > 1 && o.status !== "delivered" && o.status !== "cancelled" && (
+                        {isStaffRole &&
+                          o.status !== "delivered" &&
+                          o.status !== "cancelled" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 text-xs font-semibold"
+                              onClick={() => navigate(`/dashboard?add_to=${o.id}`)}
+                            >
+                              <UtensilsCrossed className="h-3.5 w-3.5" />
+                              {t("orders:addItems", "Add Items")}
+                            </Button>
+                          )}
+                        {!isStaffRole &&
+                          siblingBranches.length > 1 &&
+                          o.status !== "delivered" &&
+                          o.status !== "cancelled" && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -1445,12 +1496,13 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                             <span>{t("orders:transfer", "Transfer")}</span>
                           </Button>
                         )}
-                        {o.status === "pending" && (
+                        {/* Kitchen: prep → ready. Waiter: served → completed. Admins: full flow. */}
+                        {!isStaffRole && o.status === "pending" && (
                           <Button size="sm" onClick={() => confirmOrder(o)}>
                             {t("orders:confirm", "Confirm")}
                           </Button>
                         )}
-                        {o.status === "confirmed" && (
+                        {!isStaffRole && o.status === "confirmed" && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -1459,25 +1511,30 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                             {t("orders:startPrep", "Start prep")}
                           </Button>
                         )}
-                        {o.status === "preparing" && (
+                        {(isKitchenRole || (!isStaffRole && !isKitchenRole)) &&
+                          o.status === "preparing" && (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => updateStatus(o.sittingOrderIds, o.fulfillment_type === "dine_in" ? "out_for_delivery" : "ready")}
+                            onClick={() => updateStatus(o.sittingOrderIds, "ready")}
                           >
-                            {o.fulfillment_type === "dine_in" ? "🍽️ Serve Table" : t("orders:ready", "Ready")}
+                            {t("orders:ready", "Ready")}
                           </Button>
                         )}
-                        {o.status === "ready" && (
+                        {(isStaffRole || (!isKitchenRole && !isStaffRole)) &&
+                          o.status === "ready" && (
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => updateStatus(o.sittingOrderIds, "out_for_delivery")}
                           >
-                            {o.fulfillment_type === "dine_in" ? "🍽️ Serve Table" : t("orders:outForDelivery", "Out for delivery")}
+                            {o.fulfillment_type === "dine_in"
+                              ? t("orders:served", "Served")
+                              : t("orders:outForDelivery", "Out for delivery")}
                           </Button>
                         )}
-                        {o.status === "out_for_delivery" && (
+                        {(isStaffRole || (!isKitchenRole && !isStaffRole)) &&
+                          o.status === "out_for_delivery" && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -1487,10 +1544,15 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                               })
                             }
                           >
-                            {o.fulfillment_type === "dine_in" ? "Complete / Paid" : t("orders:delivered", "Delivered")}
+                            {o.fulfillment_type === "dine_in"
+                              ? t("orders:completed", "Completed")
+                              : t("orders:delivered", "Delivered")}
                           </Button>
                         )}
-                        {o.status !== "cancelled" && o.status !== "delivered" && (
+                        {!isStaffRole &&
+                          !isKitchenRole &&
+                          o.status !== "cancelled" &&
+                          o.status !== "delivered" && (
                           <Button
                             size="sm"
                             variant="ghost"

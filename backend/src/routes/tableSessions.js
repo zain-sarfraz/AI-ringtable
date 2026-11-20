@@ -13,9 +13,11 @@ import {
   resolveRestaurantFamilyIds,
 } from "../lib/tableSessions.js";
 import { nextOrderNumber } from "../lib/orderNumbers.js";
-import { notifyNewOrderLater } from "../lib/orderAlerts.js";
+import { notifyNewOrderLater, notifyOrderItemsAddedLater } from "../lib/orderAlerts.js";
 
 const router = Router();
+
+const CLOSED_ORDER_STATUSES = ["cancelled", "delivered", "completed"];
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function isValidUUID(str) {
@@ -331,17 +333,28 @@ router.post("/restaurants/:id/staff-orders", optionalAuth, requireAuth, async (r
     const isDineIn = String(fulfillment_type).toLowerCase() === "dine_in";
     const isPickup = String(fulfillment_type).toLowerCase() === "pickup";
 
-    if (!customer_name || !String(customer_name).trim()) {
+    const formatTableLabel = (num) => {
+      const raw = String(num || "").trim();
+      if (!raw) return "Table";
+      const stripped = raw.replace(/^table[\s._-]*/i, "").trim() || raw;
+      return `Table ${stripped}`;
+    };
+
+    if (isDineIn && !table_id && !table_number) {
+      await trx.rollback();
+      return res.status(400).json({ error: "Select a table number for dine-in orders" });
+    }
+    const resolvedCustomerName =
+      (customer_name && String(customer_name).trim()) ||
+      (isDineIn && table_number ? formatTableLabel(table_number) : "") ||
+      (isPickup ? "Takeaway" : "");
+    if (!resolvedCustomerName) {
       await trx.rollback();
       return res.status(400).json({ error: "Customer name is required" });
     }
     if (!Array.isArray(lines) || lines.length === 0) {
       await trx.rollback();
       return res.status(400).json({ error: "Add at least one item" });
-    }
-    if (isDineIn && !table_id && !table_number) {
-      await trx.rollback();
-      return res.status(400).json({ error: "Select a table number for dine-in orders" });
     }
 
     const rest = await trx("restaurants").where({ id: restaurantId }).first();
@@ -356,17 +369,81 @@ router.post("/restaurants/:id/staff-orders", optionalAuth, requireAuth, async (r
         restaurantId,
         tableId: table_id && isValidUUID(table_id) ? table_id : null,
         tableNumber: table_number,
-        customerName: customer_name,
+        customerName: resolvedCustomerName,
         customerPhone: customer_phone,
         createdBy: req.user.id,
         source: "staff",
       });
     }
 
-    const subtotal = lines.reduce((s, l) => s + Number(l.line_total ?? Number(l.unit_price || 0) * Number(l.quantity || 1)), 0);
+    const mappedLines = lines.map((l) => {
+      const quantity = Math.max(1, Number(l.quantity) || 1);
+      const unitPrice = Number(l.unit_price) || 0;
+      const lineTotal = Number(l.line_total) || unitPrice * quantity;
+      return {
+        menu_item_id: l.menu_item_id && isValidUUID(l.menu_item_id) ? l.menu_item_id : null,
+        item_name: l.item_name || "Item",
+        quantity,
+        unit_price: unitPrice,
+        line_total: lineTotal,
+        notes: l.notes || null,
+      };
+    });
+    const addedSubtotal = mappedLines.reduce((s, l) => s + Number(l.line_total || 0), 0);
+
+    // Same open table sitting → append to existing ticket (don't split items across orders)
+    if (session?.id) {
+      const existing = await trx("orders")
+        .where({ table_session_id: session.id })
+        .whereNotIn("status", CLOSED_ORDER_STATUSES)
+        .orderBy("created_at", "desc")
+        .forUpdate()
+        .first();
+
+      if (existing) {
+        const inserted = await trx("order_items")
+          .insert(mappedLines.map((l) => ({ ...l, order_id: existing.id })))
+          .returning("*");
+
+        const newSubtotal = Number(existing.subtotal || 0) + addedSubtotal;
+        const taxAmount = Number(existing.tax_amount || 0);
+        const deliveryFee = Number(existing.delivery_fee || 0);
+        const discountAmount = Number(existing.discount_amount || 0);
+        const newTotal = newSubtotal + taxAmount + deliveryFee - discountAmount;
+        const statusNow = String(existing.status || "").toLowerCase();
+        const patch = {
+          subtotal: newSubtotal,
+          total_amount: newTotal,
+          updated_at: new Date(),
+          taken_by: existing.taken_by || req.user.id,
+        };
+        if (statusNow === "ready" || statusNow === "out_for_delivery") {
+          patch.status = "preparing";
+        }
+
+        const [updated] = await trx("orders").where({ id: existing.id }).update(patch).returning("*");
+        await trx.commit();
+
+        const knexFresh = getKnex();
+        const allItems = await knexFresh("order_items")
+          .where({ order_id: existing.id })
+          .orderBy("created_at", "asc");
+        const notified = { ...(updated || existing), total_amount: newTotal };
+        notifyOrderItemsAddedLater(knexFresh, notified, mappedLines.length);
+        const bill = await loadSessionBill(knexFresh, session.id);
+        return res.status(201).json({
+          order: { ...(updated || existing), items: allItems },
+          appended: true,
+          added_items: inserted,
+          session,
+          bill: serializeBill(bill),
+        });
+      }
+    }
+
     const taxAmount = Number(req.body.tax_amount) || 0;
     const deliveryFee = isDineIn || isPickup ? 0 : Number(req.body.delivery_fee) || 0;
-    const totalAmount = Number(req.body.total_amount) || subtotal + taxAmount + deliveryFee;
+    const totalAmount = Number(req.body.total_amount) || addedSubtotal + taxAmount + deliveryFee;
 
     const effectivePhone = !isPlaceholderPhone(customer_phone)
       ? String(customer_phone).trim()
@@ -384,11 +461,11 @@ router.post("/restaurants/:id/staff-orders", optionalAuth, requireAuth, async (r
         restaurant_id: restaurantId,
         order_number: orderNumber,
         tracking_code: trackingCode,
-        customer_name: String(customer_name).trim(),
-        customer_phone: effectivePhone || (tableNumber ? `Table ${tableNumber}` : "Walk-in Guest"),
+        customer_name: resolvedCustomerName,
+        customer_phone: effectivePhone || (tableNumber ? formatTableLabel(tableNumber) : "Walk-in Guest"),
         customer_email: customer_email ? String(customer_email).trim() : null,
         delivery_address: isDineIn
-          ? `Dine-in (Table ${tableNumber || "Assigned"})`
+          ? `Dine-in (${formatTableLabel(tableNumber || "Assigned")})`
           : delivery_address || (isPickup ? "Self Pickup" : ""),
         delivery_notes: notes || null,
         fulfillment_type: isDineIn ? "dine_in" : isPickup ? "pickup" : "delivery",
@@ -401,7 +478,7 @@ router.post("/restaurants/:id/staff-orders", optionalAuth, requireAuth, async (r
         status: "pending",
         payment_method: payment_method || "cash",
         payment_status: payment_status === "paid" ? "paid" : "pending",
-        subtotal,
+        subtotal: addedSubtotal,
         tax_amount: taxAmount,
         delivery_fee: deliveryFee,
         discount_amount: 0,
@@ -411,17 +488,7 @@ router.post("/restaurants/:id/staff-orders", optionalAuth, requireAuth, async (r
       })
       .returning("*");
 
-    await trx("order_items").insert(
-      lines.map((l) => ({
-        order_id: order.id,
-        menu_item_id: l.menu_item_id && isValidUUID(l.menu_item_id) ? l.menu_item_id : null,
-        item_name: l.item_name || "Item",
-        quantity: Number(l.quantity) || 1,
-        unit_price: Number(l.unit_price) || 0,
-        line_total: Number(l.line_total) || Number(l.unit_price || 0) * Number(l.quantity || 1),
-        notes: l.notes || null,
-      })),
-    );
+    await trx("order_items").insert(mappedLines.map((l) => ({ ...l, order_id: order.id })));
 
     await trx.commit();
     const knexFresh = getKnex();
@@ -482,6 +549,199 @@ router.get("/staff/dashboard", optionalAuth, requireAuth, async (req, res) => {
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/staff/active-orders?restaurant_id= */
+router.get("/staff/active-orders", optionalAuth, requireAuth, async (req, res) => {
+  try {
+    const knex = getKnex();
+    const restaurantId = req.query.restaurant_id ? String(req.query.restaurant_id) : null;
+    if (!restaurantId) {
+      return res.status(400).json({ error: "restaurant_id is required" });
+    }
+    const familyIds = await resolveRestaurantFamilyIds(knex, restaurantId);
+
+    // Waiter's own open tickets (taken_by set on staff-orders create)
+    let q = knex("orders")
+      .where({ taken_by: req.user.id })
+      .whereNotIn("status", CLOSED_ORDER_STATUSES)
+      .orderBy("created_at", "desc")
+      .limit(80);
+    if (familyIds.length) q = q.whereIn("restaurant_id", familyIds);
+    else q = q.andWhere({ restaurant_id: restaurantId });
+
+    const mine = await q;
+
+    // Expand dine-in sittings so one card shows the full table bill items
+    const sessionIds = [
+      ...new Set(mine.map((o) => o.table_session_id).filter(Boolean)),
+    ];
+    let sessionOrders = [];
+    if (sessionIds.length) {
+      sessionOrders = await knex("orders")
+        .whereIn("table_session_id", sessionIds)
+        .whereNotIn("status", CLOSED_ORDER_STATUSES)
+        .orderBy("created_at", "asc");
+    }
+
+    const byId = new Map();
+    for (const o of [...mine, ...sessionOrders]) byId.set(o.id, o);
+    const orders = [...byId.values()];
+    const ids = orders.map((o) => o.id);
+    const items = ids.length
+      ? await knex("order_items").whereIn("order_id", ids).orderBy("created_at", "asc")
+      : [];
+    const byOrder = {};
+    for (const it of items) {
+      if (!byOrder[it.order_id]) byOrder[it.order_id] = [];
+      byOrder[it.order_id].push(it);
+    }
+
+    const STATUS_RANK = {
+      pending: 0,
+      confirmed: 1,
+      preparing: 2,
+      ready: 3,
+      out_for_delivery: 4,
+      delivered: 5,
+      cancelled: 99,
+    };
+
+    const groups = new Map();
+    const singles = [];
+    for (const o of orders) {
+      const key = o.table_session_id
+        ? `session:${o.table_session_id}`
+        : o.fulfillment_type === "dine_in" && o.table_number
+          ? `table:${o.restaurant_id}:${String(o.table_number).trim().toLowerCase()}`
+          : null;
+      if (!key) {
+        singles.push(o);
+        continue;
+      }
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(o);
+    }
+
+    const tickets = [];
+    for (const list of groups.values()) {
+      const chronological = [...list].sort(
+        (a, b) => new Date(a.created_at) - new Date(b.created_at),
+      );
+      const active = chronological.filter((o) => o.status !== "cancelled");
+      const primary =
+        active.reduce((best, o) =>
+          (STATUS_RANK[o.status] ?? 0) < (STATUS_RANK[best.status] ?? 0) ? o : best
+        , active[0] || chronological[0]);
+      const mergedItems = chronological.flatMap((o) => byOrder[o.id] || []);
+      const total = chronological.reduce((s, o) => s + Number(o.total_amount || 0), 0);
+      tickets.push({
+        ...primary,
+        // Prefer newest order id for "Add items" so appends land on latest ticket
+        id: chronological[chronological.length - 1].id,
+        order_number: chronological[0].order_number,
+        status: primary.status,
+        total_amount: total,
+        items: mergedItems,
+        sitting_order_ids: chronological.map((o) => o.id),
+        sitting_count: chronological.length,
+      });
+    }
+
+    for (const o of singles) {
+      tickets.push({
+        ...o,
+        items: byOrder[o.id] || [],
+        sitting_order_ids: [o.id],
+        sitting_count: 1,
+      });
+    }
+
+    tickets.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    return res.json({ orders: tickets });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+/** POST /api/orders/:id/items — append lines to an active order (staff) */
+router.post("/orders/:id/items", optionalAuth, requireAuth, async (req, res) => {
+  const knex = getKnex();
+  const trx = await knex.transaction();
+  try {
+    const orderId = req.params.id;
+    const { lines } = req.body || {};
+    if (!Array.isArray(lines) || lines.length === 0) {
+      await trx.rollback();
+      return res.status(400).json({ error: "Add at least one item" });
+    }
+
+    const order = await trx("orders").where({ id: orderId }).forUpdate().first();
+    if (!order) {
+      await trx.rollback();
+      return res.status(404).json({ error: "Order not found" });
+    }
+    if (CLOSED_ORDER_STATUSES.includes(String(order.status || "").toLowerCase())) {
+      await trx.rollback();
+      return res.status(400).json({ error: "Cannot add items to a closed order" });
+    }
+
+    const rows = lines.map((l) => {
+      const quantity = Math.max(1, Number(l.quantity) || 1);
+      const unitPrice = Number(l.unit_price) || 0;
+      const lineTotal = Number(l.line_total) || unitPrice * quantity;
+      return {
+        order_id: order.id,
+        menu_item_id: l.menu_item_id && isValidUUID(l.menu_item_id) ? l.menu_item_id : null,
+        item_name: l.item_name || "Item",
+        quantity,
+        unit_price: unitPrice,
+        line_total: lineTotal,
+        notes: l.notes || null,
+      };
+    });
+
+    const addedSubtotal = rows.reduce((s, r) => s + Number(r.line_total || 0), 0);
+    const inserted = await trx("order_items").insert(rows).returning("*");
+
+    const newSubtotal = Number(order.subtotal || 0) + addedSubtotal;
+    const taxAmount = Number(order.tax_amount || 0);
+    const deliveryFee = Number(order.delivery_fee || 0);
+    const discountAmount = Number(order.discount_amount || 0);
+    const newTotal = newSubtotal + taxAmount + deliveryFee - discountAmount;
+
+    // New items need kitchen prep again if ticket was already ready/served
+    const statusNow = String(order.status || "").toLowerCase();
+    const patch = {
+      subtotal: newSubtotal,
+      total_amount: newTotal,
+      updated_at: new Date(),
+    };
+    if (statusNow === "ready" || statusNow === "out_for_delivery") {
+      patch.status = "preparing";
+    }
+
+    const [updated] = await trx("orders").where({ id: order.id }).update(patch).returning("*");
+
+    await trx.commit();
+
+    const knexFresh = getKnex();
+    const allItems = await knexFresh("order_items").where({ order_id: order.id }).orderBy("created_at", "asc");
+    const notifiedOrder = { ...(updated || order), total_amount: newTotal };
+    notifyOrderItemsAddedLater(knexFresh, notifiedOrder, rows.length);
+
+    return res.status(201).json({
+      order: updated || order,
+      added_items: inserted,
+      items: allItems,
+      added_subtotal: addedSubtotal,
+    });
+  } catch (e) {
+    await trx.rollback();
+    console.error("add-order-items error:", e);
+    return res.status(500).json({ error: e.message || "Failed to add items" });
   }
 });
 

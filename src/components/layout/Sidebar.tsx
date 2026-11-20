@@ -658,8 +658,8 @@ export function Sidebar({
                 {role === "staff" ? (
                     <div className="space-y-0.5">
                         <NavItem
-                            icon={LayoutDashboard}
-                            label={t("sidebar:dashboard", "Dashboard")}
+                            icon={ShoppingBag}
+                            label={t("sidebar:takeOrders", "Take orders")}
                             href="/dashboard"
                         />
                         <NavItem

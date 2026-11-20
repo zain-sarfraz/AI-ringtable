@@ -198,9 +198,11 @@ router.post("/tables/check-in", async (req, res) => {
     }
 
     const displayTable = table
-      ? (String(table.table_number).trim().toLowerCase().startsWith("table")
-          ? String(table.table_number).trim()
-          : `Table ${String(table.table_number).trim()}`)
+      ? (() => {
+          const raw = String(table.table_number || "").trim();
+          const stripped = raw.replace(/^table[\s._-]*/i, "").trim() || raw;
+          return `Table ${stripped}`;
+        })()
       : null;
 
     return res.json({
@@ -359,15 +361,22 @@ router.post("/orders", async (req, res) => {
     const isDineIn = String(fulfillment_type).toLowerCase() === "dine_in";
 
     let effectiveAddress = delivery_address;
+    const formatTableLabel = (num) => {
+      const raw = String(num || "").trim();
+      if (!raw) return "Table";
+      const stripped = raw.replace(/^table[\s._-]*/i, "").trim() || raw;
+      return `Table ${stripped}`;
+    };
+
     if (isDineIn && !effectiveAddress) {
-      effectiveAddress = table_number ? `Dine-in (Table ${table_number})` : "Dine-in";
+      effectiveAddress = table_number ? `Dine-in (${formatTableLabel(table_number)})` : "Dine-in";
     } else if (isPickup && !effectiveAddress) {
       effectiveAddress = "Pickup";
     }
 
     const dineInGuestName =
       (customer_name && String(customer_name).trim()) ||
-      (table_number ? `Table ${String(table_number).trim()}` : "Dine-in Guest");
+      (table_number ? formatTableLabel(table_number) : "Dine-in Guest");
     const effectiveCustomerName = isDineIn ? dineInGuestName : customer_name;
 
     if (!restaurant_id || !effectiveCustomerName || !effectiveAddress) {

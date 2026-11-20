@@ -101,15 +101,45 @@ const getInitials = (name: string) => {
 const displayTableNumber = (tableNum?: string | null) => {
     if (!tableNum) return "";
     const trimmed = tableNum.trim();
-    if (/^table\b/i.test(trimmed)) return trimmed;
-    return `Table ${trimmed}`;
+    const stripped = trimmed.replace(/^table[\s._-]*/i, "").trim() || trimmed;
+    return `Table ${stripped}`;
 };
+
+/** Normalize reservation_date to YYYY-MM-DD (avoids UTC day-shift on timestamps). */
+function toDateOnly(dateVal?: string | null): string {
+    if (!dateVal) return "";
+    const raw = String(dateVal).trim();
+    const iso = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (iso) {
+        if (/T\d{2}:/.test(raw)) {
+            const parsed = new Date(raw);
+            if (!Number.isNaN(parsed.getTime())) {
+                const utcH = parsed.getUTCHours();
+                const utcM = parsed.getUTCMinutes();
+                // Midnight UTC = calendar DATE; otherwise use local calendar day
+                if (utcH === 0 && utcM === 0) return iso[1];
+                return format(parsed, "yyyy-MM-dd");
+            }
+        }
+        return iso[1];
+    }
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return format(parsed, "yyyy-MM-dd");
+    return raw.split("T")[0].split(" ")[0];
+}
+
+function formatSafeTime(timeVal?: string | null): string {
+    if (!timeVal) return "--:--";
+    const raw = String(timeVal).trim();
+    const m = raw.match(/(\d{1,2}):(\d{2})/);
+    if (m) return `${m[1].padStart(2, "0")}:${m[2]}`;
+    return raw.slice(0, 5) || "--:--";
+}
 
 function formatSafeDate(dateStr?: string | null): string {
     if (!dateStr) return "N/A";
     try {
-        const raw = String(dateStr).trim();
-        const datePart = raw.split("T")[0].split(" ")[0];
+        const datePart = toDateOnly(dateStr);
         const parts = datePart.split("-");
         if (parts.length === 3) {
             const y = parseInt(parts[0], 10);
@@ -121,10 +151,6 @@ function formatSafeDate(dateStr?: string | null): string {
                     return format(dateObj, "EEE, MMM d, yyyy");
                 }
             }
-        }
-        const fallback = new Date(raw);
-        if (!isNaN(fallback.getTime())) {
-            return format(fallback, "EEE, MMM d, yyyy");
         }
         return dateStr;
     } catch {
@@ -521,10 +547,28 @@ export default function TableReservations() {
     const loadReservations = useCallback(async () => {
         if (!restaurantId) return;
         setLoading(true);
-        const url = `${API}/restaurants/${restaurantId}/reservations`;
-        const r = await fetch(url, { headers: authHeader() });
-        if (r.ok) setReservations((await r.json()).reservations || []);
-        setLoading(false);
+        try {
+            const url = `${API}/restaurants/${restaurantId}/reservations`;
+            const r = await fetch(url, { headers: authHeader() });
+            if (!r.ok) {
+                const body = await r.json().catch(() => ({}));
+                throw new Error(body.error || "Failed to load reservations");
+            }
+            const rows = ((await r.json()).reservations || []).map(
+                (row: Reservation) => ({
+                    ...row,
+                    reservation_date: toDateOnly(row.reservation_date),
+                    start_time: formatSafeTime(row.start_time),
+                    status: String(row.status || "").toLowerCase(),
+                }),
+            );
+            setReservations(rows);
+        } catch (err: any) {
+            console.error(err);
+            toast.error(err?.message || "Could not load bookings");
+        } finally {
+            setLoading(false);
+        }
     }, [restaurantId]); // eslint-disable-line react-hooks/exhaustive-deps -- API is a stable constant from getApiBase()
 
     useEffect(() => {
@@ -652,7 +696,7 @@ export default function TableReservations() {
             customer_email: r.customer_email || "",
             party_size: String(r.party_size),
             reservation_date: r.reservation_date,
-            start_time: r.start_time.slice(0, 5),
+            start_time: formatSafeTime(r.start_time),
             slot_duration_hours: String(r.slot_duration_hours),
             notes: r.notes || "",
             status: r.status,
@@ -777,11 +821,10 @@ export default function TableReservations() {
         setDeleteReservationId(null);
     };
 
-    const todayStr = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+    const todayStr = format(new Date(), "yyyy-MM-dd");
 
     const getReservationDateOnly = useCallback((dateVal?: string | null) => {
-        if (!dateVal) return "";
-        return String(dateVal).trim().split("T")[0].split(" ")[0];
+        return toDateOnly(dateVal);
     }, []);
 
     // ── Date scope counts ──────────────────────────────────
@@ -830,21 +873,23 @@ export default function TableReservations() {
 
     // ── Status counts for the active date scope ─────────────
     const statusCounts = useMemo(() => {
+        const statusOf = (r: Reservation) => String(r.status || "").toLowerCase();
         return {
             all: dateScopedReservations.length,
             confirmed: dateScopedReservations.filter(
-                (r) => r.status === "confirmed",
+                (r) => statusOf(r) === "confirmed",
             ).length,
-            seated: dateScopedReservations.filter((r) => r.status === "seated")
-                .length,
+            seated: dateScopedReservations.filter(
+                (r) => statusOf(r) === "seated",
+            ).length,
             pending: dateScopedReservations.filter(
-                (r) => r.status === "pending",
+                (r) => statusOf(r) === "pending",
             ).length,
             completed: dateScopedReservations.filter(
-                (r) => r.status === "completed",
+                (r) => statusOf(r) === "completed",
             ).length,
             cancelled: dateScopedReservations.filter((r) =>
-                ["cancelled", "no_show"].includes(r.status),
+                ["cancelled", "no_show"].includes(statusOf(r)),
             ).length,
         };
     }, [dateScopedReservations]);
@@ -859,9 +904,12 @@ export default function TableReservations() {
 
     const liveStatusCounts = useMemo(() => {
         return {
-            confirmed: liveReservations.filter((r) => r.status === "confirmed")
-                .length,
-            seated: liveReservations.filter((r) => r.status === "seated").length,
+            confirmed: liveReservations.filter(
+                (r) => String(r.status || "").toLowerCase() === "confirmed",
+            ).length,
+            seated: liveReservations.filter(
+                (r) => String(r.status || "").toLowerCase() === "seated",
+            ).length,
         };
     }, [liveReservations]);
 
@@ -876,12 +924,13 @@ export default function TableReservations() {
                     (r.customer_email || "").toLowerCase().includes(q) ||
                     (r.table_number || "").toLowerCase().includes(q);
 
+                const status = String(r.status || "").toLowerCase();
                 const matchStatus =
                     statusFilter === "all"
                         ? true
                         : statusFilter === "cancelled"
-                          ? ["cancelled", "no_show"].includes(r.status)
-                          : r.status === statusFilter;
+                          ? ["cancelled", "no_show"].includes(status)
+                          : status === statusFilter;
 
                 return matchSearch && matchStatus;
             })
@@ -1486,24 +1535,42 @@ export default function TableReservations() {
                             </div>
                             <div className="space-y-1">
                                 <p className="text-base font-bold text-foreground">
-                                    {dateFilterMode === "current"
-                                        ? "No upcoming or today's reservations"
-                                        : dateFilterMode === "today"
-                                          ? "No reservations scheduled for today"
-                                          : dateFilterMode === "past"
-                                            ? "No past reservations found"
-                                            : "No reservations found"}
+                                    {statusFilter !== "all"
+                                        ? `No ${STATUS_LABELS[statusFilter] || statusFilter} bookings in this date range`
+                                        : dateFilterMode === "current"
+                                          ? "No upcoming or today's reservations"
+                                          : dateFilterMode === "today"
+                                            ? "No reservations scheduled for today"
+                                            : dateFilterMode === "past"
+                                              ? "No past reservations found"
+                                              : dateFilterMode === "custom"
+                                                ? "No reservations on this date"
+                                                : "No reservations found"}
                                 </p>
                                 <p className="text-xs text-muted-foreground max-w-md">
-                                    {dateFilterMode === "current" &&
-                                    dateCounts.past > 0
-                                        ? `You have ${dateCounts.past} past reservation${dateCounts.past > 1 ? "s" : ""} recorded in history from earlier dates.`
-                                        : searchTerm
-                                          ? `No bookings match your search "${searchTerm}". Try adjusting your keywords.`
-                                          : "Try selecting a different date range or add a new table reservation."}
+                                    {statusFilter !== "all" &&
+                                    dateScopedReservations.length > 0
+                                        ? `There are ${dateScopedReservations.length} booking${dateScopedReservations.length === 1 ? "" : "s"} in this date range — clear the status filter to see them.`
+                                        : dateFilterMode === "current" &&
+                                            dateCounts.past > 0
+                                          ? `You have ${dateCounts.past} past reservation${dateCounts.past > 1 ? "s" : ""} recorded in history from earlier dates.`
+                                          : searchTerm
+                                            ? `No bookings match your search "${searchTerm}". Try adjusting your keywords.`
+                                            : "Try selecting a different date range or add a new table reservation."}
                                 </p>
                             </div>
                             <div className="flex items-center gap-2 pt-2 flex-wrap justify-center">
+                                {statusFilter !== "all" && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setStatusFilter("all")}
+                                        className="text-xs h-8 gap-1.5 rounded-xl"
+                                    >
+                                        Clear status filter (
+                                        {dateScopedReservations.length})
+                                    </Button>
+                                )}
                                 {dateFilterMode !== "past" &&
                                     dateCounts.past > 0 && (
                                         <Button
@@ -1512,6 +1579,7 @@ export default function TableReservations() {
                                             onClick={() => {
                                                 setDateFilterMode("past");
                                                 setCustomDate("");
+                                                setStatusFilter("all");
                                             }}
                                             className="text-xs h-8 gap-1.5 rounded-xl border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
                                         >
@@ -1527,6 +1595,7 @@ export default function TableReservations() {
                                         onClick={() => {
                                             setDateFilterMode("current");
                                             setCustomDate("");
+                                            setStatusFilter("all");
                                         }}
                                         className="text-xs h-8 rounded-xl"
                                     >
@@ -1686,9 +1755,8 @@ export default function TableReservations() {
                                                         <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]">
                                                             <Clock className="h-3 w-3 shrink-0" />
                                                             <span>
-                                                                {res.start_time.slice(
-                                                                    0,
-                                                                    5,
+                                                                {formatSafeTime(
+                                                                    res.start_time,
                                                                 )}{" "}
                                                                 ·{" "}
                                                                 {
@@ -2052,9 +2120,8 @@ export default function TableReservations() {
                                                 </div>
                                                 <div className="min-w-0">
                                                     <p className="font-semibold text-foreground truncate text-xs">
-                                                        {res.start_time.slice(
-                                                            0,
-                                                            5,
+                                                        {formatSafeTime(
+                                                            res.start_time,
                                                         )}
                                                     </p>
                                                     <p className="text-[10px] text-muted-foreground truncate">
@@ -2902,10 +2969,10 @@ export default function TableReservations() {
                                         Time & Duration
                                     </div>
                                     <p className="font-semibold text-sm text-foreground">
-                                        {(
+                                        {formatSafeTime(
                                             detailReservation.start_time ||
-                                            "19:00"
-                                        ).slice(0, 5)}{" "}
+                                                "19:00",
+                                        )}{" "}
                                         (
                                         {detailReservation.slot_duration_hours ||
                                             1}

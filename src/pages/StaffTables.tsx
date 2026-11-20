@@ -26,7 +26,7 @@ import { formatCurrency } from "@/lib/restaurant";
 import { getOrderStatusLabel } from "@/i18n/formatters";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { PageHeader, PageShell } from "@/components/layout/PageShell";
+import { PageShell } from "@/components/layout/PageShell";
 
 type OrderItem = {
   id: string;
@@ -246,37 +246,45 @@ export default function StaffTables() {
 
   return (
     <div>
-    <PageShell className="no-print space-y-5 sm:space-y-6">
-      <PageHeader
-        title="Tables"
-        description={`Floor view for ${activeRestaurant?.name || "your restaurant"} — see every table, its orders, and add the next round.`}
-        icon={<TableProperties className="h-5 w-5" />}
-        actions={
-          <Button variant="outline" size="sm" className="w-full gap-1.5 sm:w-auto" onClick={load}>
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            Refresh
-          </Button>
-        }
-      />
+    <PageShell className="no-print max-w-[1680px] space-y-4 sm:space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-black tracking-tight sm:text-2xl">Tables</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
+            Floor view · {activeRestaurant?.name || "your restaurant"}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 w-full gap-1.5 rounded-xl sm:w-auto"
+          onClick={load}
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+          Refresh
+        </Button>
+      </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-3">
         {[
-          { label: "Total tables", value: tables.length || data?.summary.total_tables || 0, icon: TableProperties, tone: "text-foreground" },
-          { label: "Occupied", value: tables.filter((t) => t.occupied).length, icon: UtensilsCrossed, tone: "text-amber-600" },
-          { label: "Available", value: tables.filter((t) => !t.occupied).length, icon: CheckCircle2, tone: "text-emerald-600" },
-          { label: "Open bills", value: data?.summary.open_bills ?? tables.filter((t) => t.occupied).length, icon: Receipt, tone: "text-violet-600" },
+          { label: "Total", value: tables.length || data?.summary.total_tables || 0, icon: TableProperties, tone: "text-foreground", bg: "bg-muted/60" },
+          { label: "Occupied", value: tables.filter((t) => t.occupied).length, icon: UtensilsCrossed, tone: "text-amber-700 dark:text-amber-400", bg: "bg-amber-500/10" },
+          { label: "Available", value: tables.filter((t) => !t.occupied).length, icon: CheckCircle2, tone: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-500/10" },
+          { label: "Open bills", value: data?.summary.open_bills ?? tables.filter((t) => t.occupied).length, icon: Receipt, tone: "text-violet-700 dark:text-violet-400", bg: "bg-violet-500/10" },
         ].map((card) => (
-          <Card key={card.label} className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
-            <CardContent className="p-4">
+          <Card key={card.label} className="overflow-hidden rounded-2xl border border-border/70 shadow-xs">
+            <CardContent className="p-3.5">
               {loading && !data ? (
                 <Skeleton className="h-12 w-full" />
               ) : (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{card.label}</p>
-                    <p className={cn("text-2xl font-black mt-0.5", card.tone)}>{card.value}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{card.label}</p>
+                    <p className={cn("mt-0.5 text-xl font-black tracking-tight", card.tone)}>{card.value}</p>
                   </div>
-                  <card.icon className={cn("h-5 w-5", card.tone)} />
+                  <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", card.bg, card.tone)}>
+                    <card.icon className="h-[18px] w-[18px]" />
+                  </div>
                 </div>
               )}
             </CardContent>

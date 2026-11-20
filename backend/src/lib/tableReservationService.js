@@ -6,6 +6,57 @@ export function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/**
+ * Normalize PG date / Date / ISO values to YYYY-MM-DD without timezone day-shift.
+ * DATE columns from node-pg are UTC midnight for the calendar day — use UTC parts.
+ * Shifted ISO (e.g. 19:00Z for next local day) uses local calendar parts.
+ */
+export function toDateOnlyString(value) {
+  if (value == null || value === "") return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const utcMidnight =
+      value.getUTCHours() === 0 &&
+      value.getUTCMinutes() === 0 &&
+      value.getUTCSeconds() === 0 &&
+      value.getUTCMilliseconds() === 0;
+    if (utcMidnight) {
+      return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-${String(value.getUTCDate()).padStart(2, "0")}`;
+    }
+    return localDateStr(value);
+  }
+  const raw = String(value).trim();
+  const iso = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) {
+    // If timestamp has a non-midnight UTC time, prefer local calendar day
+    const hasTime = /T\d{2}:/.test(raw);
+    if (hasTime) {
+      const parsed = new Date(raw);
+      if (!Number.isNaN(parsed.getTime())) {
+        const utcH = parsed.getUTCHours();
+        const utcM = parsed.getUTCMinutes();
+        if (utcH !== 0 || utcM !== 0) return localDateStr(parsed);
+        return iso[1];
+      }
+    }
+    return iso[1];
+  }
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return localDateStr(parsed);
+  return raw.slice(0, 10);
+}
+
+/** Normalize TIME / Date / "HH:MM:SS" to "HH:MM". */
+export function toTimeOnlyString(value) {
+  if (value == null || value === "") return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${String(value.getUTCHours()).padStart(2, "0")}:${String(value.getUTCMinutes()).padStart(2, "0")}`;
+  }
+  const raw = String(value).trim();
+  const m = raw.match(/(\d{1,2}):(\d{2})/);
+  if (m) return `${String(m[1]).padStart(2, "0")}:${m[2]}`;
+  return raw.slice(0, 5);
+}
+
 const URDU_MONTH_MAP = {
   january: 1, jan: 1, janwary: 1, janwari: 1, janver: 1, "जनवरी": 1,
   february: 2, feb: 2, farwary: 2, farwari: 2, "फ़रवरी": 2, "फरवरी": 2,
@@ -337,7 +388,7 @@ export async function reconcileReservationAvailability(knex, restaurantId, now =
   const completedIds = [];
 
   for (const r of active) {
-    const resDate = String(r.reservation_date).slice(0, 10);
+    const resDate = toDateOnlyString(r.reservation_date);
     const startMins = timeToMins(r.start_time);
     const durationMins = Math.max(30, (Number(r.slot_duration_hours) || 1) * 60);
     const graceEnd = startMins + RESERVATION_NO_SHOW_GRACE_MINUTES;
@@ -420,7 +471,8 @@ export async function getOccupiedDiningTableIds(knex, restaurantId) {
  */
 export function timeToMins(t) {
   if (!t) return 0;
-  const [h, m] = String(t).split(":").map(Number);
+  const normalized = toTimeOnlyString(t);
+  const [h, m] = String(normalized).split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
 }
 
