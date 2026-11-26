@@ -124,6 +124,8 @@ export function CreateManualOrderDialog({
   // Menu items & Cart
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [variants, setVariants] = useState<VariantItem[]>([]);
+  /** Branch item id → parent item id (when branch menu was copied without variants). */
+  const [variantSourceByItemId, setVariantSourceByItemId] = useState<Record<string, string>>({});
   const [cart, setCart] = useState<CartItem[]>([]);
   const [itemSearch, setItemSearch] = useState("");
   const [fallbackRestaurantId, setFallbackRestaurantId] = useState<string | null>(null);
@@ -142,40 +144,92 @@ export function CreateManualOrderDialog({
 
     async function loadData() {
       try {
-        // 1. Fetch menu items and variants
+        // Branch: permanently copy missing parent sizes/flavors onto this branch first
+        if (activeRestaurantId) {
+          try {
+            await fetch(`${getApiBase()}/api/restaurants/${activeRestaurantId}/heal-menu-from-parent`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${getToken()}`,
+              },
+              // Rebuild when parent has more sizes/flavors than branch (fixes partial sync)
+              body: JSON.stringify({ force: false }),
+            });
+          } catch {
+            // heal is best-effort; UI fallback below still covers display
+          }
+        }
+
+        // 1. Fetch menu items for the active restaurant only
         let query = supabase.from("menu_items").select("id, name, price, restaurant_id, is_available, image_url");
         if (activeRestaurantId) {
           query = query.eq("restaurant_id", activeRestaurantId);
         }
 
-        const [{ data: itemsData, error }, { data: variantsData }] = await Promise.all([
-          query,
-          supabase
-            .from("menu_item_variants")
-            .select("id, menu_item_id, name, price, is_active, variant_type, measurement, parent_id")
-            .order("sort_order"),
-        ]);
+        const { data: itemsData, error } = await query;
         if (error) console.error("Error fetching menu items:", error);
 
-        let finalItems = (itemsData as MenuItem[]) || [];
+        let finalItems = ((itemsData as MenuItem[]) || []).filter((i) => i.is_available !== false);
+        let finalVariants: VariantItem[] = [];
+        const sourceMap: Record<string, string> = {};
 
-        // If activeRestaurantId filter returned 0, fallback to all items
-        if (finalItems.length === 0 && activeRestaurantId) {
-          const { data: allItems } = await supabase
-            .from("menu_items")
-            .select("id, name, price, restaurant_id, is_available, image_url")
-            .limit(100);
-          const allItemsList = (allItems as any[]) || [];
-          if (allItemsList.length > 0) {
-            finalItems = allItemsList as MenuItem[];
+        const itemIds = finalItems.map((i) => i.id);
+        if (itemIds.length > 0) {
+          const { data: variantsData } = await supabase
+            .from("menu_item_variants")
+            .select("id, menu_item_id, name, price, is_active, variant_type, measurement, parent_id")
+            .in("menu_item_id", itemIds)
+            .order("sort_order");
+          finalVariants = ((variantsData as VariantItem[]) || []).filter((v) => v.is_active !== false);
+        }
+
+        // Per-item fallback: if a branch item still has no variants, show parent sizes/flavors by name
+        const missingVariantItemIds = finalItems
+          .filter((bi) => !finalVariants.some((v) => v.menu_item_id === bi.id))
+          .map((bi) => bi.id);
+
+        if (missingVariantItemIds.length > 0 && activeRestaurantId) {
+          const { data: rest } = await supabase
+            .from("restaurants")
+            .select("id, parent_restaurant_id, is_branch")
+            .eq("id", activeRestaurantId)
+            .maybeSingle();
+          const parentId = (rest as { parent_restaurant_id?: string | null } | null)?.parent_restaurant_id;
+          if (parentId) {
+            const { data: parentItems } = await supabase
+              .from("menu_items")
+              .select("id, name")
+              .eq("restaurant_id", parentId);
+            const parentByName = new Map<string, string>();
+            for (const pi of (parentItems as { id: string; name: string }[]) || []) {
+              parentByName.set(String(pi.name || "").trim().toLowerCase(), pi.id);
+            }
+            const parentIdsNeeded: string[] = [];
+            for (const bi of finalItems) {
+              if (!missingVariantItemIds.includes(bi.id)) continue;
+              const pid = parentByName.get(String(bi.name || "").trim().toLowerCase());
+              if (pid) {
+                sourceMap[bi.id] = pid;
+                parentIdsNeeded.push(pid);
+              }
+            }
+            if (parentIdsNeeded.length > 0) {
+              const { data: parentVariants } = await supabase
+                .from("menu_item_variants")
+                .select("id, menu_item_id, name, price, is_active, variant_type, measurement, parent_id")
+                .in("menu_item_id", [...new Set(parentIdsNeeded)])
+                .order("sort_order");
+              const extra = ((parentVariants as VariantItem[]) || []).filter((v) => v.is_active !== false);
+              finalVariants = [...finalVariants, ...extra];
+            }
           }
         }
 
         if (isMounted) {
-          setMenuItems(finalItems.filter((i) => i.is_available !== false));
-          if (variantsData) {
-            setVariants((variantsData as VariantItem[]).filter((v) => v.is_active !== false));
-          }
+          setMenuItems(finalItems);
+          setVariants(finalVariants);
+          setVariantSourceByItemId(sourceMap);
         }
 
         if (activeRestaurantId) {
@@ -486,14 +540,17 @@ interface AddToCartParams {
     >
       {!hideTrigger && (
         <DialogTrigger asChild>
-          <Button className="gap-2 gradient-primary text-primary-foreground shadow-sm" id="btn-create-manual-order">
+          <Button
+            className="h-10 w-full shrink-0 gap-2 rounded-full px-4 font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm sm:w-auto"
+            id="btn-create-manual-order"
+          >
             <Plus className="h-4 w-4" />
             {triggerLabel || t("orders:newManualOrder", "New Order")}
           </Button>
         </DialogTrigger>
       )}
 
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+      <DialogContent className="flex max-h-[min(92vh,900px)] w-[calc(100%-1rem)] max-w-2xl flex-col overflow-hidden p-0 sm:w-[calc(100%-2rem)]">
         <DialogHeader className="px-6 pt-6 pb-2 border-b border-border">
           <DialogTitle className="flex items-center gap-2 text-lg">
             <ShoppingCart className="h-5 w-5 text-primary" />
@@ -726,11 +783,12 @@ interface AddToCartParams {
                 </div>
               ) : (
                 filteredMenuItems.map((item) => {
+                  const variantItemId = variantSourceByItemId[item.id] || item.id;
                   const itemSizes = variants.filter(
-                    (v) => v.menu_item_id === item.id && v.variant_type === "size"
+                    (v) => v.menu_item_id === variantItemId && v.variant_type === "size"
                   );
                   const itemFlavors = variants.filter(
-                    (v) => v.menu_item_id === item.id && v.variant_type !== "size"
+                    (v) => v.menu_item_id === variantItemId && v.variant_type !== "size"
                   );
                   const standaloneFlavors = itemFlavors.filter((v) => !v.parent_id);
                   const inCartQty = cart

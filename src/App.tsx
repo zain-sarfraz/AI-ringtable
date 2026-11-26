@@ -53,6 +53,7 @@ import OrderReportPage from "@/pages/reports/OrderReportPage";
 import RestaurantOwnersPage from "@/pages/users/RestaurantOwnersPage";
 import TeamMembersPage from "@/pages/users/TeamMembersPage";
 import BranchPortal from "@/pages/BranchPortal";
+import MyBranch from "@/pages/MyBranch";
 import TableReservations from "@/pages/TableReservations";
 import StaffTables from "@/pages/StaffTables";
 import Permissions from "@/pages/Permissions";
@@ -142,6 +143,7 @@ const App = () => (
                 <Route path="vehicles" element={<Vehicles />} />
                 <Route path="drivers" element={<Drivers />} />
                 <Route path="restaurant-settings" element={<RestaurantSettings />} />
+                <Route path="my-branch" element={<MyBranch />} />
                 <Route
                   path="branches"
                   element={

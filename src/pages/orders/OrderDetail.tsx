@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import {
   ArrowLeft,
+  ArrowRightLeft,
   Clock,
   Copy,
   ExternalLink,
@@ -66,6 +67,7 @@ import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { getOrderStatusLabel, formatDate } from "@/i18n/formatters";
 import { PageShell } from "@/components/layout/PageShell";
+import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
 
 function asOrderStatus(s: string): OrderStatus {
   return (ORDER_STATUSES as readonly string[]).includes(s) ? (s as OrderStatus) : "pending";
@@ -112,6 +114,13 @@ type OrderRow = {
   estimated_delivery_at: string | null;
   created_at: string;
   updated_at: string;
+  is_transferred?: boolean | null;
+  transferred_from_restaurant_id?: string | null;
+  transfer_status?: string | null;
+  transfer_reason?: string | null;
+  transfer_requested_at?: string | null;
+  transfer_responded_at?: string | null;
+  pending_transfer_to_restaurant_id?: string | null;
 };
 
 type OrderItemRow = {
@@ -334,6 +343,7 @@ export default function OrderDetail() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation(["orders", "common"]);
+  const { restaurantId: activeRestaurantId } = useActiveRestaurant();
 
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [items, setItems] = useState<OrderItemRow[]>([]);
@@ -341,6 +351,7 @@ export default function OrderDetail() {
   const [driver, setDriver] = useState<DriverRow | null>(null);
   const [driversForOrder, setDriversForOrder] = useState<DriverRow[]>([]);
   const [restaurantName, setRestaurantName] = useState<string | null>(null);
+  const [transferredFromName, setTransferredFromName] = useState<string | null>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [tableBill, setTableBill] = useState<any | null>(null);
   const [closingTable, setClosingTable] = useState(false);
@@ -614,11 +625,30 @@ export default function OrderDetail() {
         setDriver(null);
       }
 
-      // Restaurant name
+      // Restaurant name + transfer origin (family names via transfer-targets)
       const allRestaurants = (restaurantsRes.data as { id: string; name: string }[]) || [];
-      const matchedRestaurant = allRestaurants.find((r) => r.id === o.restaurant_id);
-      if (matchedRestaurant) {
-        setRestaurantName(matchedRestaurant.name);
+      const nameById: Record<string, string> = {};
+      for (const r of allRestaurants) nameById[r.id] = r.name;
+      try {
+        const token = getToken();
+        const scopeId = activeRestaurantId || o.restaurant_id;
+        const trRes = await fetch(`${getApiBase()}/api/restaurants/${scopeId}/transfer-targets`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const trData = await trRes.json().catch(() => ({}));
+        if (trRes.ok && Array.isArray(trData.family)) {
+          for (const loc of trData.family) {
+            if (loc?.id && loc?.name) nameById[loc.id] = loc.name;
+          }
+        }
+      } catch {
+        /* ignore — fall back to scoped restaurants list */
+      }
+      setRestaurantName(nameById[o.restaurant_id] || null);
+      if (o.transferred_from_restaurant_id) {
+        setTransferredFromName(nameById[o.transferred_from_restaurant_id] || null);
+      } else {
+        setTransferredFromName(null);
       }
 
       // Fetch linked call recording & transcript
@@ -692,7 +722,7 @@ export default function OrderDetail() {
       if (gen !== loadGen.current) return;
       setLoading(false);
     }
-  }, [id]);
+  }, [id, activeRestaurantId]);
 
   const handleSyncCall = useCallback(async () => {
     try {
@@ -983,6 +1013,35 @@ export default function OrderDetail() {
                 </span>
               </div>
 
+              {/* Transferred-from banner */}
+              {(order.is_transferred || order.transferred_from_restaurant_id) && (
+                <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/25 text-foreground">
+                  <div className="h-8 w-8 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+                    <ArrowRightLeft className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold leading-tight">
+                      {t("orders:transferredOrder", "Transferred order")}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {t("orders:transferredFrom", "Transferred from")}:{" "}
+                      <span className="font-semibold text-foreground">
+                        {transferredFromName || t("orders:anotherLocation", "another location")}
+                      </span>
+                      {restaurantName ? (
+                        <>
+                          {" → "}
+                          <span className="font-semibold text-foreground">{restaurantName}</span>
+                        </>
+                      ) : null}
+                      {order.transfer_reason ? (
+                        <> · {t("orders:reason", "Reason")}: "{order.transfer_reason}"</>
+                      ) : null}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Prominent Dine-In Alert Banner */}
               {isDineIn && (
                 <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/25 text-purple-950 dark:text-purple-200">
@@ -1007,7 +1066,7 @@ export default function OrderDetail() {
                 </div>
               )}
 
-              {/* Big Order Title & Tracking code */}
+              {/* Big Order Title */}
               <div className="flex items-center gap-4 flex-wrap">
                 <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
                   {isSittingBill ? sittingOrders[0].order_number : order.order_number}
@@ -1017,18 +1076,6 @@ export default function OrderDetail() {
                     {sittingOrders.length} orders · one table bill
                   </Badge>
                 )}
-                <div className="flex items-center gap-2 bg-muted/40 border border-border/60 rounded-xl px-3 py-1.5 text-xs font-medium">
-                  <span className="text-muted-foreground">Tracking Code:</span>
-                  <code className="font-mono font-bold text-foreground text-sm">{order.tracking_code}</code>
-                  <button
-                    type="button"
-                    title="Copy tracking code"
-                    onClick={() => void copyText("Tracking code", order.tracking_code)}
-                    className="text-muted-foreground hover:text-foreground ml-1 p-0.5 rounded transition-colors"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -1148,7 +1195,7 @@ export default function OrderDetail() {
           <OrderFulfillmentTimeline order={order} history={history} />
 
           {/* 5 Timestamps Grid (Est. Delivery hidden) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-7 pt-5 border-t border-border/50">
+          <div className="mt-7 grid grid-cols-1 gap-3 border-t border-border/50 pt-5 min-[420px]:grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
             {[
               { label: "Placed", value: fmtWhen(order.created_at), icon: ShoppingBag, color: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 border-blue-200/50" },
               { label: "Verified", value: fmtWhen(order.verified_at), icon: CheckCircle2, color: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200/50" },

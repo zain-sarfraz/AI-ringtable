@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { getKnex } from "../db.js";
 import { geocodeAddress } from "../lib/geocoding.js";
-import { findNearestBranch, isTableReservationLine } from "../lib/phoneOrderService.js";
+import {
+  DELIVERY_UNAVAILABLE_MESSAGE,
+  isTableReservationLine,
+  resolveDeliveryAssignment,
+} from "../lib/phoneOrderService.js";
 import {
   findOrCreateTableSession,
   loadSessionBill,
@@ -398,11 +402,14 @@ router.post("/orders", async (req, res) => {
     let assignedBranchDistanceKm = null;
     let branchAssignedAt = null;
     let assignmentStatus = "assigned";
+    let transferredFromRestaurantId = null;
+    let isTransferred = false;
 
     let lat = Number.isFinite(Number(delivery_latitude)) ? Number(delivery_latitude) : null;
     let lng = Number.isFinite(Number(delivery_longitude)) ? Number(delivery_longitude) : null;
 
-    if (!isPickup && !isDineIn && !branch_id) {
+    // Delivery: backend distance check + assign / reassign to an eligible branch (one-shot)
+    if (!isPickup && !isDineIn) {
       if ((lat == null || lng == null) && delivery_address) {
         const geo = await geocodeAddress(delivery_address);
         if (geo) {
@@ -411,29 +418,39 @@ router.post("/orders", async (req, res) => {
         }
       }
 
-      // Check if parent has branches
-      const branches = await trx("restaurants")
-        .where({ parent_restaurant_id: restaurant_id, is_active: true });
+      if (lat == null || lng == null) {
+        await trx.rollback();
+        return res.status(400).json({
+          error: DELIVERY_UNAVAILABLE_MESSAGE,
+          code: "missing_delivery_coords",
+        });
+      }
 
-      if (branches.length > 0) {
-        if (lat != null && lng != null) {
-          const nearest = await findNearestBranch(trx, restaurant_id, lat, lng);
-          if (nearest) {
-            targetRestaurantId = nearest.branch.id;
-            assignedBranchDistanceKm = nearest.distance;
-            branchAssignedAt = new Date();
-            autoAssigned = true;
-            assignmentStatus = "assigned";
-          } else {
-            targetRestaurantId = restaurant_id;
-            assignmentStatus = "unassigned_out_of_range";
-            autoAssigned = false;
-          }
-        } else {
-          targetRestaurantId = restaurant_id;
-          assignmentStatus = "needs_review";
-          autoAssigned = false;
-        }
+      const preferredBranchId =
+        branch_id && isValidUUID(String(branch_id)) ? String(branch_id) : null;
+      const assignment = await resolveDeliveryAssignment(trx, {
+        restaurantId: restaurant_id,
+        preferredBranchId,
+        deliveryLat: lat,
+        deliveryLng: lng,
+      });
+
+      if (!assignment.ok) {
+        await trx.rollback();
+        return res.status(400).json({
+          error: assignment.error || DELIVERY_UNAVAILABLE_MESSAGE,
+          code: assignment.code || "out_of_range",
+        });
+      }
+
+      targetRestaurantId = assignment.restaurantId;
+      assignedBranchDistanceKm = assignment.distanceKm;
+      branchAssignedAt = new Date();
+      autoAssigned = Boolean(assignment.autoAssigned || assignment.reassigned);
+      assignmentStatus = assignment.reassigned ? "auto_reassigned" : "assigned";
+      if (assignment.reassigned && assignment.fromRestaurantId) {
+        transferredFromRestaurantId = assignment.fromRestaurantId;
+        isTransferred = true;
       }
     }
 
@@ -515,6 +532,12 @@ router.post("/orders", async (req, res) => {
         assigned_branch_distance_km: assignedBranchDistanceKm,
         branch_assigned_at: branchAssignedAt,
         assignment_status: assignmentStatus,
+        ...(isTransferred
+          ? {
+              is_transferred: true,
+              transferred_from_restaurant_id: transferredFromRestaurantId,
+            }
+          : {}),
       })
       .returning("*");
 

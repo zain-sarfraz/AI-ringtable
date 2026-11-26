@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, type ReactNode, type ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
@@ -49,7 +49,44 @@ import {
   UtensilsCrossed,
   ChefHat,
   RefreshCw,
+  ChevronDown,
+  LayoutGrid,
+  Zap,
+  Tag,
+  Share2,
+  Eraser,
+  ClipboardList,
+  type LucideProps,
 } from "lucide-react";
+
+/** Select trigger with leading icon — full-width, readable on mobile. */
+function FilterSelectTrigger({
+  icon: Icon,
+  children,
+  className,
+}: {
+  icon: ComponentType<LucideProps>;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className="relative w-full min-w-0">
+      <Icon
+        aria-hidden
+        className="pointer-events-none absolute left-3 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+      />
+      <SelectTrigger
+        className={cn(
+          "h-11 w-full rounded-xl border-border/80 bg-background py-0 pl-9 pr-9 text-left text-sm leading-none shadow-none",
+          "[&>span]:flex [&>span]:min-w-0 [&>span]:flex-1 [&>span]:items-center [&>span]:truncate [&>span]:leading-none",
+          className,
+        )}
+      >
+        {children}
+      </SelectTrigger>
+    </div>
+  );
+}
 import { CreateManualOrderDialog } from "@/components/orders/CreateManualOrderDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -181,7 +218,7 @@ interface Props {
   status?: OrderStatus | OrderStatus[] | "all";
   title: string;
   description?: string;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
 }
 
 export function OrdersListView({ status = "all", title, description, icon }: Props) {
@@ -204,7 +241,9 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemRecord[]>([]);
   const [restaurantsMap, setRestaurantsMap] = useState<Record<string, string>>({});
-  const [siblingBranches, setSiblingBranches] = useState<{ id: string; name: string; is_active?: boolean; is_accepting_orders?: boolean }[]>([]);
+  const [siblingBranches, setSiblingBranches] = useState<
+    { id: string; name: string; label?: string; is_hq?: boolean; is_branch?: boolean; is_active?: boolean; is_accepting_orders?: boolean; available?: boolean }[]
+  >([]);
   const [loading, setLoading] = useState(true);
 
   // Transfer Branch Modal state (HQ Admin)
@@ -236,9 +275,12 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
   const [statusFilter, setStatusFilter] = useState("all");
   const [fulfillmentFilter, setFulfillmentFilter] = useState<"all" | "dine_in" | "pickup">("all");
   const [sortBy, setSortBy] = useState("newest");
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(
+    () => typeof window !== "undefined" && window.innerWidth >= 1024,
+  );
   const isStaffRole = role === "staff";
   const isKitchenRole = role === "kitchen" || role === "chef";
+  const canCancelOrder = role === "admin" || role === "super_admin" || role === "manager";
 
   const isAllOrdersPage = status === "all";
   const statuses: OrderStatus[] | null =
@@ -257,49 +299,43 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
       return;
     }
 
-    // 1. Fetch all restaurants in system to resolve restaurant family and map
-    const allRestsRes = await supabase
-      .from("restaurants")
-      .select("id, name, parent_restaurant_id, is_branch, is_active, is_accepting_orders")
-      .limit(200);
-
+    // Transfer destinations: HQ + all sibling branches (dedicated API — works from branch portals too)
     let familyBranchIds: string[] = [restaurantId];
-
-    if (allRestsRes.data) {
-      const allR = allRestsRes.data as { id: string; name: string; parent_restaurant_id?: string | null; is_branch?: boolean; is_active?: boolean; is_accepting_orders?: boolean }[];
-      const map: Record<string, string> = {};
-      allR.forEach((res) => {
-        map[res.id] = res.name;
+    try {
+      const token = getToken() || (await supabase.auth.getSession()).data.session?.access_token;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const trRes = await fetch(`${getApiBase()}/api/restaurants/${restaurantId}/transfer-targets`, {
+        headers,
       });
-      setRestaurantsMap(map);
-
-      // Find all sibling branches under same parent restaurant family
-      const currentRest = allR.find((r) => r.id === restaurantId);
-      if (currentRest) {
-        const rootId = currentRest.parent_restaurant_id || currentRest.id;
-
-        // If current is branch -> only include this branch in familyBranchIds
-        if (isBranch) {
-          familyBranchIds = [restaurantId];
-        } else {
-          // Parent Admin -> include parent + all branches
-          const allFamily = allR.filter((r) => r.id === rootId || r.parent_restaurant_id === rootId);
-          familyBranchIds = allFamily.map((s) => s.id);
+      const trData = await trRes.json().catch(() => ({}));
+      if (trRes.ok) {
+        const family = Array.isArray(trData.family) ? trData.family : [];
+        const targets = Array.isArray(trData.targets) ? trData.targets : [];
+        const map: Record<string, string> = {};
+        for (const loc of family) {
+          if (loc?.id) map[loc.id] = loc.name;
         }
-
-        // Only include actual operational branches (exclude the parent restaurant admin itself)
-        const actualBranches = allR.filter(
-          (r) => (r.is_branch || r.parent_restaurant_id != null) && r.parent_restaurant_id === rootId && r.is_active !== false
-        );
+        map[restaurantId] = map[restaurantId] || activeRestaurant?.name || "This location";
+        setRestaurantsMap((prev) => ({ ...prev, ...map }));
         setSiblingBranches(
-          actualBranches.map((s) => ({
-            id: s.id,
-            name: s.name,
-            is_active: s.is_active ?? true,
-            is_accepting_orders: s.is_accepting_orders ?? true,
-          }))
+          targets.map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            label: t.label || t.name,
+            is_hq: Boolean(t.is_main || t.is_hq),
+            is_branch: Boolean(t.is_branch),
+            is_active: t.is_active !== false,
+            is_accepting_orders: t.is_accepting_orders !== false,
+            available: t.available !== false,
+          })),
         );
+        familyBranchIds = [restaurantId, ...targets.map((t: any) => t.id).filter(Boolean)];
+      } else {
+        setSiblingBranches([]);
       }
+    } catch {
+      setSiblingBranches([]);
     }
 
     let q = supabase
@@ -308,11 +344,8 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
       .order("created_at", { ascending: false })
       .limit(500);
 
-    if (isBranch) {
-      q = q.or(`restaurant_id.eq.${restaurantId},pending_transfer_to_restaurant_id.eq.${restaurantId}`);
-    } else {
-      q = q.in("restaurant_id", familyBranchIds);
-    }
+    // Own orders + inbound transfer requests pending acceptance (HQ or branch)
+    q = q.or(`restaurant_id.eq.${restaurantId},pending_transfer_to_restaurant_id.eq.${restaurantId}`);
 
     if (statuses) q = q.in("status", statuses);
 
@@ -804,428 +837,432 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
 
   return (
     <>
-      <PageShell className="space-y-5">
-        {/* Header Title and Search Bar */}
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-1">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-xl font-bold tracking-tight sm:text-2xl flex items-center gap-2">
-                {icon}
+      <PageShell className="min-w-0 space-y-3 sm:space-y-4" maxWidth="full">
+        {/* Top toolbar */}
+        <header className="flex flex-col gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm sm:h-11 sm:w-11 [&>svg]:h-5 [&>svg]:w-5">
+              {icon || <ClipboardList className="h-5 w-5" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl font-bold leading-tight tracking-tight text-foreground sm:text-2xl">
                 {title}
               </h1>
-              {role === "kitchen" || role === "chef" ? (
-                <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200 border-blue-300 gap-1 text-xs font-semibold py-0.5">
-                  <ChefHat className="h-3 w-3" /> Kitchen Display
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="text-muted-foreground gap-1 text-xs font-medium py-0.5 bg-muted/30">
-                  <ChefHat className="h-3 w-3 text-primary" /> Fulfillments routed to Kitchen Staff
-                </Badge>
-              )}
+              <p className="mt-0.5 text-xs leading-snug text-muted-foreground sm:text-sm">
+                {description || t("orders:viewAndManage", "View and manage your restaurant orders")}
+              </p>
             </div>
-            {description && (
-              <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">{description}</p>
-            )}
           </div>
 
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
-            <div className="relative w-full sm:max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <div className="flex min-w-0 w-full flex-col gap-2">
+            <div className="relative min-w-0 w-full">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder={t("orders:searchPlaceholder", "Search name, phone, #...")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 pr-8 h-10 rounded-lg"
+                className="h-11 w-full rounded-xl border-border/80 bg-card pl-10 pr-9 shadow-xs"
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-4 w-4" />
                 </button>
               )}
             </div>
 
-            <Button
-              variant={showAdvancedFilters || activeFiltersCount > 0 ? "secondary" : "outline"}
-              onClick={() => setShowAdvancedFilters((v) => !v)}
-              className={cn(
-                "h-10 w-full rounded-lg gap-2 border-border/80 sm:w-auto",
-                activeFiltersCount > 0 && "border-primary/40 text-primary font-semibold"
-              )}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              <span>{t("orders:filters", "Filters")}</span>
-              {activeFiltersCount > 0 && (
-                <Badge variant="default" className="h-5 px-1.5 text-xs font-bold rounded-full ml-0.5">
-                  {activeFiltersCount}
-                </Badge>
-              )}
-            </Button>
-
-            {activeFiltersCount > 0 && (
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
               <Button
-                variant="ghost"
-                size="sm"
-                onClick={resetFilters}
-                className="h-10 text-muted-foreground hover:text-foreground gap-1.5"
+                type="button"
+                variant="outline"
+                onClick={() => setShowFilters((v) => !v)}
+                className={cn(
+                  "h-11 w-full gap-2 rounded-xl border-primary/40 bg-card px-3 text-primary shadow-xs sm:h-10 sm:w-auto sm:rounded-full sm:px-3.5",
+                  (role === "kitchen" || role === "chef" || role === "receptionist") &&
+                    "col-span-2",
+                  showFilters && "bg-primary/5 font-semibold",
+                )}
               >
-                <RotateCcw className="h-3.5 w-3.5" />
-                {t("common:reset", "Reset")}
-              </Button>
-            )}
-
-            {role !== "kitchen" && role !== "chef" && role !== "receptionist" && (
-              <div className="flex w-full flex-col items-stretch gap-1.5 sm:w-auto sm:min-w-[9.5rem]">
-                <CreateManualOrderDialog onOrderCreated={() => void load()} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-9 w-full rounded-lg gap-1.5 sm:w-auto"
-                  disabled={syncingMarketplace}
-                  onClick={() => void syncMarketplaceOrders()}
-                >
-                  {syncingMarketplace ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
+                <SlidersHorizontal className="h-4 w-4 shrink-0" />
+                <span className="truncate">{t("orders:filters", "Filters")}</span>
+                {activeFiltersCount > 0 && (
+                  <Badge className="h-5 shrink-0 rounded-full px-1.5 text-[10px] font-bold">
+                    {activeFiltersCount}
+                  </Badge>
+                )}
+                <ChevronDown
+                  className={cn(
+                    "ml-auto h-4 w-4 shrink-0 transition-transform sm:ml-0",
+                    showFilters && "rotate-180",
                   )}
-                  {t("orders:syncMarketplace", "Sync")}
-                </Button>
-              </div>
-            )}
+                />
+              </Button>
+
+              {role !== "kitchen" && role !== "chef" && role !== "receptionist" ? (
+                <>
+                  <div className="min-w-0 w-full sm:w-auto [&_button]:h-11 [&_button]:rounded-xl sm:[&_button]:h-10 sm:[&_button]:rounded-full">
+                    <CreateManualOrderDialog onOrderCreated={() => void load()} />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="col-span-2 h-11 w-full gap-1.5 rounded-xl border-primary/40 bg-card px-3.5 text-primary shadow-xs sm:col-span-1 sm:h-10 sm:w-auto sm:rounded-full"
+                    disabled={syncingMarketplace}
+                    onClick={() => void syncMarketplaceOrders()}
+                    title={t("orders:syncMarketplace", "Sync")}
+                  >
+                    {syncingMarketplace ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    <span>{t("orders:syncMarketplace", "Sync")}</span>
+                  </Button>
+                </>
+              ) : null}
+            </div>
           </div>
         </header>
 
-        {/* Quick Transfer Filter Pills */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            size="sm"
-            variant={transferFilter === "all" ? "default" : "outline"}
-            className={cn(
-              "h-8 text-xs font-semibold rounded-lg",
-              transferFilter === "all" && "bg-primary text-primary-foreground font-bold shadow-xs"
-            )}
-            onClick={() => setTransferFilter("all")}
-          >
-            {t("orders:allOrdersTab", "All Orders")} ({transferCounts.all})
-          </Button>
-          <Button
-            size="sm"
-            variant={transferFilter === "direct" ? "default" : "outline"}
-            className={cn(
-              "h-8 text-xs font-semibold rounded-lg",
-              transferFilter === "direct" && "bg-primary text-primary-foreground font-bold shadow-xs"
-            )}
-            onClick={() => setTransferFilter("direct")}
-          >
-            {t("orders:directOrders", "Direct Orders")} ({transferCounts.direct})
-          </Button>
-        </div>
-
-        {/* Primary Filter Bar */}
-        <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
-          <CardContent className="p-4 space-y-4">
-            <div className={cn(
-              "grid grid-cols-1 gap-3",
-              siblingBranches.length > 1 ? "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" : "sm:grid-cols-2 lg:grid-cols-4"
-            )}>
-              {/* 1. Food Category Filter (Most Left) */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block leading-5">
-                  {t("orders:category", "Category")}
-                </label>
-                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="h-9.5">
-                    <SelectValue placeholder={t("orders:allCategories", "All Categories")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("orders:allCategories", "All Categories")}</SelectItem>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 2. Branch Filter (when multiple sibling branches exist) */}
-              {siblingBranches.length > 1 && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block leading-5">
-                    {t("orders:branchLocation", "Branch Location")}
-                  </label>
-                  <Select value={branchFilter} onValueChange={setBranchFilter}>
-                    <SelectTrigger className="h-9.5">
-                      <SelectValue placeholder={t("orders:allBranches", "All Branches")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t("orders:allBranches", "All Branches")} ({siblingBranches.length})</SelectItem>
-                      {siblingBranches.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.name} {!b.is_accepting_orders ? `(${t("orders:paused", "Paused")})` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* Channel / app filter */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block leading-5">
-                  {t("orders:channel", "Channel")}
-                </label>
-                <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                  <SelectTrigger className="h-9.5">
-                    <SelectValue placeholder={t("orders:allChannels", "All Channels")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("orders:allChannels", "All Channels")}</SelectItem>
-                    {ORDER_CHANNELS.map((ch) => (
-                      <SelectItem key={ch} value={ch}>
-                        {t(`orders:channel_${ch}`, ORDER_CHANNEL_LABELS[ch])}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Order type: Dine-in / Takeaway */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block leading-5">
-                  {t("orders:orderType", "Order Type")}
-                </label>
-                <Select
-                  value={fulfillmentFilter}
-                  onValueChange={(v) => setFulfillmentFilter(v as "all" | "dine_in" | "pickup")}
-                >
-                  <SelectTrigger className="h-9.5">
-                    <SelectValue placeholder={t("orders:allTypes", "All Types")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("orders:allTypes", "All Types")}</SelectItem>
-                    <SelectItem value="dine_in">{t("orders:dineIn", "Dine-in")}</SelectItem>
-                    <SelectItem value="pickup">{t("orders:takeaway", "Takeaway")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 3. Date Filter */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block leading-5">
-                  {t("orders:dateRange", "Date Range")}
-                </label>
-                <Select value={datePreset} onValueChange={setDatePreset}>
-                  <SelectTrigger className="h-9.5">
-                    <SelectValue placeholder={t("common:selectDate", "Select date")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("orders:allTime", "All Time")}</SelectItem>
-                    <SelectItem value="today">{t("orders:today", "Today")}</SelectItem>
-                    <SelectItem value="yesterday">{t("orders:yesterday", "Yesterday")}</SelectItem>
-                    <SelectItem value="last_7_days">{t("orders:last7Days", "Last 7 Days")}</SelectItem>
-                    <SelectItem value="last_30_days">{t("orders:last30Days", "Last 30 Days")}</SelectItem>
-                    <SelectItem value="this_month">{t("orders:thisMonth", "This Month")}</SelectItem>
-                    <SelectItem value="custom">{t("orders:customRange", "Custom Range...")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 4. Sort By */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block leading-5">
-                  {t("orders:sortBy", "Sort By")}
-                </label>
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="h-9.5">
-                    <SelectValue placeholder={t("orders:sortBy", "Sort by")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="newest">{t("orders:newestFirst", "Newest First")}</SelectItem>
-                    <SelectItem value="oldest">{t("orders:oldestFirst", "Oldest First")}</SelectItem>
-                    <SelectItem value="highest_amount">{t("orders:highestAmount", "Amount: High to Low")}</SelectItem>
-                    <SelectItem value="lowest_amount">{t("orders:lowestAmount", "Amount: Low to High")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+        {/* Filters card */}
+        <Card className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
+          <CardContent className="space-y-3 p-3 sm:space-y-4 sm:p-5">
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 scrollbar-none">
+              <Button
+                type="button"
+                size="sm"
+                variant={transferFilter === "all" ? "default" : "outline"}
+                className={cn(
+                  "h-9 shrink-0 gap-1.5 rounded-full px-3.5 text-xs font-semibold",
+                  transferFilter === "all"
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "border-primary/35 bg-card text-primary hover:bg-primary/5",
+                )}
+                onClick={() => setTransferFilter("all")}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                {t("orders:allOrdersTab", "All Orders")} ({transferCounts.all})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={transferFilter === "direct" ? "default" : "outline"}
+                className={cn(
+                  "h-9 shrink-0 gap-1.5 rounded-full px-3.5 text-xs font-semibold",
+                  transferFilter === "direct"
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "border-primary/35 bg-card text-primary hover:bg-primary/5",
+                )}
+                onClick={() => setTransferFilter("direct")}
+              >
+                <Zap className="h-3.5 w-3.5" />
+                {t("orders:directOrders", "Direct Orders")} ({transferCounts.direct})
+              </Button>
             </div>
 
-            {/* Custom Date Pickers (when custom range is selected) */}
-            {datePreset === "custom" && (
-              <div className="pt-3 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fade-in">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">{t("common:startDate", "From Date")}</label>
-                  <Input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">{t("common:endDate", "To Date")}</label>
-                  <Input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                    className="h-9"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Advanced / Secondary Filters Row */}
-            {showAdvancedFilters && (
-              <div className="pt-3 border-t border-border/60 grid grid-cols-1 sm:grid-cols-3 gap-3 animate-fade-in">
-                {/* 5. Order Status (for all orders view) */}
-                {isAllOrdersPage && (
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block leading-5">
-                      {t("common:status", "Order Status")}
+            {showFilters && (
+              <>
+                <div className="grid grid-cols-1 gap-3 rounded-xl border border-border/60 bg-muted/20 p-3 sm:grid-cols-2 sm:p-4 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className="min-w-0 space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {t("orders:category", "Category")}
                     </label>
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger className="h-9.5">
-                        <SelectValue placeholder={t("orders:filterByStatus", "All Statuses")} />
-                      </SelectTrigger>
+                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                      <FilterSelectTrigger icon={Layers}>
+                        <SelectValue placeholder={t("orders:allCategories", "All Categories")} />
+                      </FilterSelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">{t("orders:all", "All Statuses")}</SelectItem>
-                        <SelectItem value="pending">{t("orders:newOrders", "New / Pending")}</SelectItem>
-                        <SelectItem value="confirmed">{t("orders:confirmed", "Confirmed")}</SelectItem>
-                        <SelectItem value="preparing">{t("orders:preparing", "Preparing")}</SelectItem>
-                        <SelectItem value="ready">{t("orders:ready", "Ready")}</SelectItem>
-                        <SelectItem value="out_for_delivery">{t("orders:outForDelivery", "Out for Delivery")}</SelectItem>
-                        <SelectItem value="delivered">{t("orders:delivered", "Delivered")}</SelectItem>
-                        <SelectItem value="cancelled">{t("orders:cancelled", "Cancelled")}</SelectItem>
+                        <SelectItem value="all">{t("orders:allCategories", "All Categories")}</SelectItem>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
-                )}
 
-                {/* 8. Driver Filter */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block leading-5">
-                    {t("drivers:title", "Rider / Driver")}
-                  </label>
-                  <Select value={driverFilter} onValueChange={setDriverFilter}>
-                    <SelectTrigger className="h-9.5">
-                      <SelectValue placeholder={t("orders:selectDriver", "All Drivers")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t("common:all", "All Drivers")}</SelectItem>
-                      <SelectItem value="unassigned">{t("orders:noDriverAssigned", "Unassigned Only")}</SelectItem>
-                      {drivers.map((drv) => (
-                        <SelectItem key={drv.id} value={drv.id}>
-                          {drv.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {siblingBranches.length > 1 && (
+                    <div className="min-w-0 space-y-1.5">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                        {t("orders:branchLocation", "Branch Location")}
+                      </label>
+                      <Select value={branchFilter} onValueChange={setBranchFilter}>
+                        <FilterSelectTrigger icon={Building2}>
+                          <SelectValue placeholder={t("orders:allBranches", "All Branches")} />
+                        </FilterSelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t("orders:allBranches", "All Branches")} ({siblingBranches.length})</SelectItem>
+                          {siblingBranches.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name} {!b.is_accepting_orders ? `(${t("orders:paused", "Paused")})` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="min-w-0 space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {t("orders:channel", "Channel")}
+                    </label>
+                    <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                      <FilterSelectTrigger icon={Share2}>
+                        <SelectValue placeholder={t("orders:allChannels", "All Channels")} />
+                      </FilterSelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t("orders:allChannels", "All Channels")}</SelectItem>
+                        {ORDER_CHANNELS.map((ch) => (
+                          <SelectItem key={ch} value={ch}>
+                            {t(`orders:channel_${ch}`, ORDER_CHANNEL_LABELS[ch])}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="min-w-0 space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {t("orders:orderType", "Order Type")}
+                    </label>
+                    <Select
+                      value={fulfillmentFilter}
+                      onValueChange={(v) => setFulfillmentFilter(v as "all" | "dine_in" | "pickup")}
+                    >
+                      <FilterSelectTrigger icon={Tag}>
+                        <SelectValue placeholder={t("orders:allTypes", "All Types")} />
+                      </FilterSelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t("orders:allTypes", "All Types")}</SelectItem>
+                        <SelectItem value="dine_in">{t("orders:dineIn", "Dine-in")}</SelectItem>
+                        <SelectItem value="pickup">{t("orders:takeaway", "Takeaway")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="min-w-0 space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {t("orders:dateRange", "Date Range")}
+                    </label>
+                    <Select value={datePreset} onValueChange={setDatePreset}>
+                      <FilterSelectTrigger icon={Calendar}>
+                        <SelectValue placeholder={t("common:selectDate", "Select date")} />
+                      </FilterSelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t("orders:allTime", "All Time")}</SelectItem>
+                        <SelectItem value="today">{t("orders:today", "Today")}</SelectItem>
+                        <SelectItem value="yesterday">{t("orders:yesterday", "Yesterday")}</SelectItem>
+                        <SelectItem value="last_7_days">{t("orders:last7Days", "Last 7 Days")}</SelectItem>
+                        <SelectItem value="last_30_days">{t("orders:last30Days", "Last 30 Days")}</SelectItem>
+                        <SelectItem value="this_month">{t("orders:thisMonth", "This Month")}</SelectItem>
+                        <SelectItem value="custom">{t("orders:customRange", "Custom Range...")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="min-w-0 space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {t("orders:sortBy", "Sort By")}
+                    </label>
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                      <FilterSelectTrigger icon={ArrowUpDown}>
+                        <SelectValue placeholder={t("orders:sortBy", "Sort by")} />
+                      </FilterSelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="newest">{t("orders:newestFirst", "Newest First")}</SelectItem>
+                        <SelectItem value="oldest">{t("orders:oldestFirst", "Oldest First")}</SelectItem>
+                        <SelectItem value="highest_amount">{t("orders:highestAmount", "Amount: High to Low")}</SelectItem>
+                        <SelectItem value="lowest_amount">{t("orders:lowestAmount", "Amount: Low to High")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {datePreset === "custom" && (
+                    <>
+                      <div className="min-w-0 space-y-1.5">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                          {t("common:startDate", "From Date")}
+                        </label>
+                        <Input
+                          type="date"
+                          value={fromDate}
+                          onChange={(e) => setFromDate(e.target.value)}
+                          className="h-11 rounded-xl"
+                        />
+                      </div>
+                      <div className="min-w-0 space-y-1.5">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                          {t("common:endDate", "To Date")}
+                        </label>
+                        <Input
+                          type="date"
+                          value={toDate}
+                          onChange={(e) => setToDate(e.target.value)}
+                          className="h-11 rounded-xl"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
-              </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">
+                        {t("orders:showingOrders", {
+                          count: filtered.length,
+                          total: orders.length,
+                        })}
+                      </span>
+                      <span className="hidden sm:inline">•</span>
+                      <span>
+                        {t("orders:totalLabel", "Total")}:{" "}
+                        <span className="font-bold text-primary">
+                          {formatCurrency(filteredTotalRevenue)}
+                        </span>
+                      </span>
+                    </div>
+                    {activeFiltersCount > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {transferFilter !== "all" && (
+                          <Badge
+                            variant="secondary"
+                            className="gap-1 border-amber-500/30 bg-amber-500/15 font-medium text-amber-700"
+                          >
+                            {t("orders:directOrders", "Direct Orders")}
+                            <X
+                              className="h-3 w-3 cursor-pointer"
+                              onClick={() => setTransferFilter("all")}
+                            />
+                          </Badge>
+                        )}
+                        {categoryFilter !== "all" && (
+                          <Badge variant="secondary" className="gap-1 font-medium">
+                            {selectedCategoryName || categoryFilter}
+                            <X
+                              className="h-3 w-3 cursor-pointer"
+                              onClick={() => setCategoryFilter("all")}
+                            />
+                          </Badge>
+                        )}
+                        {sourceFilter !== "all" && (
+                          <Badge variant="secondary" className="gap-1 font-medium">
+                            {t(
+                              `orders:channel_${sourceFilter}`,
+                              ORDER_CHANNEL_LABELS[
+                                sourceFilter as keyof typeof ORDER_CHANNEL_LABELS
+                              ] || sourceFilter,
+                            )}
+                            <X
+                              className="h-3 w-3 cursor-pointer"
+                              onClick={() => setSourceFilter("all")}
+                            />
+                          </Badge>
+                        )}
+                        {fulfillmentFilter !== "all" && (
+                          <Badge variant="secondary" className="gap-1 font-medium">
+                            {fulfillmentFilter === "dine_in"
+                              ? t("orders:dineIn", "Dine-in")
+                              : t("orders:takeaway", "Takeaway")}
+                            <X
+                              className="h-3 w-3 cursor-pointer"
+                              onClick={() => setFulfillmentFilter("all")}
+                            />
+                          </Badge>
+                        )}
+                        {datePreset !== "all" && (
+                          <Badge
+                            variant="secondary"
+                            className="gap-1 font-medium capitalize"
+                          >
+                            {datePreset.replace(/_/g, " ")}
+                            <X
+                              className="h-3 w-3 cursor-pointer"
+                              onClick={() => setDatePreset("all")}
+                            />
+                          </Badge>
+                        )}
+                        {branchFilter !== "all" && (
+                          <Badge variant="secondary" className="gap-1 font-medium">
+                            {restaurantsMap[branchFilter] || branchFilter}
+                            <X
+                              className="h-3 w-3 cursor-pointer"
+                              onClick={() => setBranchFilter("all")}
+                            />
+                          </Badge>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={resetFilters}
+                    className="h-10 w-full gap-1.5 rounded-xl border-primary/40 px-3 text-primary hover:bg-primary/5 sm:h-9 sm:w-auto sm:rounded-full"
+                  >
+                    <Eraser className="h-3.5 w-3.5" />
+                    {t("orders:clearFilters", "Clear Filters")}
+                  </Button>
+                </div>
+              </>
             )}
 
-            {/* Filter Summary & Active Badges Bar */}
-            <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
-              <div className="flex items-center gap-2 flex-wrap">
+            {!showFilters && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-3 text-xs text-muted-foreground">
                 <span className="font-semibold text-foreground">
-                  {t("orders:showingOrders", { count: filtered.length, total: orders.length })}
+                  {t("orders:showingOrders", {
+                    count: filtered.length,
+                    total: orders.length,
+                  })}
                 </span>
-                <span className="text-muted-foreground">•</span>
-                <span className="font-bold text-foreground">
-                  {t("orders:totalLabel", "Total")}: {formatCurrency(filteredTotalRevenue)}
+                <span>
+                  {t("orders:totalLabel", "Total")}:{" "}
+                  <span className="font-bold text-primary">
+                    {formatCurrency(filteredTotalRevenue)}
+                  </span>
                 </span>
-
-                {/* Active Filter Chips */}
-                {transferFilter !== "all" && (
-                  <Badge variant="secondary" className="gap-1 font-medium bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30">
-                    <ArrowRightLeft className="h-3 w-3" />
-                    {t("orders:type", "Type")}: {transferFilter === "transferred" ? t("orders:transferredOrders", "Transferred Orders") : t("orders:directOrders", "Direct Orders")}
-                    <X className="h-3 w-3 cursor-pointer" onClick={() => setTransferFilter("all")} />
-                  </Badge>
-                )}
-                {branchFilter !== "all" && (
-                  <Badge variant="secondary" className="gap-1 font-medium bg-primary/10 text-primary border-primary/25">
-                    <Building2 className="h-3 w-3" />
-                    {t("orders:branch", "Branch")}: {restaurantsMap[branchFilter] || branchFilter}
-                    <X className="h-3 w-3 cursor-pointer" onClick={() => setBranchFilter("all")} />
-                  </Badge>
-                )}
-                {categoryFilter !== "all" && (
-                  <Badge variant="secondary" className="gap-1 font-medium">
-                    {t("orders:category", "Category")}: {selectedCategoryName || categoryFilter}
-                    <X className="h-3 w-3 cursor-pointer" onClick={() => setCategoryFilter("all")} />
-                  </Badge>
-                )}
-                {datePreset !== "all" && (
-                  <Badge variant="secondary" className="gap-1 font-medium capitalize">
-                    {t("orders:dateRange", "Date")}: {datePreset.replace(/_/g, " ")}
-                    <X className="h-3 w-3 cursor-pointer" onClick={() => setDatePreset("all")} />
-                  </Badge>
-                )}
-                {sourceFilter !== "all" && (
-                  <Badge variant="secondary" className="gap-1 font-medium">
-                    {t("orders:channel", "Channel")}:{" "}
-                    {t(`orders:channel_${sourceFilter}`, ORDER_CHANNEL_LABELS[sourceFilter as keyof typeof ORDER_CHANNEL_LABELS] || sourceFilter)}
-                    <X className="h-3 w-3 cursor-pointer" onClick={() => setSourceFilter("all")} />
-                  </Badge>
-                )}
-                {paymentStatusFilter !== "all" && (
-                  <Badge variant="secondary" className="gap-1 font-medium capitalize">
-                    {t("orders:paymentStatus", "Payment")}: {paymentStatusFilter}
-                    <X className="h-3 w-3 cursor-pointer" onClick={() => setPaymentStatusFilter("all")} />
-                  </Badge>
-                )}
-                {driverFilter !== "all" && (
-                  <Badge variant="secondary" className="gap-1 font-medium">
-                    {t("drivers:driver", "Driver")}: {selectedDriverName || (driverFilter === "unassigned" ? t("orders:noDriverAssigned", "Unassigned") : driverFilter)}
-                    <X className="h-3 w-3 cursor-pointer" onClick={() => setDriverFilter("all")} />
-                  </Badge>
-                )}
-                {statusFilter !== "all" && (
-                  <Badge variant="secondary" className="gap-1 font-medium capitalize">
-                    {t("common:status", "Status")}: {getOrderStatusLabel(statusFilter as OrderStatus)}
-                    <X className="h-3 w-3 cursor-pointer" onClick={() => setStatusFilter("all")} />
-                  </Badge>
-                )}
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
         {/* Orders List Cards */}
-        <div className="grid gap-4">
+        <div className="grid gap-3 sm:gap-4">
           {displayRows.map((o) => {
             const its = o.sittingOrderIds.flatMap((oid) => orderItems(oid));
             const driver = drivers.find((d) => d.id === o.driver_id);
             const isTransferredOrder = Boolean(o.is_transferred || (o.branch_assigned_at && !o.auto_assigned));
             const isIncomingTransferForMe = Boolean(
-              isBranch &&
               o.pending_transfer_to_restaurant_id === restaurantId &&
               o.transfer_status === "pending"
             );
-            const isTransferPendingForAdmin = Boolean(
-              !isBranch &&
+            const isTransferPendingOutbound = Boolean(
+              o.restaurant_id === restaurantId &&
               o.transfer_status === "pending" &&
-              o.pending_transfer_to_restaurant_id
+              o.pending_transfer_to_restaurant_id &&
+              o.pending_transfer_to_restaurant_id !== restaurantId
             );
             const isTransferRejected = Boolean(
-              o.transfer_status === "rejected"
+              o.transfer_status === "rejected" && o.restaurant_id === restaurantId
             );
+            const fromLocationName =
+              (o.transferred_from_restaurant_id && restaurantsMap[o.transferred_from_restaurant_id]) ||
+              t("orders:anotherLocation", "another location");
 
             return (
               <Card key={o.id} className={cn(
-                "overflow-hidden rounded-2xl border border-border/80 shadow-xs hover:border-primary/50 transition-all",
-                isIncomingTransferForMe && "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/[0.03]",
+                "overflow-hidden rounded-2xl border border-border/80 shadow-xs transition-all hover:border-primary/50",
+                isIncomingTransferForMe && "border-amber-500 bg-amber-500/[0.03] ring-2 ring-amber-500/20",
                 isTransferRejected && "border-destructive/40 bg-destructive/[0.02]",
                 isTransferredOrder && !isIncomingTransferForMe && "border-primary/30 bg-primary/[0.01]"
               )}>
-                <CardContent className="p-5">
-                  {/* Branch Incoming Transfer Banner */}
+                <CardContent className="p-3.5 sm:p-5">
+                  {/* Incoming Transfer Banner (HQ or any branch) */}
                   {isIncomingTransferForMe && (
                     <div className="mb-4 p-3.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-primary/10 to-amber-500/5 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                       <div className="flex items-start gap-2.5">
@@ -1234,13 +1271,17 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                         </div>
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-sm text-foreground">{t("orders:transferRequestFromHq", "🚨 Transfer Request from HQ Admin")}</span>
+                            <span className="font-bold text-sm text-foreground">
+                              {t("orders:incomingTransferRequest", "🚨 Incoming transfer from {{from}}", { from: fromLocationName })}
+                            </span>
                             <Badge variant="outline" className="text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30">
                               {t("orders:actionRequired", "Action Required")}
                             </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {o.transfer_reason ? `${t("orders:reason", "Reason")}: "${o.transfer_reason}"` : t("orders:hqTransferPrompt", "HQ Admin has requested to transfer this order to your branch for fulfillment.")}
+                            {o.transfer_reason
+                              ? `${t("orders:reason", "Reason")}: "${o.transfer_reason}"`
+                              : t("orders:transferPromptGeneric", "Another location requested to transfer this order to you. Accept or reject.")}
                           </p>
                         </div>
                       </div>
@@ -1270,13 +1311,13 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                     </div>
                   )}
 
-                  {/* HQ Admin Transfer Rejected Banner */}
-                  {!isBranch && isTransferRejected && (
+                  {/* Transfer rejected — sender can reassign */}
+                  {isTransferRejected && (
                     <div className="mb-4 p-3 rounded-xl bg-destructive/10 border border-destructive/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                       <div className="flex items-center gap-2">
                         <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
                         <span className="text-xs font-semibold text-destructive">
-                          {t("orders:transferRejected", "Transfer was rejected:")} {o.transfer_rejection_reason || t("orders:branchUnableToFulfill", "Branch unable to fulfill this order.")}
+                          {t("orders:transferRejected", "Transfer was rejected:")} {o.transfer_rejection_reason || t("orders:branchUnableToFulfill", "Location unable to fulfill this order.")}
                         </span>
                       </div>
                       <Button
@@ -1290,178 +1331,32 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                           setTransferOpen(true);
                         }}
                       >
-                        <RotateCcw className="h-3 w-3" /> {t("orders:reassignToAnotherBranch", "Reassign to Another Branch")}
+                        <RotateCcw className="h-3 w-3" /> {t("orders:reassignToAnother", "Transfer to another location")}
                       </Button>
                     </div>
                   )}
 
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    {/* Left Column: Order Number, Customer, Address & Driver */}
-                    <div className="space-y-2.5 w-full lg:w-72 xl:w-80 shrink-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-lg font-bold font-mono text-foreground tracking-tight">
-                          {o.order_number}
-                        </span>
+                  {(() => {
+                    const parseItemLabel = (item: (typeof its)[number]) => {
+                      const sizeMatch = item.item_name.match(/\(([^)]+)\)/);
+                      const addMatch = item.item_name.includes("+")
+                        ? item.item_name.split("+")[1]
+                        : null;
+                      let baseName = item.item_name;
+                      if (sizeMatch) baseName = baseName.replace(sizeMatch[0], "").trim();
+                      if (addMatch) baseName = baseName.split("+")[0].trim();
+                      return { baseName, sizeMatch, addMatch };
+                    };
 
-                        {(() => {
-                          const channel = orderChannel(o.source, o.call_id);
-                          if (channel) {
-                            return (
-                              <Badge variant="outline" className="bg-sky-500/10 text-sky-800 dark:text-sky-200 border-sky-500/30 text-xs font-semibold">
-                                {t(`orders:channel_${channel}`, ORDER_CHANNEL_LABELS[channel])}
-                              </Badge>
-                            );
-                          }
-                          const taker = orderTakerLabel(o.source, o.call_id);
-                          if (!taker) return null;
-                          return (
-                            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/25 text-xs font-semibold flex items-center gap-1">
-                              {taker === "Agent" ? (
-                                <Phone className="h-3 w-3 text-primary" />
-                              ) : (
-                                <User className="h-3 w-3 text-primary" />
-                              )}
-                              <span>{taker}</span>
-                            </Badge>
-                          );
-                        })()}
-
-                        {isTransferPendingForAdmin && (
-                          <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40 text-xs font-bold flex items-center gap-1">
-                            <Clock className="h-3 w-3 animate-spin" />
-                            <span>{t("orders:pendingAcceptance", "Pending Acceptance")} ({restaurantsMap[o.pending_transfer_to_restaurant_id!] || t("orders:branch", "Branch")})</span>
-                          </Badge>
-                        )}
-
-                        {isTransferredOrder && (
-                          <Badge variant="outline" className="bg-primary/15 text-primary border-primary/30 text-xs font-bold flex items-center gap-1">
-                            <ArrowRightLeft className="h-3 w-3" />
-                            <span>{t("orders:transferred", "Transferred")}</span>
-                          </Badge>
-                        )}
-
-                        {o.fulfillment_type === "dine_in" && (
-                          <Badge variant="outline" className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30 text-xs font-bold flex items-center gap-1">
-                            <UtensilsCrossed className="h-3 w-3" />
-                            <span>Dine-In{o.table_number ? ` · Table ${o.table_number}` : ""}</span>
-                          </Badge>
-                        )}
-                        {o.sittingCount > 1 && (
-                          <Badge variant="outline" className="bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30 text-xs font-bold">
-                            {o.sittingCount} orders
-                          </Badge>
-                        )}
-
-                        <Badge
-                          className={cn("text-xs font-semibold px-2.5 py-0.5", ORDER_STATUS_COLORS[o.status])}
+                    const actionButtons = (
+                      <>
+                        <Button
+                          size="sm"
                           variant="outline"
+                          className="h-9 min-w-[5.5rem] flex-1 md:flex-none"
+                          onClick={() => navigate(`/orders/${o.id}`)}
                         >
-                          {o.fulfillment_type === "dine_in" && o.status === "out_for_delivery"
-                            ? "🍽️ Served"
-                            : getOrderStatusLabel(o.status)}
-                        </Badge>
-                      </div>
-
-                      {/* Customer info + Phone */}
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <div className="flex items-center gap-2 font-semibold text-sm sm:text-base text-foreground">
-                          <div className="h-7 w-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                            {(o.customer_name || "G").charAt(0).toUpperCase()}
-                          </div>
-                          <span className="truncate max-w-[150px]">{o.customer_name || t("orders:guestCustomer", "Guest Customer")}</span>
-                        </div>
-
-                        {o.customer_phone && (
-                          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground/80 bg-muted/60 px-2 py-0.5 rounded-md border border-border/70">
-                            <Phone className="h-3 w-3 text-primary shrink-0" />
-                            <span>{o.customer_phone}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {o.delivery_address && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <MapPin className="h-3.5 w-3.5 text-muted-foreground/80 shrink-0" />
-                          <span className="truncate">{o.delivery_address}</span>
-                        </div>
-                      )}
-
-                      {driver && (
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-xs font-medium">
-                          <Truck className="h-3.5 w-3.5 shrink-0" />
-                          <span>
-                            {t("orders:driverLabel", "Driver:")} <strong className="font-semibold">{driver.full_name}</strong>
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Center Column: Order Items with scrollable container */}
-                    <div className="flex-1 min-w-0 w-full lg:px-6 lg:border-l lg:border-r border-border/50 py-3 lg:py-1 border-t lg:border-t-0 border-b lg:border-b-0 space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <ShoppingBag className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <span className="text-[11px] font-bold uppercase tracking-wider">
-                          {t("orders:orderItems", "Order Items")} ({its.length})
-                        </span>
-                      </div>
-                      <div className="max-h-24 sm:max-h-28 overflow-y-auto custom-scrollbar flex flex-wrap gap-2 pr-1 items-center content-start">
-                        {its.length > 0 ? (
-                          its.map((item) => {
-                            const sizeMatch = item.item_name.match(/\(([^)]+)\)/);
-                            const addMatch = item.item_name.includes("+") ? item.item_name.split("+")[1] : null;
-                            let baseName = item.item_name;
-                            if (sizeMatch) baseName = baseName.replace(sizeMatch[0], "").trim();
-                            if (addMatch) baseName = baseName.split("+")[0].trim();
-
-                            return (
-                              <div
-                                key={item.id}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/60 border border-border/80 text-xs sm:text-sm font-semibold text-foreground shadow-2xs hover:bg-muted transition-colors flex-wrap"
-                              >
-                                <span className="inline-flex items-center justify-center bg-primary text-primary-foreground font-bold rounded px-1.5 py-0.2 text-[11px]">
-                                  {item.quantity}×
-                                </span>
-                                <span>{baseName}</span>
-                                {sizeMatch && (
-                                  <span className="bg-primary/10 text-primary border border-primary/20 text-[10px] font-bold px-1 py-0.2 rounded">
-                                    {sizeMatch[1]}
-                                  </span>
-                                )}
-                                {addMatch && (
-                                  <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-[10px] font-medium px-1 py-0.2 rounded">
-                                    +{addMatch.trim()}
-                                  </span>
-                                )}
-                                {item.notes && (
-                                  <span className="text-[11px] font-normal text-muted-foreground italic">
-                                    ({item.notes})
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic bg-muted/30 px-2.5 py-1 rounded-md border border-dashed border-border">
-                            {t("orders:noNotes", "No items recorded")}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right Column: Amount, Time & Action Buttons */}
-                    <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between gap-3 shrink-0 w-full lg:w-auto">
-                      <div className="text-left lg:text-right">
-                        <span className="text-xl sm:text-2xl font-bold text-foreground tracking-tight block">
-                          {formatCurrency(o.total_amount)}
-                        </span>
-                        <span className="text-xs font-medium text-muted-foreground flex items-center lg:justify-end gap-1 mt-0.5">
-                          <Clock className="h-3.5 w-3.5" />
-                          {formatDate(o.created_at)} {formatTime(o.created_at)}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-2 justify-end">
-                        <Button size="sm" variant="outline" onClick={() => navigate(`/orders/${o.id}`)}>
-                          {t("orders:viewDetails", "Details")}
+                          {t("orders:viewDetails", "View Details")}
                         </Button>
                         {isStaffRole &&
                           o.status !== "delivered" &&
@@ -1469,7 +1364,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                             <Button
                               size="sm"
                               variant="outline"
-                              className="gap-1.5 text-xs font-semibold"
+                              className="h-9 min-w-[5.5rem] flex-1 gap-1.5 text-xs font-semibold md:flex-none"
                               onClick={() => navigate(`/dashboard?add_to=${o.id}`)}
                             >
                               <UtensilsCrossed className="h-3.5 w-3.5" />
@@ -1477,28 +1372,35 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                             </Button>
                           )}
                         {!isStaffRole &&
-                          siblingBranches.length > 1 &&
-                          o.status !== "delivered" &&
-                          o.status !== "cancelled" && (
+                          !isKitchenRole &&
+                          o.status === "pending" &&
+                          siblingBranches.some((b) => b.id !== o.restaurant_id) &&
+                          !(
+                            o.transfer_status === "pending" &&
+                            o.pending_transfer_to_restaurant_id
+                          ) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 min-w-[5.5rem] flex-1 gap-1.5 border-primary/25 bg-primary/5 text-xs font-semibold text-primary hover:bg-primary/15 md:flex-none"
+                              onClick={() => {
+                                setOrderToTransfer(o);
+                                setTargetBranchId("");
+                                setTransferReason("");
+                                setTransferOpen(true);
+                              }}
+                              title="Transfer this order to another available location (before confirm only)"
+                            >
+                              <Building2 className="h-3.5 w-3.5" />
+                              <span>{t("orders:transfer", "Transfer")}</span>
+                            </Button>
+                          )}
+                        {!isStaffRole && o.status === "pending" && (
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="gap-1.5 text-xs font-semibold bg-primary/5 hover:bg-primary/15 text-primary border-primary/25"
-                            onClick={() => {
-                              setOrderToTransfer(o);
-                              setTargetBranchId("");
-                              setTransferReason("");
-                              setTransferOpen(true);
-                            }}
-                            title="Transfer / send this order to another branch"
+                            className="h-9 min-w-[5.5rem] flex-1 md:flex-none"
+                            onClick={() => confirmOrder(o)}
                           >
-                            <Building2 className="h-3.5 w-3.5" />
-                            <span>{t("orders:transfer", "Transfer")}</span>
-                          </Button>
-                        )}
-                        {/* Kitchen: prep → ready. Waiter: served → completed. Admins: full flow. */}
-                        {!isStaffRole && o.status === "pending" && (
-                          <Button size="sm" onClick={() => confirmOrder(o)}>
                             {t("orders:confirm", "Confirm")}
                           </Button>
                         )}
@@ -1506,67 +1408,332 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => updateStatus(o.sittingOrderIds, "preparing")}
+                            className="h-9 min-w-[5.5rem] flex-1 md:flex-none"
+                            onClick={() =>
+                              updateStatus(o.sittingOrderIds, "preparing")
+                            }
                           >
                             {t("orders:startPrep", "Start prep")}
                           </Button>
                         )}
                         {(isKitchenRole || (!isStaffRole && !isKitchenRole)) &&
                           o.status === "preparing" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => updateStatus(o.sittingOrderIds, "ready")}
-                          >
-                            {t("orders:ready", "Ready")}
-                          </Button>
-                        )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 min-w-[5.5rem] flex-1 md:flex-none"
+                              onClick={() =>
+                                updateStatus(o.sittingOrderIds, "ready")
+                              }
+                            >
+                              {t("orders:ready", "Ready")}
+                            </Button>
+                          )}
                         {(isStaffRole || (!isKitchenRole && !isStaffRole)) &&
                           o.status === "ready" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => updateStatus(o.sittingOrderIds, "out_for_delivery")}
-                          >
-                            {o.fulfillment_type === "dine_in"
-                              ? t("orders:served", "Served")
-                              : t("orders:outForDelivery", "Out for delivery")}
-                          </Button>
-                        )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 min-w-[5.5rem] flex-1 md:flex-none"
+                              onClick={() =>
+                                updateStatus(o.sittingOrderIds, "out_for_delivery")
+                              }
+                            >
+                              {o.fulfillment_type === "dine_in"
+                                ? t("orders:served", "Served")
+                                : t("orders:outForDelivery", "Out for delivery")}
+                            </Button>
+                          )}
                         {(isStaffRole || (!isKitchenRole && !isStaffRole)) &&
                           o.status === "out_for_delivery" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              updateStatus(o.sittingOrderIds, "delivered", {
-                                delivered_at: new Date().toISOString(),
-                              })
-                            }
-                          >
-                            {o.fulfillment_type === "dine_in"
-                              ? t("orders:completed", "Completed")
-                              : t("orders:delivered", "Delivered")}
-                          </Button>
-                        )}
-                        {!isStaffRole &&
-                          !isKitchenRole &&
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 min-w-[5.5rem] flex-1 md:flex-none"
+                              onClick={() =>
+                                updateStatus(o.sittingOrderIds, "delivered", {
+                                  delivered_at: new Date().toISOString(),
+                                })
+                              }
+                            >
+                              {o.fulfillment_type === "dine_in"
+                                ? t("orders:completed", "Completed")
+                                : t("orders:delivered", "Delivered")}
+                            </Button>
+                          )}
+                        {canCancelOrder &&
                           o.status !== "cancelled" &&
                           o.status !== "delivered" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive"
-                            onClick={() => {
-                              if (confirm(t("orders:cancelOrder", "Cancel order?"))) updateStatus(o.sittingOrderIds, "cancelled");
-                            }}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-9 min-w-[5.5rem] flex-1 text-destructive md:flex-none"
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    t("orders:cancelOrder", "Cancel order?"),
+                                  )
+                                ) {
+                                  updateStatus(o.sittingOrderIds, "cancelled");
+                                }
+                              }}
+                            >
+                              {t("orders:cancel", "Cancel")}
+                            </Button>
+                          )}
+                      </>
+                    );
+
+                    const customerBlock = (
+                      <div className="min-w-0 space-y-2.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono text-base font-bold tracking-tight text-foreground md:text-lg">
+                            {o.order_number}
+                          </span>
+                          {(() => {
+                            const channel = orderChannel(o.source, o.call_id);
+                            if (channel) {
+                              return (
+                                <Badge
+                                  variant="outline"
+                                  className="border-sky-500/30 bg-sky-500/10 text-xs font-semibold text-sky-800 dark:text-sky-200"
+                                >
+                                  {t(
+                                    `orders:channel_${channel}`,
+                                    ORDER_CHANNEL_LABELS[channel],
+                                  )}
+                                </Badge>
+                              );
+                            }
+                            const taker = orderTakerLabel(o.source, o.call_id);
+                            if (!taker) return null;
+                            return (
+                              <Badge
+                                variant="outline"
+                                className="flex items-center gap-1 border-primary/25 bg-primary/10 text-xs font-semibold text-primary"
+                              >
+                                {taker === "Agent" ? (
+                                  <Phone className="h-3 w-3 text-primary" />
+                                ) : (
+                                  <User className="h-3 w-3 text-primary" />
+                                )}
+                                <span>{taker}</span>
+                              </Badge>
+                            );
+                          })()}
+                          {isTransferPendingOutbound && (
+                            <Badge
+                              variant="outline"
+                              className="flex items-center gap-1 border-amber-500/40 bg-amber-500/15 text-xs font-bold text-amber-700 dark:text-amber-400"
+                            >
+                              <Clock className="h-3 w-3 animate-spin" />
+                              <span>
+                                {t(
+                                  "orders:pendingAcceptance",
+                                  "Pending Acceptance",
+                                )}{" "}
+                                (
+                                {restaurantsMap[
+                                  o.pending_transfer_to_restaurant_id!
+                                ] || t("orders:branch", "Branch")}
+                                )
+                              </span>
+                            </Badge>
+                          )}
+                          {isTransferredOrder && (
+                            <Badge
+                              variant="outline"
+                              className="flex max-w-full items-center gap-1 border-primary/30 bg-primary/15 text-xs font-bold text-primary"
+                            >
+                              <ArrowRightLeft className="h-3 w-3 shrink-0" />
+                              <span className="truncate">
+                                {o.transferred_from_restaurant_id &&
+                                restaurantsMap[o.transferred_from_restaurant_id]
+                                  ? t(
+                                      "orders:transferredFromShort",
+                                      "From {{name}}",
+                                      {
+                                        name: restaurantsMap[
+                                          o.transferred_from_restaurant_id
+                                        ],
+                                      },
+                                    )
+                                  : t("orders:transferred", "Transferred")}
+                              </span>
+                            </Badge>
+                          )}
+                          {o.fulfillment_type === "dine_in" && (
+                            <Badge
+                              variant="outline"
+                              className="flex items-center gap-1 border-purple-500/30 bg-purple-500/15 text-xs font-bold text-purple-700 dark:text-purple-300"
+                            >
+                              <UtensilsCrossed className="h-3 w-3" />
+                              <span>
+                                Dine-In
+                                {o.table_number
+                                  ? ` · Table ${o.table_number}`
+                                  : ""}
+                              </span>
+                            </Badge>
+                          )}
+                          {o.sittingCount > 1 && (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/30 bg-amber-500/15 text-xs font-bold text-amber-800 dark:text-amber-300"
+                            >
+                              {o.sittingCount} orders
+                            </Badge>
+                          )}
+                          <Badge
+                            className={cn(
+                              "px-2.5 py-0.5 text-xs font-semibold",
+                              ORDER_STATUS_COLORS[o.status],
+                            )}
+                            variant="outline"
                           >
-                            {t("orders:cancel", "Cancel")}
-                          </Button>
-                        )}
+                            {o.fulfillment_type === "dine_in" &&
+                            o.status === "out_for_delivery"
+                              ? "🍽️ Served"
+                              : getOrderStatusLabel(o.status)}
+                          </Badge>
+                        </div>
+
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground md:text-base">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                              {(o.customer_name || "G").charAt(0).toUpperCase()}
+                            </div>
+                            <span className="truncate">
+                              {o.customer_name ||
+                                t("orders:guestCustomer", "Guest Customer")}
+                            </span>
+                          </div>
+                          {o.customer_phone ? (
+                            <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/70 bg-muted/60 px-2.5 py-0.5 text-xs font-medium text-foreground/80">
+                              <Phone className="h-3 w-3 shrink-0 text-primary" />
+                              <span className="truncate">{o.customer_phone}</span>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {o.delivery_address ? (
+                          <div className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
+                            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
+                            <span className="line-clamp-2 break-words">
+                              {o.delivery_address}
+                            </span>
+                          </div>
+                        ) : null}
+
+                        {driver ? (
+                          <div className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                            <Truck className="h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              {t("orders:driverLabel", "Driver:")}{" "}
+                              <strong className="font-semibold">
+                                {driver.full_name}
+                              </strong>
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
-                    </div>
-                  </div>
+                    );
+
+                    const itemsChips = (
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <ShoppingBag className="h-3.5 w-3.5 shrink-0 text-primary" />
+                          <span className="text-[11px] font-bold uppercase tracking-wider">
+                            {t("orders:orderItems", "Order Items")} ({its.length})
+                          </span>
+                        </div>
+                        <div className="custom-scrollbar flex max-h-28 flex-wrap content-start items-center gap-2 overflow-y-auto pr-1">
+                          {its.length > 0 ? (
+                            its.map((item) => {
+                              const { baseName, sizeMatch, addMatch } =
+                                parseItemLabel(item);
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border/80 bg-muted/60 px-2.5 py-1 text-xs font-semibold text-foreground shadow-2xs"
+                                  title={item.item_name}
+                                >
+                                  <span className="inline-flex shrink-0 items-center justify-center rounded bg-primary px-1.5 py-0.5 text-[11px] font-bold text-primary-foreground">
+                                    {item.quantity}×
+                                  </span>
+                                  <span className="truncate">{baseName}</span>
+                                  {sizeMatch ? (
+                                    <span className="shrink-0 rounded border border-primary/20 bg-primary/10 px-1 text-[10px] font-bold text-primary">
+                                      {sizeMatch[1]}
+                                    </span>
+                                  ) : null}
+                                  {addMatch ? (
+                                    <span className="max-w-[7rem] truncate rounded border border-amber-500/20 bg-amber-500/10 px-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                                      +{addMatch.trim()}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <span className="rounded-md border border-dashed border-border bg-muted/30 px-2.5 py-1 text-xs italic text-muted-foreground">
+                              {t("orders:noNotes", "No items recorded")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+
+                    const priceBlock = (
+                      <div className="text-left md:text-right">
+                        <span className="block text-xl font-bold tracking-tight text-foreground md:text-2xl">
+                          {formatCurrency(o.total_amount)}
+                        </span>
+                        <span className="mt-0.5 flex items-center gap-1 text-xs font-medium text-muted-foreground md:justify-end">
+                          <Clock className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">
+                            {formatDate(o.created_at)} {formatTime(o.created_at)}
+                          </span>
+                        </span>
+                      </div>
+                    );
+
+                    return (
+                      <>
+                        {/* Mobile: stacked */}
+                        <div className="space-y-3 md:hidden">
+                          {customerBlock}
+                          <div className="rounded-xl border border-border/60 bg-muted/15 p-2.5">
+                            {itemsChips}
+                          </div>
+                          <div className="flex flex-col gap-3 border-t border-border/50 pt-3">
+                            {priceBlock}
+                            <div className="flex w-full flex-wrap gap-2">
+                              {actionButtons}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Tablet / Laptop / Laptop-L: 3-column horizontal */}
+                        <div className="hidden md:flex md:items-center md:justify-between md:gap-4 lg:gap-6">
+                          <div className="w-[240px] shrink-0 lg:w-[280px] xl:w-80">
+                            {customerBlock}
+                          </div>
+
+                          <div className="min-w-0 flex-1 border-l border-r border-border/50 px-4 py-1 lg:px-6">
+                            {itemsChips}
+                          </div>
+
+                          <div className="flex w-[200px] shrink-0 flex-col items-end gap-3 lg:w-[220px]">
+                            {priceBlock}
+                            <div className="flex flex-wrap justify-end gap-2">
+                              {actionButtons}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             );
@@ -1618,20 +1785,22 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
         </div>
       </PageShell>
 
-      {/* Quick Transfer Order to Branch Modal (HQ Admin) */}
+      {/* Transfer order to HQ or another branch */}
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-primary" /> {t("orders:transferOrderToBranch", "Transfer Order to Branch")}
+              <Building2 className="h-5 w-5 text-primary" /> {t("orders:transferOrderTitle", "Transfer Order")}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              {t("orders:transferDesc", { number: orderToTransfer?.order_number, defaultValue: `Send order ${orderToTransfer?.order_number} to another branch for fulfillment.` })}
+              {t("orders:transferDesc", {
+                number: orderToTransfer?.order_number,
+                defaultValue: `Send order ${orderToTransfer?.order_number} to another available location. Only unconfirmed orders can be transferred.`,
+              })}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            {/* Currently Assigned Branch Banner */}
             <div className="p-3 rounded-xl bg-muted/40 border border-border/50 text-xs flex items-center justify-between">
               <span className="text-muted-foreground font-medium">{t("orders:currentlyAssignedTo", "Currently Assigned To:")}</span>
               <span className="font-bold text-foreground">
@@ -1640,16 +1809,16 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
             </div>
 
             <div className="space-y-2">
-              <Label className="text-xs font-semibold">{t("orders:selectDestinationBranch", "Select Destination Branch")}</Label>
+              <Label className="text-xs font-semibold">{t("orders:selectDestination", "Available destinations")}</Label>
               <Select value={targetBranchId} onValueChange={setTargetBranchId}>
                 <SelectTrigger className="h-10">
-                  <SelectValue placeholder={t("orders:chooseDestinationBranch", "Choose destination branch...")} />
+                  <SelectValue placeholder={t("orders:chooseDestination", "Choose destination...")} />
                 </SelectTrigger>
                 <SelectContent>
                   {siblingBranches
                     .filter((b) => b.id !== orderToTransfer?.restaurant_id)
                     .map((b) => {
-                      const isPaused = b.is_accepting_orders === false || b.is_active === false;
+                      const isPaused = b.is_accepting_orders === false || b.is_active === false || b.available === false;
                       return (
                         <SelectItem
                           key={b.id}
@@ -1658,10 +1827,10 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                           className={isPaused ? "opacity-60 text-muted-foreground" : ""}
                         >
                           <div className="flex items-center justify-between gap-3 w-full">
-                            <span>{b.name}</span>
+                            <span>{b.label || b.name}</span>
                             {isPaused && (
                               <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-                                {t("orders:pausedNotAccepting", "⚠️ Paused (Not Accepting)")}
+                                {t("orders:pausedNotAccepting", "Paused")}
                               </span>
                             )}
                           </div>
@@ -1670,6 +1839,11 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                     })}
                 </SelectContent>
               </Select>
+              {siblingBranches.filter((b) => b.id !== orderToTransfer?.restaurant_id).length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {t("orders:noTransferTargets", "No other locations available in this restaurant family.")}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -1700,7 +1874,7 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
               onClick={handleTransferOrder}
             >
               {transferring ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Building2 className="h-4 w-4 mr-1.5" />}
-              {t("orders:sendToBranch", "Send to Branch")}
+              {t("orders:sendTransfer", "Send Transfer")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -11,7 +11,7 @@ router.post("/", optionalAuth, requireAuth, async (req, res) => {
     const out = await executeQuery(knex, req.body, req.user);
     if (out.error) {
       console.error("[query API 400]:", req.body?.table, req.body?.action, out.error);
-      return res.status(400).json({ data: null, error: out.error });
+      const isForbidden = out.error?.status === 403 || out.error?.code === 403;
     }
     return res.json({ data: out.data, count: out.count ?? undefined, error: null });
   } catch (e) {

@@ -235,7 +235,7 @@
   }
 
   .setting-row {
-    @apply flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/50 px-4 py-3.5;
+    @apply flex flex-col gap-3 rounded-lg border border-border bg-muted/50 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4;
   }
 
   .custom-scrollbar::-webkit-scrollbar {

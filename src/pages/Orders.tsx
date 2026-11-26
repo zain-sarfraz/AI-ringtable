@@ -7,8 +7,8 @@ export default function Orders() {
   return (
     <OrdersListView
       status="all"
-      title={t("orders:all", "All orders")}
-      description={t("orders:subtitle", "Verify orders, assign drivers, and track delivery")}
+      title={t("orders:all", "All Orders")}
+      description={t("orders:viewAndManage", "View and manage your restaurant orders")}
       icon={<ClipboardList className="h-6 w-6" />}
     />
   );

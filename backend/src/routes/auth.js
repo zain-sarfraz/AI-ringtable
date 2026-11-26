@@ -1,8 +1,8 @@
-import { randomUUID } from "node:crypto";
-import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { getKnex } from "../db.js";
+import { Router } from "express";
+import { randomUUID } from "node:crypto";
 import { signToken } from "../auth/tokens.js";
+import { getKnex } from "../db.js";
 import { optionalAuth, requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -374,6 +374,12 @@ router.delete("/delete-team-member/:id", optionalAuth, requireAuth, async (req, 
       if (String(targetMember.member_role || "").toLowerCase() === "owner") {
         return res.status(400).json({ error: "Restaurant owner cannot be removed" });
       }
+      if (isManagerOnly(req)) {
+        const targetRole = String(targetMember.member_role || "").toLowerCase();
+        if (targetRole === "admin" || targetRole === "manager" || targetRole === "owner") {
+          return res.status(403).json({ error: "Managers cannot remove admin or manager accounts." });
+        }
+      }
       if (
         isManagerOnly(req) &&
         ["admin", "manager"].includes(String(targetMember.member_role || "").toLowerCase())
@@ -519,20 +525,23 @@ router.put("/update-team-member", optionalAuth, requireAuth, async (req, res) =>
       if (!EDITABLE_MEMBER_ROLES.has(nextRole)) {
         return res.status(400).json({ error: "Choose Admin, Manager, Kitchen Staff, Receptionist, or Staff." });
       }
-      if (
-        isManagerOnly(req) &&
-        (nextRole === "admin" ||
+      if (isManagerOnly(req)) {
+        if (userId === req.user?.id) {
+          return res.status(403).json({ error: "Managers cannot change their own role." });
+        }
+        if (
+          nextRole === "admin" ||
           nextRole === "manager" ||
+          nextRole === "owner" ||
           currentRole === "admin" ||
-          currentRole === "manager")
-      ) {
-        return res.status(403).json({
-          error: "Managers cannot create or modify admin/manager accounts.",
-        });
+          currentRole === "manager" ||
+          currentRole === "owner"
+        ) {
+          return res.status(403).json({
+            error: "Managers cannot create or modify admin/manager accounts.",
+          });
+        }
       }
-      await knex("restaurant_members").where({ id: membership.id }).update({ member_role: nextRole });
-      await knex("user_roles").where({ user_id: userId }).del();
-      await knex("user_roles").insert({ user_id: userId, role: nextRole });
     }
 
     return res.json({ success: true });
@@ -568,14 +577,23 @@ router.put("/update-team-member-role", optionalAuth, requireAuth, async (req, re
         error: "Choose Admin, Manager, Kitchen Staff, Receptionist, or Staff.",
       });
     }
-    if (isManagerOnly(req) && (roleToSet === "admin" || roleToSet === "manager")) {
-      return res.status(403).json({ error: "Managers cannot assign admin or manager roles." });
-    }
-
     const knex = getKnex();
     const targetMember = await knex("restaurant_members").where({ id }).first();
     if (!targetMember) {
       return res.status(404).json({ error: "Member not found" });
+    }
+
+    if (isManagerOnly(req)) {
+      if (targetMember.user_id === req.user?.id) {
+        return res.status(403).json({ error: "Managers cannot change their own role." });
+      }
+      const targetRole = String(targetMember.member_role || "").toLowerCase();
+      if (targetRole === "admin" || targetRole === "manager" || targetRole === "owner") {
+        return res.status(403).json({ error: "Managers cannot modify admin or manager roles." });
+      }
+      if (roleToSet === "admin" || roleToSet === "manager" || roleToSet === "owner") {
+        return res.status(403).json({ error: "Managers cannot assign admin or manager roles." });
+      }
     }
 
     if (!isSuperAdmin) {

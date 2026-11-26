@@ -152,22 +152,14 @@ function canSeeNotification(
   return true;
 }
 
-/** Parent HQ: parent + all branches. Branch portal: only that branch. */
+/** Each portal only gets alerts for its own restaurant — admin HQ ≠ branches. */
 function getAlertRestaurantIds(
   restaurantId: string | null | undefined,
-  restaurants: { id: string; parent_restaurant_id?: string | null; is_branch?: boolean }[],
-  activeRestaurant: { id?: string; parent_restaurant_id?: string | null; is_branch?: boolean } | null,
+  _restaurants: { id: string; parent_restaurant_id?: string | null; is_branch?: boolean }[],
+  _activeRestaurant: { id?: string; parent_restaurant_id?: string | null; is_branch?: boolean } | null,
 ): string[] {
   if (!restaurantId) return [];
-  const isBranch = Boolean(
-    activeRestaurant?.is_branch ||
-      (activeRestaurant?.parent_restaurant_id != null && activeRestaurant.parent_restaurant_id !== ""),
-  );
-  if (isBranch) return [restaurantId];
-  const rootId = activeRestaurant?.parent_restaurant_id || restaurantId;
-  const family = restaurants.filter((r) => r.id === rootId || r.parent_restaurant_id === rootId);
-  const ids = family.map((r) => r.id).filter(Boolean);
-  return ids.length ? ids : [restaurantId];
+  return [restaurantId];
 }
 
 function tidyLabel(value?: string | null) {

@@ -135,8 +135,92 @@ async function bookReservationInsteadOfOrder(knex, {
   };
 }
 
+export const DELIVERY_UNAVAILABLE_MESSAGE =
+  "Sorry, delivery is not available at your location.";
+
+function isDeliveryEligibleLocation(loc) {
+  if (!loc) return false;
+  if (loc.is_active === false) return false;
+  if (loc.is_accepting_orders === false) return false;
+  if (loc.allows_delivery === false) return false;
+  const lat = Number(loc.latitude);
+  const lng = Number(loc.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng);
+}
+
 /**
- * Find the nearest active branch for a parent restaurant within service radius.
+ * Resolve HQ root for a restaurant or branch id.
+ * @param {import("knex").Knex} knex
+ * @param {string} restaurantId
+ */
+export async function resolveDeliveryFamilyRootId(knex, restaurantId) {
+  if (!restaurantId) return null;
+  const row = await knex("restaurants").where({ id: restaurantId }).first();
+  if (!row) return null;
+  return row.parent_restaurant_id || row.id;
+}
+
+/**
+ * Load active delivery-capable locations in the restaurant family (HQ + branches).
+ * @param {import("knex").Knex} knex
+ * @param {string} familyRootId
+ */
+export async function listDeliveryCandidates(knex, familyRootId) {
+  if (!familyRootId) return [];
+  const parent = await knex("restaurants").where({ id: familyRootId }).first();
+  const branches = await knex("restaurants")
+    .where({ parent_restaurant_id: familyRootId })
+    .whereNotNull("latitude")
+    .whereNotNull("longitude");
+
+  const candidates = [];
+  if (isDeliveryEligibleLocation(parent)) candidates.push(parent);
+  for (const b of branches) {
+    if (isDeliveryEligibleLocation(b)) candidates.push(b);
+  }
+  return candidates;
+}
+
+/**
+ * Distance + in-radius check for one location.
+ * @returns {{ distance: number; inRadius: boolean; radius: number } | null}
+ */
+export function measureDeliveryCoverage(loc, deliveryLat, deliveryLng) {
+  if (!isDeliveryEligibleLocation(loc)) return null;
+  const distance = haversineDistanceKm(
+    deliveryLat,
+    deliveryLng,
+    Number(loc.latitude),
+    Number(loc.longitude),
+  );
+  if (!Number.isFinite(distance)) return null;
+  const radius = Number(loc.service_radius_km || 5.0);
+  return { distance, inRadius: distance <= radius, radius };
+}
+
+/**
+ * Pick nearest in-range location from a candidate list (single pass — no loops).
+ * @param {any[]} candidates
+ * @param {number} deliveryLat
+ * @param {number} deliveryLng
+ * @returns {{ branch: any; distance: number } | null}
+ */
+export function pickNearestInRadius(candidates, deliveryLat, deliveryLng) {
+  let nearest = null;
+  let minDistance = Infinity;
+  for (const loc of candidates || []) {
+    const measured = measureDeliveryCoverage(loc, deliveryLat, deliveryLng);
+    if (!measured?.inRadius) continue;
+    if (measured.distance < minDistance) {
+      minDistance = measured.distance;
+      nearest = loc;
+    }
+  }
+  return nearest ? { branch: nearest, distance: minDistance } : null;
+}
+
+/**
+ * Find the nearest active branch/location within service radius.
  * @param {import("knex").Knex} knex
  * @param {string} parentRestaurantId
  * @param {number} deliveryLat
@@ -147,25 +231,83 @@ export async function findNearestBranch(knex, parentRestaurantId, deliveryLat, d
   if (!parentRestaurantId || !Number.isFinite(deliveryLat) || !Number.isFinite(deliveryLng)) {
     return null;
   }
+  const rootId = await resolveDeliveryFamilyRootId(knex, parentRestaurantId);
+  const candidates = await listDeliveryCandidates(knex, rootId);
+  return pickNearestInRadius(candidates, deliveryLat, deliveryLng);
+}
 
-  const branches = await knex("restaurants")
-    .where({ parent_restaurant_id: parentRestaurantId, is_accepting_orders: true, is_active: true })
-    .whereNotNull("latitude")
-    .whereNotNull("longitude");
+/**
+ * Resolve final delivery branch for an order (one-shot, no reassignment loops).
+ * 1) If preferred branch covers the customer → keep it
+ * 2) Else assign nearest eligible family location in radius
+ * 3) Else return unavailable
+ *
+ * @param {import("knex").Knex} knex
+ * @param {{
+ *   restaurantId: string,
+ *   preferredBranchId?: string | null,
+ *   deliveryLat: number,
+ *   deliveryLng: number,
+ * }} args
+ */
+export async function resolveDeliveryAssignment(knex, {
+  restaurantId,
+  preferredBranchId = null,
+  deliveryLat,
+  deliveryLng,
+}) {
+  if (!restaurantId || !Number.isFinite(deliveryLat) || !Number.isFinite(deliveryLng)) {
+    return {
+      ok: false,
+      error: DELIVERY_UNAVAILABLE_MESSAGE,
+      code: "missing_coords",
+    };
+  }
 
-  let nearest = null;
-  let minDistance = Infinity;
+  const rootId = await resolveDeliveryFamilyRootId(knex, restaurantId);
+  if (!rootId) {
+    return { ok: false, error: DELIVERY_UNAVAILABLE_MESSAGE, code: "restaurant_not_found" };
+  }
 
-  for (const branch of branches) {
-    const distance = haversineDistanceKm(deliveryLat, deliveryLng, branch.latitude, branch.longitude);
-    const radius = Number(branch.service_radius_km || 5.0);
-    if (distance <= radius && distance < minDistance) {
-      minDistance = distance;
-      nearest = branch;
+  const candidates = await listDeliveryCandidates(knex, rootId);
+  if (!candidates.length) {
+    return { ok: false, error: DELIVERY_UNAVAILABLE_MESSAGE, code: "no_eligible_branches" };
+  }
+
+  const preferredId = preferredBranchId || null;
+  if (preferredId) {
+    const preferred = candidates.find((c) => c.id === preferredId) || null;
+    const measured = preferred
+      ? measureDeliveryCoverage(preferred, deliveryLat, deliveryLng)
+      : null;
+    if (preferred && measured?.inRadius) {
+      return {
+        ok: true,
+        restaurantId: preferred.id,
+        distanceKm: measured.distance,
+        autoAssigned: false,
+        reassigned: false,
+        fromRestaurantId: null,
+        branchName: preferred.name,
+      };
     }
   }
 
-  return nearest ? { branch: nearest, distance: minDistance } : null;
+  const nearest = pickNearestInRadius(candidates, deliveryLat, deliveryLng);
+  if (!nearest) {
+    return { ok: false, error: DELIVERY_UNAVAILABLE_MESSAGE, code: "out_of_range" };
+  }
+
+  const reassigned = Boolean(preferredId && preferredId !== nearest.branch.id);
+  return {
+    ok: true,
+    restaurantId: nearest.branch.id,
+    distanceKm: nearest.distance,
+    autoAssigned: true,
+    reassigned,
+    fromRestaurantId: reassigned ? preferredId : null,
+    branchName: nearest.branch.name,
+  };
 }
 
 /**
@@ -764,33 +906,43 @@ export async function createPhoneOrder(knex, input) {
   }
 
   const chosenBranch = branchDecision.chosenBranch;
+  let transferredFromRestaurantId = null;
+  let isTransferred = false;
 
-  if (chosenBranch) {
+  if (!isPickup && lat != null && lng != null) {
+    // Delivery with coordinates: validate preferred branch radius, else nearest eligible (one-shot)
+    const assignment = await resolveDeliveryAssignment(knex, {
+      restaurantId: parentRestaurantId,
+      preferredBranchId: chosenBranch?.id || (restaurantRow?.is_branch ? restaurantId : null),
+      deliveryLat: lat,
+      deliveryLng: lng,
+    });
+    if (!assignment.ok) {
+      const err = new Error(assignment.error || DELIVERY_UNAVAILABLE_MESSAGE);
+      err.isDeliveryError = true;
+      err.code = assignment.code || "out_of_range";
+      throw err;
+    }
+    targetRestaurantId = assignment.restaurantId;
+    assignedBranchName = assignment.branchName;
+    assignedBranchDistanceKm = assignment.distanceKm;
+    branchAssignedAt = new Date();
+    autoAssigned = Boolean(assignment.autoAssigned || assignment.reassigned);
+    assignmentStatus = assignment.reassigned ? "auto_reassigned" : "assigned";
+    if (assignment.reassigned && assignment.fromRestaurantId) {
+      transferredFromRestaurantId = assignment.fromRestaurantId;
+      isTransferred = true;
+    }
+  } else if (chosenBranch) {
     targetRestaurantId = chosenBranch.id;
     assignedBranchName = chosenBranch.name;
     branchAssignedAt = new Date();
     autoAssigned = true;
     assignmentStatus = "assigned";
-  } else if (branches.length > 0 && !isPickup) {
-    if (lat != null && lng != null) {
-      const nearest = await findNearestBranch(knex, parentRestaurantId, lat, lng);
-      if (nearest) {
-        targetRestaurantId = nearest.branch.id;
-        assignedBranchName = nearest.branch.name;
-        assignedBranchDistanceKm = nearest.distance;
-        branchAssignedAt = new Date();
-        autoAssigned = true;
-        assignmentStatus = "assigned";
-      } else {
-        targetRestaurantId = parentRestaurantId;
-        assignmentStatus = "unassigned_out_of_range";
-        autoAssigned = false;
-      }
-    } else {
-      targetRestaurantId = parentRestaurantId;
-      assignmentStatus = "needs_review";
-      autoAssigned = false;
-    }
+  } else if (!isPickup && !restaurantRow?.is_branch) {
+    targetRestaurantId = parentRestaurantId;
+    assignmentStatus = "needs_review";
+    autoAssigned = false;
   } else if (restaurantRow?.is_branch) {
     // Tool resolved to a branch with no siblings listed — keep order on that branch.
     targetRestaurantId = restaurantId;
@@ -899,6 +1051,12 @@ export async function createPhoneOrder(knex, input) {
         assigned_branch_distance_km: assignedBranchDistanceKm,
         branch_assigned_at: branchAssignedAt,
         assignment_status: assignmentStatus,
+        ...(isTransferred
+          ? {
+              is_transferred: true,
+              transferred_from_restaurant_id: transferredFromRestaurantId,
+            }
+          : {}),
         ai_extracted_data: {
           unmatched,
           coupon_error: coupon.error || null,

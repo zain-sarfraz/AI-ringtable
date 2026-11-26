@@ -35,6 +35,7 @@ import {
   Sliders,
   Check,
   Locate,
+  LocateFixed,
   Edit,
   Trash2,
   Radio,
@@ -46,6 +47,7 @@ import { toast } from "sonner";
 import { formatCurrency } from "@/lib/restaurant";
 import { getApiBase } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
+import { getDeviceGps } from "@/lib/deviceGps";
 import { PageShell } from "@/components/layout/PageShell";
 
 interface BranchItem extends RestaurantInfo {
@@ -94,6 +96,8 @@ export default function BranchPortal() {
   const [addOpen, setAddOpen] = useState(false);
   const [addingBranch, setAddingBranch] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const [deviceGpsBusy, setDeviceGpsBusy] = useState(false);
+  const [editDeviceGpsBusy, setEditDeviceGpsBusy] = useState(false);
   const [addForm, setAddForm] = useState({
     name: "",
     address: "",
@@ -227,6 +231,71 @@ export default function BranchPortal() {
   useEffect(() => {
     loadBranches();
   }, [loadBranches]);
+
+  const captureDeviceGps = async (mode: "add" | "edit") => {
+    const setBusy = mode === "add" ? setDeviceGpsBusy : setEditDeviceGpsBusy;
+    setBusy(true);
+    try {
+      const gps = await getDeviceGps();
+      const lat = gps.latitude.toFixed(6);
+      const lng = gps.longitude.toFixed(6);
+      let address = "";
+      let city = "";
+      let area = "";
+      try {
+        const token = getToken();
+        const revRes = await fetch(`${getApiBase()}/api/geo/reverse`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            latitude: Number(lat),
+            longitude: Number(lng),
+          }),
+        });
+        const rev = await revRes.json().catch(() => ({}));
+        if (revRes.ok) {
+          address = rev.formattedAddress || "";
+          city = rev.city || "";
+          area = rev.area || "";
+        }
+      } catch {
+        /* coords still usable */
+      }
+      if (mode === "add") {
+        setAddForm((prev) => ({
+          ...prev,
+          latitude: lat,
+          longitude: lng,
+          ...(address ? { address } : {}),
+          ...(city ? { city } : {}),
+          ...(area ? { area } : {}),
+        }));
+      } else {
+        setEditForm((prev) => ({
+          ...prev,
+          latitude: lat,
+          longitude: lng,
+          ...(address ? { address } : {}),
+          ...(city ? { city } : {}),
+          ...(area ? { area } : {}),
+        }));
+      }
+      toast.success(
+        address
+          ? "GPS + address filled"
+          : gps.accuracyMeters != null
+            ? `GPS captured (±${Math.round(gps.accuracyMeters)} m)`
+            : "GPS location captured",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not get GPS location");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Geocode address helper for Add Modal
   const handleGeocodeAddress = async () => {
@@ -866,30 +935,44 @@ export default function BranchPortal() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="branch_lat" className="text-xs font-bold">
-                  Latitude
-                </Label>
-                <Input
-                  id="branch_lat"
-                  placeholder="e.g. 31.4705"
-                  value={addForm.latitude}
-                  onChange={(e) => setAddForm({ ...addForm, latitude: e.target.value })}
-                  className="h-9 text-xs font-mono"
-                />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs font-bold">Coordinates</Label>
+                <button
+                  type="button"
+                  onClick={() => void captureDeviceGps("add")}
+                  disabled={deviceGpsBusy}
+                  className="text-[11px] text-primary hover:underline font-semibold flex items-center gap-1"
+                >
+                  <LocateFixed className={`h-3 w-3 ${deviceGpsBusy ? "animate-pulse" : ""}`} />
+                  {deviceGpsBusy ? "Getting GPS..." : "Use Auto-GPS"}
+                </button>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="branch_lng" className="text-xs font-bold">
-                  Longitude
-                </Label>
-                <Input
-                  id="branch_lng"
-                  placeholder="e.g. 74.4098"
-                  value={addForm.longitude}
-                  onChange={(e) => setAddForm({ ...addForm, longitude: e.target.value })}
-                  className="h-9 text-xs font-mono"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="branch_lat" className="text-[10px] text-muted-foreground">
+                    Latitude
+                  </Label>
+                  <Input
+                    id="branch_lat"
+                    placeholder="e.g. 31.4705"
+                    value={addForm.latitude}
+                    onChange={(e) => setAddForm({ ...addForm, latitude: e.target.value })}
+                    className="h-9 text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="branch_lng" className="text-[10px] text-muted-foreground">
+                    Longitude
+                  </Label>
+                  <Input
+                    id="branch_lng"
+                    placeholder="e.g. 74.4098"
+                    value={addForm.longitude}
+                    onChange={(e) => setAddForm({ ...addForm, longitude: e.target.value })}
+                    className="h-9 text-xs font-mono"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1050,22 +1133,38 @@ export default function BranchPortal() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold">Latitude</Label>
-                <Input
-                  value={editForm.latitude}
-                  onChange={(e) => setEditForm({ ...editForm, latitude: e.target.value })}
-                  className="h-9 text-xs font-mono"
-                />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs font-bold">Coordinates</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[11px] font-semibold text-primary hover:text-primary/80 px-1.5 gap-1"
+                  onClick={() => void captureDeviceGps("edit")}
+                  disabled={editDeviceGpsBusy}
+                >
+                  <LocateFixed className={`h-3 w-3 ${editDeviceGpsBusy ? "animate-pulse" : ""}`} />
+                  {editDeviceGpsBusy ? "Getting GPS..." : "Use Auto-GPS"}
+                </Button>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold">Longitude</Label>
-                <Input
-                  value={editForm.longitude}
-                  onChange={(e) => setEditForm({ ...editForm, longitude: e.target.value })}
-                  className="h-9 text-xs font-mono"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] text-muted-foreground">Latitude</Label>
+                  <Input
+                    value={editForm.latitude}
+                    onChange={(e) => setEditForm({ ...editForm, latitude: e.target.value })}
+                    className="h-9 text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] text-muted-foreground">Longitude</Label>
+                  <Input
+                    value={editForm.longitude}
+                    onChange={(e) => setEditForm({ ...editForm, longitude: e.target.value })}
+                    className="h-9 text-xs font-mono"
+                  />
+                </div>
               </div>
             </div>
 

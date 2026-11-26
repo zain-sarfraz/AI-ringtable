@@ -571,7 +571,7 @@ export default function RestaurantDetails() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         <StatCard icon={ShoppingBag} label="Orders" value={String(stats?.orders ?? 0)} />
         <StatCard icon={ChefHat} label="Menu items" value={String(stats?.items ?? 0)} />
         <StatCard icon={Package} label="Categories" value={String(stats?.categories ?? 0)} />

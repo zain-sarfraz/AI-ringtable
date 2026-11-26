@@ -23,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { getApiBase, resolveMediaUrl } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
@@ -42,6 +43,7 @@ import {
     Hash,
     ImageIcon,
     Images,
+    LocateFixed,
     Mail,
     MapPin,
     Phone,
@@ -53,6 +55,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { getDeviceGps } from "@/lib/deviceGps";
 
 /** Row from `restaurants` (includes fields set when the tenant was created in super admin). */
 interface Restaurant {
@@ -80,6 +83,9 @@ interface Restaurant {
     agent_menu_synced_at: string | null;
     allows_delivery?: boolean;
     allows_pickup?: boolean;
+    service_radius_km?: number | string | null;
+    latitude?: number | string | null;
+    longitude?: number | string | null;
 }
 
 interface WorkingHour {
@@ -188,11 +194,12 @@ const POPULAR_CURRENCIES = [
 ];
 
 const RESTAURANT_SELECT =
-    "id, name, slug, currency, phone, contact_email, address, logo_url, cover_image_url, twilio_phone_number, elevenlabs_agent_id, telnyx_phone_number, telnyx_phone_number_id, synthflow_agent_id, voice_provider, synthflow_synced_at, agent_language, agent_voice_id, agent_first_message, agent_system_prompt, agent_knowledge_doc_id, agent_menu_synced_at, allows_delivery, allows_pickup";
+    "id, name, slug, currency, phone, contact_email, address, logo_url, cover_image_url, twilio_phone_number, elevenlabs_agent_id, telnyx_phone_number, telnyx_phone_number_id, synthflow_agent_id, voice_provider, synthflow_synced_at, agent_language, agent_voice_id, agent_first_message, agent_system_prompt, agent_knowledge_doc_id, agent_menu_synced_at, allows_delivery, allows_pickup, service_radius_km, latitude, longitude";
 
 export default function RestaurantSettings() {
     const { t } = useTranslation(["restaurantSettings", "common"]);
     const { toast } = useToast();
+    const { role } = useAuth();
     const {
         restaurantId,
         loading: activeRestaurantLoading,
@@ -223,6 +230,16 @@ export default function RestaurantSettings() {
     const [savingSettings, setSavingSettings] = useState(false);
     const [savingHours, setSavingHours] = useState(false);
     const [savingFulfillment, setSavingFulfillment] = useState(false);
+    const [gpsBusy, setGpsBusy] = useState(false);
+    const [verifyAddress, setVerifyAddress] = useState("");
+    const [verifyBusy, setVerifyBusy] = useState(false);
+    const [verifyResult, setVerifyResult] = useState<{
+        deliverable: boolean;
+        distance_km: number;
+        service_radius_km: number;
+        message: string;
+        destination?: { address?: string | null };
+    } | null>(null);
     const [minutesBalance, setMinutesBalance] = useState<MinutesBalance | null>(
         null,
     );
@@ -1300,6 +1317,7 @@ export default function RestaurantSettings() {
                 </div>
             </header>
 
+            {role !== "manager" && (
             <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
                 <CardHeader className="border-b bg-muted/30 pb-4">
                     <div className="flex items-start justify-between gap-3">
@@ -1467,6 +1485,7 @@ export default function RestaurantSettings() {
                     )}
                 </CardContent>
             </Card>
+            )}
 
             <Card className="overflow-hidden rounded-2xl border border-border/80 shadow-xs">
                 <CardHeader className="border-b bg-muted/30 pb-4">
@@ -1499,13 +1518,92 @@ export default function RestaurantSettings() {
                             />
                         </div>
                         <div className="space-y-2 sm:col-span-2">
-                            <Label
-                                htmlFor="rs-address"
-                                className="flex items-center gap-1.5"
-                            >
-                                <MapPin className="h-3.5 w-3.5" />
-                                {t("restaurantSettings:address", "Address")}
-                            </Label>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <Label
+                                    htmlFor="rs-address"
+                                    className="flex items-center gap-1.5"
+                                >
+                                    <MapPin className="h-3.5 w-3.5" />
+                                    {t("restaurantSettings:address", "Address")}
+                                </Label>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 gap-1.5 text-xs text-primary"
+                                    disabled={gpsBusy || !r}
+                                    onClick={async () => {
+                                        if (!r) return;
+                                        setGpsBusy(true);
+                                        try {
+                                            const gps = await getDeviceGps();
+                                            const lat = Number(gps.latitude.toFixed(7));
+                                            const lng = Number(gps.longitude.toFixed(7));
+                                            let addressText = String(s?.address ?? "");
+                                            try {
+                                                const token = getToken();
+                                                const revRes = await fetch(
+                                                    `${getApiBase()}/api/geo/reverse`,
+                                                    {
+                                                        method: "POST",
+                                                        headers: {
+                                                            "Content-Type": "application/json",
+                                                            ...(token
+                                                                ? { Authorization: `Bearer ${token}` }
+                                                                : {}),
+                                                        },
+                                                        body: JSON.stringify({
+                                                            latitude: lat,
+                                                            longitude: lng,
+                                                        }),
+                                                    },
+                                                );
+                                                const rev = await revRes.json().catch(() => ({}));
+                                                if (revRes.ok && rev.formattedAddress) {
+                                                    addressText = rev.formattedAddress;
+                                                }
+                                            } catch {
+                                                /* keep existing address if reverse fails */
+                                            }
+                                            setR({
+                                                ...r,
+                                                address: addressText || r.address,
+                                                latitude: lat,
+                                                longitude: lng,
+                                            });
+                                            if (s) setS({ ...s, address: addressText });
+                                            toast({
+                                                title: t(
+                                                    "restaurantSettings:gpsAddressFilled",
+                                                    "Address filled from GPS",
+                                                ),
+                                                description: addressText || `${lat}, ${lng}`,
+                                            });
+                                        } catch (err) {
+                                            toast({
+                                                variant: "destructive",
+                                                title: t(
+                                                    "restaurantSettings:gpsFailed",
+                                                    "Could not get GPS",
+                                                ),
+                                                description:
+                                                    err instanceof Error
+                                                        ? err.message
+                                                        : "Allow location access and try again",
+                                            });
+                                        } finally {
+                                            setGpsBusy(false);
+                                        }
+                                    }}
+                                >
+                                    {gpsBusy ? (
+                                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                        <LocateFixed className="h-3.5 w-3.5" />
+                                    )}
+                                    {t("restaurantSettings:useGpsForAddress", "Use GPS for address")}
+                                </Button>
+                            </div>
                             <Textarea
                                 id="rs-address"
                                 rows={3}
@@ -1947,6 +2045,246 @@ export default function RestaurantSettings() {
                             </div>
                         </div>
                     </div>
+
+                    <div className="rounded-xl border bg-muted/10 p-4 space-y-3">
+                        <div className="space-y-0.5">
+                            <Label htmlFor="rs-service-radius" className="text-sm sm:text-base flex items-center gap-1.5">
+                                <MapPin className="h-3.5 w-3.5" />
+                                {t(
+                                    "restaurantSettings:serviceRadius",
+                                    "Delivery distance (km)",
+                                )}
+                            </Label>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                {t(
+                                    "restaurantSettings:serviceRadiusDesc",
+                                    "How far from this location you can deliver. Same as branch service radius — orders outside this range stay unassigned.",
+                                )}
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap items-end gap-3">
+                            <div className="w-full max-w-[10rem] space-y-1.5 min-w-0">
+                                <Input
+                                    id="rs-service-radius"
+                                    type="number"
+                                    min={0.5}
+                                    step={0.5}
+                                    value={
+                                        r.service_radius_km != null && r.service_radius_km !== ""
+                                            ? String(r.service_radius_km)
+                                            : "5"
+                                    }
+                                    onChange={(e) =>
+                                        setR({
+                                            ...r,
+                                            service_radius_km: e.target.value,
+                                        })
+                                    }
+                                    className="font-mono"
+                                />
+                            </div>
+                            <span className="text-xs text-muted-foreground pb-2">km</span>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-9 gap-1.5"
+                                disabled={gpsBusy}
+                                onClick={async () => {
+                                    setGpsBusy(true);
+                                    try {
+                                        const gps = await getDeviceGps();
+                                        const lat = Number(gps.latitude.toFixed(7));
+                                        const lng = Number(gps.longitude.toFixed(7));
+                                        let addressText = String(s?.address ?? r.address ?? "");
+                                        try {
+                                            const token = getToken();
+                                            const revRes = await fetch(
+                                                `${getApiBase()}/api/geo/reverse`,
+                                                {
+                                                    method: "POST",
+                                                    headers: {
+                                                        "Content-Type": "application/json",
+                                                        ...(token
+                                                            ? { Authorization: `Bearer ${token}` }
+                                                            : {}),
+                                                    },
+                                                    body: JSON.stringify({
+                                                        latitude: lat,
+                                                        longitude: lng,
+                                                    }),
+                                                },
+                                            );
+                                            const rev = await revRes.json().catch(() => ({}));
+                                            if (revRes.ok && rev.formattedAddress) {
+                                                addressText = rev.formattedAddress;
+                                            }
+                                        } catch {
+                                            /* coords still usable without address */
+                                        }
+                                        setR({
+                                            ...r,
+                                            address: addressText || r.address,
+                                            latitude: lat,
+                                            longitude: lng,
+                                        });
+                                        if (s && addressText) setS({ ...s, address: addressText });
+                                        toast({
+                                            title: t(
+                                                "restaurantSettings:gpsCaptured",
+                                                "GPS location captured",
+                                            ),
+                                            description: addressText
+                                                || (gps.accuracyMeters != null
+                                                    ? `±${Math.round(gps.accuracyMeters)} m accuracy`
+                                                    : `${lat}, ${lng}`),
+                                        });
+                                    } catch (err) {
+                                        toast({
+                                            variant: "destructive",
+                                            title: t(
+                                                "restaurantSettings:gpsFailed",
+                                                "Could not get GPS",
+                                            ),
+                                            description:
+                                                err instanceof Error
+                                                    ? err.message
+                                                    : "Allow location access and try again",
+                                        });
+                                    } finally {
+                                        setGpsBusy(false);
+                                    }
+                                }}
+                            >
+                                {gpsBusy ? (
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <LocateFixed className="h-3.5 w-3.5" />
+                                )}
+                                {t("restaurantSettings:useAutoGps", "Use Auto-GPS")}
+                            </Button>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground font-mono">
+                            {r.latitude != null && r.longitude != null
+                                ? `${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}`
+                                : t(
+                                      "restaurantSettings:gpsNotSet",
+                                      "No map pin yet — tap Use Auto-GPS (or save to geocode from address).",
+                                  )}
+                        </p>
+
+                        {/* <div className="pt-2 border-t border-border/50 space-y-2">
+                            <Label className="text-xs font-semibold">
+                                {t(
+                                    "restaurantSettings:verifyDeliveryTitle",
+                                    "Verify where orders can be delivered",
+                                )}
+                            </Label>
+                            <p className="text-[11px] text-muted-foreground">
+                                {t(
+                                    "restaurantSettings:verifyDeliveryDesc",
+                                    "Enter a customer address to check if it falls inside your delivery distance.",
+                                )}
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                                <Input
+                                    value={verifyAddress}
+                                    onChange={(e) => {
+                                        setVerifyAddress(e.target.value);
+                                        setVerifyResult(null);
+                                    }}
+                                    placeholder={t(
+                                        "restaurantSettings:verifyAddressPlaceholder",
+                                        "e.g. Gulberg III, Lahore",
+                                    )}
+                                    className="text-xs"
+                                />
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    className="shrink-0 h-9"
+                                    disabled={verifyBusy || !verifyAddress.trim()}
+                                    onClick={async () => {
+                                        setVerifyBusy(true);
+                                        setVerifyResult(null);
+                                        try {
+                                            const token = getToken();
+                                            const res = await fetch(
+                                                `${getApiBase()}/api/restaurants/${r.id}/verify-delivery`,
+                                                {
+                                                    method: "POST",
+                                                    headers: {
+                                                        "Content-Type": "application/json",
+                                                        ...(token
+                                                            ? { Authorization: `Bearer ${token}` }
+                                                            : {}),
+                                                    },
+                                                    body: JSON.stringify({
+                                                        address: verifyAddress.trim(),
+                                                    }),
+                                                },
+                                            );
+                                            const data = await res.json().catch(() => ({}));
+                                            if (!res.ok) {
+                                                throw new Error(
+                                                    data.error || "Could not verify delivery address",
+                                                );
+                                            }
+                                            setVerifyResult({
+                                                deliverable: Boolean(data.deliverable),
+                                                distance_km: Number(data.distance_km),
+                                                service_radius_km: Number(data.service_radius_km),
+                                                message: data.message || "",
+                                                destination: data.destination,
+                                            });
+                                        } catch (err) {
+                                            toast({
+                                                variant: "destructive",
+                                                title: t(
+                                                    "restaurantSettings:verifyFailed",
+                                                    "Verification failed",
+                                                ),
+                                                description:
+                                                    err instanceof Error
+                                                        ? err.message
+                                                        : "Try again",
+                                            });
+                                        } finally {
+                                            setVerifyBusy(false);
+                                        }
+                                    }}
+                                >
+                                    {verifyBusy ? (
+                                        <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                                    ) : null}
+                                    {t("restaurantSettings:verifyDelivery", "Check coverage")}
+                                </Button>
+                            </div>
+                            {verifyResult && (
+                                <div
+                                    className={
+                                        verifyResult.deliverable
+                                            ? "rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300"
+                                            : "rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                                    }
+                                >
+                                    <p className="font-semibold">
+                                        {verifyResult.deliverable
+                                            ? t("restaurantSettings:inRange", "Deliverable")
+                                            : t("restaurantSettings:outOfRange", "Out of range")}
+                                    </p>
+                                    <p className="mt-0.5 opacity-90">{verifyResult.message}</p>
+                                    {verifyResult.destination?.address ? (
+                                        <p className="mt-1 text-[11px] opacity-80">
+                                            {verifyResult.destination.address}
+                                        </p>
+                                    ) : null}
+                                </div>
+                            )}
+                        </div> */}
+                    </div>
+
                     <Button
                         variant="secondary"
                         className="w-full sm:w-auto"
@@ -1954,11 +2292,16 @@ export default function RestaurantSettings() {
                         onClick={async () => {
                             setSavingFulfillment(true);
                             try {
+                                const radius = Math.max(
+                                    0.5,
+                                    Number(r.service_radius_km) || 5,
+                                );
                                 const { data, error } = await supabase
                                     .from("restaurants")
                                     .update({
                                         allows_delivery: r.allows_delivery,
                                         allows_pickup: r.allows_pickup,
+                                        service_radius_km: radius,
                                     })
                                     .eq("id", r.id)
                                     .select("id");
@@ -1986,6 +2329,58 @@ export default function RestaurantSettings() {
                                     });
                                     return;
                                 }
+
+                                // Prefer device GPS coords; otherwise geocode address
+                                try {
+                                    const token = getToken();
+                                    const hasGps =
+                                        r.latitude != null &&
+                                        r.longitude != null &&
+                                        Number.isFinite(Number(r.latitude)) &&
+                                        Number.isFinite(Number(r.longitude));
+                                    const covRes = await fetch(
+                                        `${getApiBase()}/api/restaurants/${r.id}/delivery-coverage`,
+                                        {
+                                            method: "PATCH",
+                                            headers: {
+                                                "Content-Type": "application/json",
+                                                ...(token
+                                                    ? { Authorization: `Bearer ${token}` }
+                                                    : {}),
+                                            },
+                                            body: JSON.stringify({
+                                                service_radius_km: radius,
+                                                // Address already filled client-side from GPS reverse; don't overwrite on save
+                                                address: r.address || s?.address || undefined,
+                                                fill_address: false,
+                                                ...(hasGps
+                                                    ? {
+                                                          latitude: Number(r.latitude),
+                                                          longitude: Number(r.longitude),
+                                                      }
+                                                    : {}),
+                                            }),
+                                        },
+                                    );
+                                    const covData = await covRes.json().catch(() => ({}));
+                                    if (covRes.ok && covData.restaurant) {
+                                        setR({
+                                            ...r,
+                                            address:
+                                                covData.restaurant.address ?? r.address,
+                                            service_radius_km:
+                                                covData.restaurant.service_radius_km ?? radius,
+                                            latitude: covData.restaurant.latitude,
+                                            longitude: covData.restaurant.longitude,
+                                        });
+                                        if (s && covData.restaurant.address) {
+                                            setS({ ...s, address: covData.restaurant.address });
+                                        }
+                                    }
+                                } catch {
+                                    /* radius already saved via supabase */
+                                }
+
                                 toast({
                                     title: t(
                                         "restaurantSettings:fulfillmentSaved",

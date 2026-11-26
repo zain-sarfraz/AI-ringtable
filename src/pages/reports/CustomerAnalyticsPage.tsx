@@ -571,7 +571,7 @@ export default function CustomerAnalyticsPage() {
       </div>
 
       {/* ── 6 Top Metric KPI Cards with Sparkline Waves ───────── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 sm:gap-4">
         {/* 1. Unique Customers */}
         <SparklineStatCard
           label="Unique Customers"

@@ -14,6 +14,12 @@ import {
 } from "../lib/tableSessions.js";
 import { nextOrderNumber } from "../lib/orderNumbers.js";
 import { notifyNewOrderLater, notifyOrderItemsAddedLater } from "../lib/orderAlerts.js";
+import { geocodeAddress } from "../lib/geocoding.js";
+import {
+  DELIVERY_UNAVAILABLE_MESSAGE,
+  resolveDeliveryAssignment,
+  resolveDeliveryFamilyRootId,
+} from "../lib/phoneOrderService.js";
 
 const router = Router();
 
@@ -452,13 +458,85 @@ router.post("/restaurants/:id/staff-orders", optionalAuth, requireAuth, async (r
       // Staff may take a first order without a phone; keep blank so QR can attach later.
     }
 
+    let targetRestaurantId = restaurantId;
+    let autoAssigned = isDineIn || isPickup;
+    let assignedBranchDistanceKm = null;
+    let branchAssignedAt = null;
+    let assignmentStatus = "assigned";
+    let deliveryLat = null;
+    let deliveryLng = null;
+    let transferredFromRestaurantId = null;
+    let isTransferred = false;
+
+    // Staff delivery orders: same radius assignment as public web orders
+    if (!isDineIn && !isPickup) {
+      const address = String(delivery_address || "").trim();
+      if (!address) {
+        await trx.rollback();
+        return res.status(400).json({ error: "Delivery address is required" });
+      }
+
+      // Progressive geocode; if needed, append branch city/area for local house addresses
+      let geo = await geocodeAddress(address);
+      if (!geo) {
+        const hintParts = [address];
+        if (rest.area) hintParts.push(String(rest.area));
+        if (rest.city) hintParts.push(String(rest.city));
+        if (rest.address) hintParts.push(String(rest.address));
+        hintParts.push("Lahore", "Pakistan");
+        geo = await geocodeAddress(hintParts.filter(Boolean).join(", "));
+      }
+      if (!geo) {
+        await trx.rollback();
+        return res.status(400).json({
+          error:
+            "Could not locate this delivery address. Use a clearer area/city (e.g. Gulshan Block, Allama Iqbal Town, Lahore).",
+          code: "missing_delivery_coords",
+        });
+      }
+      deliveryLat = geo.latitude;
+      deliveryLng = geo.longitude;
+
+      const familyRootId = (await resolveDeliveryFamilyRootId(trx, restaurantId)) || restaurantId;
+      const assignment = await resolveDeliveryAssignment(trx, {
+        restaurantId: familyRootId,
+        preferredBranchId: restaurantId !== familyRootId ? restaurantId : null,
+        deliveryLat,
+        deliveryLng,
+      });
+
+      if (!assignment.ok) {
+        await trx.rollback();
+        return res.status(400).json({
+          error: assignment.error || DELIVERY_UNAVAILABLE_MESSAGE,
+          code: assignment.code || "out_of_range",
+        });
+      }
+
+      targetRestaurantId = assignment.restaurantId;
+      assignedBranchDistanceKm = assignment.distanceKm;
+      branchAssignedAt = new Date();
+      autoAssigned = Boolean(assignment.autoAssigned || assignment.reassigned);
+      assignmentStatus = assignment.reassigned ? "auto_reassigned" : "assigned";
+      if (assignment.reassigned && assignment.fromRestaurantId) {
+        transferredFromRestaurantId = assignment.fromRestaurantId;
+        isTransferred = true;
+      } else if (targetRestaurantId !== restaurantId) {
+        // Placed from HQ/admin portal but fulfilled by another location
+        transferredFromRestaurantId = restaurantId;
+        isTransferred = true;
+        assignmentStatus = "auto_reassigned";
+        autoAssigned = true;
+      }
+    }
+
     const tableNumber = session?.table_number || (table_number ? String(table_number).trim() : null);
-    const orderNumber = await nextOrderNumber(trx, restaurantId);
+    const orderNumber = await nextOrderNumber(trx, targetRestaurantId);
     const trackingCode = "TRK-" + Math.random().toString(36).substring(2, 8).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
 
     const [order] = await trx("orders")
       .insert({
-        restaurant_id: restaurantId,
+        restaurant_id: targetRestaurantId,
         order_number: orderNumber,
         tracking_code: trackingCode,
         customer_name: resolvedCustomerName,
@@ -483,8 +561,18 @@ router.post("/restaurants/:id/staff-orders", optionalAuth, requireAuth, async (r
         delivery_fee: deliveryFee,
         discount_amount: 0,
         total_amount: totalAmount,
-        auto_assigned: isDineIn || isPickup,
-        assignment_status: "assigned",
+        auto_assigned: autoAssigned,
+        assignment_status: assignmentStatus,
+        delivery_latitude: deliveryLat,
+        delivery_longitude: deliveryLng,
+        assigned_branch_distance_km: assignedBranchDistanceKm,
+        branch_assigned_at: branchAssignedAt,
+        ...(isTransferred
+          ? {
+              is_transferred: true,
+              transferred_from_restaurant_id: transferredFromRestaurantId,
+            }
+          : {}),
       })
       .returning("*");
 
@@ -507,18 +595,15 @@ router.get("/staff/dashboard", optionalAuth, requireAuth, async (req, res) => {
   try {
     const knex = getKnex();
     const restaurantId = req.query.restaurant_id ? String(req.query.restaurant_id) : null;
-    const familyIds = restaurantId ? await resolveRestaurantFamilyIds(knex, restaurantId) : [];
 
     let takenQ = knex("orders").where({ taken_by: req.user.id }).whereNot({ status: "cancelled" });
-    if (familyIds.length) takenQ = takenQ.whereIn("restaurant_id", familyIds);
-    else if (restaurantId) takenQ = takenQ.andWhere({ restaurant_id: restaurantId });
+    if (restaurantId) takenQ = takenQ.andWhere({ restaurant_id: restaurantId });
     const orders = await takenQ.orderBy("created_at", "desc");
 
     let dineInQ = knex("orders")
       .where({ fulfillment_type: "dine_in" })
       .whereNotIn("status", ["cancelled", "delivered"]);
-    if (familyIds.length) dineInQ = dineInQ.whereIn("restaurant_id", familyIds);
-    else if (restaurantId) dineInQ = dineInQ.andWhere({ restaurant_id: restaurantId });
+    if (restaurantId) dineInQ = dineInQ.andWhere({ restaurant_id: restaurantId });
     const dineInOrders = await dineInQ.orderBy("created_at", "desc");
 
     const recentMap = new Map();
@@ -535,8 +620,7 @@ router.get("/staff/dashboard", optionalAuth, requireAuth, async (req, res) => {
     const sum = (list) => list.reduce((s, o) => s + Number(o.total_amount || 0), 0);
 
     let openTablesQ = knex("table_sessions").where({ status: "open" });
-    if (familyIds.length) openTablesQ = openTablesQ.whereIn("restaurant_id", familyIds);
-    else if (restaurantId) openTablesQ = openTablesQ.andWhere({ restaurant_id: restaurantId });
+    if (restaurantId) openTablesQ = openTablesQ.andWhere({ restaurant_id: restaurantId });
     const openSessions = await openTablesQ;
 
     return res.json({
@@ -560,18 +644,12 @@ router.get("/staff/active-orders", optionalAuth, requireAuth, async (req, res) =
     if (!restaurantId) {
       return res.status(400).json({ error: "restaurant_id is required" });
     }
-    const familyIds = await resolveRestaurantFamilyIds(knex, restaurantId);
-
-    // Waiter's own open tickets (taken_by set on staff-orders create)
-    let q = knex("orders")
-      .where({ taken_by: req.user.id })
+    // Waiter's own open tickets for this restaurant only (no HQ/branch bleed)
+    const mine = await knex("orders")
+      .where({ taken_by: req.user.id, restaurant_id: restaurantId })
       .whereNotIn("status", CLOSED_ORDER_STATUSES)
       .orderBy("created_at", "desc")
       .limit(80);
-    if (familyIds.length) q = q.whereIn("restaurant_id", familyIds);
-    else q = q.andWhere({ restaurant_id: restaurantId });
-
-    const mine = await q;
 
     // Expand dine-in sittings so one card shows the full table bill items
     const sessionIds = [

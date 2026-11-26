@@ -1,5 +1,6 @@
-import { ALLOWED_TABLES, RESTAURANT_SCOPED, TENANT_QUERY_DENY } from "./allowedTables.js";
 import { deductStockForOrder, restoreStockForOrder } from "../lib/stockDeduction.js";
+import { propagateMenuWriteToBranches, MENU_PROPAGATE_TABLES } from "../lib/syncMenuToBranches.js";
+import { ALLOWED_TABLES, RESTAURANT_SCOPED, TENANT_QUERY_DENY } from "./allowedTables.js";
 
 function parseValue(raw) {
   if (raw === "true") return true;
@@ -36,6 +37,34 @@ function canWriteMenu(user) {
   return (user?.memberships || []).some((m) =>
     ["owner", "admin", "manager"].includes(String(m.member_role || "").toLowerCase()),
   );
+}
+
+/**
+ * Order cancellation guard:
+ * Blocks ONLY staff (waiter), receptionist, and kitchen/chef.
+ * Does NOT block: owner, admin, super_admin, manager, cashier, driver,
+ * or any public / customer / system flow (where user is null or not in blocked roles).
+ */
+function isBlockedFromOrderCancel(user) {
+  if (!user) return false;
+
+  const roles = (user.roles || []).map((r) => String(r).toLowerCase());
+  const primaryRole = user.role ? String(user.role).toLowerCase() : null;
+  const memberRoles = (user.memberships || []).map((m) => String(m.member_role || "").toLowerCase());
+
+  // Allowed roles always pass: owner, admin, super_admin, manager, cashier, driver
+  const allowedRoles = new Set(["owner", "admin", "super_admin", "manager", "cashier", "driver"]);
+  if (roles.some((r) => allowedRoles.has(r))) return false;
+  if (primaryRole && allowedRoles.has(primaryRole)) return false;
+  if (memberRoles.some((r) => allowedRoles.has(r))) return false;
+
+  // Block only: staff (waiter), receptionist, kitchen, chef
+  const blockedRoles = new Set(["staff", "receptionist", "kitchen", "chef"]);
+  if (roles.some((r) => blockedRoles.has(r))) return true;
+  if (primaryRole && blockedRoles.has(primaryRole)) return true;
+  if (memberRoles.some((r) => blockedRoles.has(r))) return true;
+
+  return false;
 }
 
 function assertCanWriteMenu(table, user) {
@@ -102,7 +131,7 @@ function applyOrders(q, orders = []) {
   }
 }
 
-function applyScope(knex, q, table, user) {
+function applyScope(knex, q, table, user, { forWrite = false } = {}) {
   if (!user?.id) return;
   if (user.roles?.includes("super_admin")) return;
 
@@ -167,6 +196,8 @@ function applyScope(knex, q, table, user) {
     return;
   }
 
+  // Strict isolation: each portal only sees its own restaurant's orders
+  // (plus inbound/outbound transfer refs for that same restaurant id).
   if (table === "orders") {
     const ids = user.restaurantIds || [];
     if (!ids.length) {
@@ -175,15 +206,7 @@ function applyScope(knex, q, table, user) {
       q.where((qb) => {
         qb.whereIn("orders.restaurant_id", ids)
           .orWhereIn("orders.pending_transfer_to_restaurant_id", ids)
-          .orWhereIn("orders.transferred_from_restaurant_id", ids)
-          .orWhereIn(
-            "orders.restaurant_id",
-            knex("restaurants").select("id").whereIn("parent_restaurant_id", ids),
-          )
-          .orWhereIn(
-            "orders.pending_transfer_to_restaurant_id",
-            knex("restaurants").select("id").whereIn("parent_restaurant_id", ids),
-          );
+          .orWhereIn("orders.transferred_from_restaurant_id", ids);
       });
     }
     return;
@@ -201,11 +224,7 @@ function applyScope(knex, q, table, user) {
           .where((qb) => {
             qb.whereIn("restaurant_id", ids)
               .orWhereIn("pending_transfer_to_restaurant_id", ids)
-              .orWhereIn("transferred_from_restaurant_id", ids)
-              .orWhereIn(
-                "restaurant_id",
-                knex("restaurants").select("id").whereIn("parent_restaurant_id", ids),
-              );
+              .orWhereIn("transferred_from_restaurant_id", ids);
           }),
       );
     }
@@ -224,13 +243,31 @@ function applyScope(knex, q, table, user) {
           .where((qb) => {
             qb.whereIn("restaurant_id", ids)
               .orWhereIn("pending_transfer_to_restaurant_id", ids)
-              .orWhereIn("transferred_from_restaurant_id", ids)
-              .orWhereIn(
-                "restaurant_id",
-                knex("restaurants").select("id").whereIn("parent_restaurant_id", ids),
-              );
+              .orWhereIn("transferred_from_restaurant_id", ids);
           }),
       );
+    }
+    return;
+  }
+
+  // Branch portals may READ parent HQ menu items (flavor fallback).
+  // Writes stay strictly on the branch's own restaurant_id.
+  if (table === "menu_items") {
+    const ids = user.restaurantIds || [];
+    if (!ids.length) {
+      q.whereRaw("1=0");
+    } else if (forWrite) {
+      q.whereIn("menu_items.restaurant_id", ids);
+    } else {
+      q.where((qb) => {
+        qb.whereIn("menu_items.restaurant_id", ids).orWhereIn(
+          "menu_items.restaurant_id",
+          knex("restaurants")
+            .select("parent_restaurant_id")
+            .whereIn("id", ids)
+            .whereNotNull("parent_restaurant_id"),
+        );
+      });
     }
     return;
   }
@@ -268,7 +305,21 @@ function applyScope(knex, q, table, user) {
     } else {
       q.whereIn(
         "menu_item_variants.menu_item_id",
-        knex("menu_items").select("id").whereIn("restaurant_id", ids),
+        knex("menu_items")
+          .select("id")
+          .where((qb) => {
+            if (forWrite) {
+              qb.whereIn("restaurant_id", ids);
+            } else {
+              qb.whereIn("restaurant_id", ids).orWhereIn(
+                "restaurant_id",
+                knex("restaurants")
+                  .select("parent_restaurant_id")
+                  .whereIn("id", ids)
+                  .whereNotNull("parent_restaurant_id"),
+              );
+            }
+          }),
       );
     }
     return;
@@ -334,11 +385,7 @@ async function assertOrdersBelongToTenant(knex, user, orderIds) {
       .where((qb) => {
         qb.whereIn("restaurant_id", ids)
           .orWhereIn("pending_transfer_to_restaurant_id", ids)
-          .orWhereIn("transferred_from_restaurant_id", ids)
-          .orWhereIn(
-            "restaurant_id",
-            knex("restaurants").select("id").whereIn("parent_restaurant_id", ids),
-          );
+          .orWhereIn("transferred_from_restaurant_id", ids);
       })
       .first();
     if (!row) throw new Error("Forbidden");
@@ -535,32 +582,35 @@ export async function executeQuery(knex, body, user) {
       if (!colList.length) throw new Error("Invalid onConflict columns");
       q = q.onConflict(colList).merge();
     }
-    if (body.returning) {
-      const out = await q.returning("*");
-      const list = Array.isArray(out) ? out : [out];
+    const out = await q.returning("*");
+    const list = Array.isArray(out) ? out : out != null ? [out] : [];
 
-      if (table === "orders") {
-        for (const o of list) {
-          if (o?.id && ["confirmed", "preparing", "ready", "delivered"].includes(o.status)) {
-            try {
-              await deductStockForOrder(knex, o.id);
-            } catch (stockErr) {
-              console.error(`[queryExecutor] Stock deduction on insert failed for order ${o.id}:`, stockErr.message);
-            }
+    if (table === "orders") {
+      for (const o of list) {
+        if (o?.id && ["confirmed", "preparing", "ready", "delivered"].includes(o.status)) {
+          try {
+            await deductStockForOrder(knex, o.id);
+          } catch (stockErr) {
+            console.error(`[queryExecutor] Stock deduction on insert failed for order ${o.id}:`, stockErr.message);
           }
         }
       }
-
-      if (body.single === "one") {
-        return { data: list[0] ?? null, error: null };
-      }
-      if (body.single === "maybe") {
-        return { data: list[0] ?? null, error: null };
-      }
-      return { data: list, error: null };
     }
-    await q;
-    return { data: null, error: null };
+
+    if (MENU_PROPAGATE_TABLES.has(table) && list.length) {
+      await propagateMenuWriteToBranches(knex, { table, action: "insert", rows: list });
+    }
+
+    if (!body.returning) {
+      return { data: null, error: null };
+    }
+    if (body.single === "one") {
+      return { data: list[0] ?? null, error: null };
+    }
+    if (body.single === "maybe") {
+      return { data: list[0] ?? null, error: null };
+    }
+    return { data: list, error: null };
   }
 
   if (action === "update") {
@@ -570,6 +620,16 @@ export async function executeQuery(knex, body, user) {
     const isStatusUpdate = table === "orders" && typeof newStatus === "string";
 
     if (isStatusUpdate) {
+      if (newStatus === "cancelled" && isBlockedFromOrderCancel(user)) {
+        return {
+          data: null,
+          error: {
+            message: "Forbidden: Waiter, receptionist, and kitchen staff cannot cancel orders",
+            code: 403,
+            status: 403,
+          },
+        };
+      }
       const matchQ = knex("orders").select("id", "status");
       applyScope(knex, matchQ, "orders", user);
       applyFilters(matchQ, body.filters);
@@ -579,13 +639,14 @@ export async function executeQuery(knex, body, user) {
     const updateValues =
       table === "deals" ? coerceDealWriteValues(body.values || {}) : body.values || {};
     let q = knex(table).update(updateValues);
-    applyScope(knex, q, table, user);
+    applyScope(knex, q, table, user, { forWrite: true });
     applyFilters(q, body.filters);
+
+    const out = await q.returning("*");
+    const list = Array.isArray(out) ? out : out != null ? [out] : [];
 
     let result;
     if (body.returning) {
-      const out = await q.returning("*");
-      const list = Array.isArray(out) ? out : out != null ? [out] : [];
       if (body.single === "one") {
         if (list.length !== 1) {
           return {
@@ -600,7 +661,6 @@ export async function executeQuery(knex, body, user) {
         result = { data: list, error: null };
       }
     } else {
-      await q;
       result = { data: null, error: null };
     }
 
@@ -618,15 +678,29 @@ export async function executeQuery(knex, body, user) {
       }
     }
 
+    if (MENU_PROPAGATE_TABLES.has(table) && list.length) {
+      await propagateMenuWriteToBranches(knex, { table, action: "update", rows: list });
+    }
+
     return result;
   }
 
   if (action === "delete") {
     assertCanWriteMenu(table, user);
+    let preRows = [];
+    if (MENU_PROPAGATE_TABLES.has(table)) {
+      const preQ = knex(table).select("*");
+      applyScope(knex, preQ, table, user, { forWrite: true });
+      applyFilters(preQ, body.filters);
+      preRows = await preQ;
+    }
     let q = knex(table).del();
-    applyScope(knex, q, table, user);
+    applyScope(knex, q, table, user, { forWrite: true });
     applyFilters(q, body.filters);
     await q;
+    if (MENU_PROPAGATE_TABLES.has(table) && preRows.length) {
+      await propagateMenuWriteToBranches(knex, { table, action: "delete", deletedRows: preRows });
+    }
     return { data: null, error: null };
   }
 

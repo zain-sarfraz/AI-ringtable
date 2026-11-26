@@ -398,9 +398,9 @@ export function PosTerminal({
     };
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 h-[calc(100vh-170px)] min-h-[580px]">
+        <div className="grid grid-cols-1 gap-5 pb-24 lg:grid-cols-12 lg:h-[calc(100vh-170px)] lg:min-h-[580px] lg:pb-0">
             {/* ── LEFT SECTION: Menu Catalog & Categories (8 cols) ── */}
-            <div className="lg:col-span-7 xl:col-span-8 flex flex-col h-full bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+            <div className="flex min-h-[420px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:col-span-7 lg:h-full xl:col-span-8">
                 {/* Top Search & Custom Item bar */}
                 <div className="p-3 border-b border-border bg-muted/20 flex flex-wrap items-center justify-between gap-3">
                     <div className="relative flex-1 min-w-[200px]">
@@ -427,28 +427,30 @@ export function PosTerminal({
 
                 {/* Custom Item Form */}
                 {showCustomItem && (
-                    <div className="p-3 bg-primary/5 border-b border-primary/20 flex items-center gap-2 animate-fade-in">
+                    <div className="flex animate-fade-in flex-col gap-2 border-b border-primary/20 bg-primary/5 p-3 sm:flex-row sm:items-center">
                         <Input
                             placeholder="Item name (e.g. Extra Fries)"
                             value={customName}
                             onChange={(e) => setCustomName(e.target.value)}
-                            className="flex-1 h-8 text-xs bg-background"
+                            className="h-8 min-w-0 flex-1 bg-background text-xs"
                         />
-                        <Input
-                            type="number"
-                            placeholder={`Price (${symbol})`}
-                            step="any"
-                            value={customPrice}
-                            onChange={(e) => setCustomPrice(e.target.value)}
-                            className="w-24 h-8 text-xs bg-background text-right"
-                        />
-                        <Button
-                            size="sm"
-                            onClick={addCustomItem}
-                            className="h-8 text-xs font-semibold"
-                        >
-                            Add
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Input
+                                type="number"
+                                placeholder={`Price (${symbol})`}
+                                step="any"
+                                value={customPrice}
+                                onChange={(e) => setCustomPrice(e.target.value)}
+                                className="h-8 w-full bg-background text-right text-xs sm:w-24"
+                            />
+                            <Button
+                                size="sm"
+                                onClick={addCustomItem}
+                                className="h-8 shrink-0 text-xs font-semibold"
+                            >
+                                Add
+                            </Button>
+                        </div>
                     </div>
                 )}
 
@@ -557,7 +559,10 @@ export function PosTerminal({
             </div>
 
             {/* ── RIGHT SECTION: Order Register & Cart (4-5 cols) ── */}
-            <div className="lg:col-span-5 xl:col-span-4 flex flex-col h-full bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+            <div
+                id="pos-cart"
+                className="flex min-h-[320px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm scroll-mt-24 lg:col-span-5 lg:h-full xl:col-span-4"
+            >
                 {/* Fulfillment Type Switcher */}
                 <div className="p-3 border-b border-border bg-muted/20 space-y-2.5">
                     <div className="grid grid-cols-3 gap-1 bg-muted/60 p-1 rounded-xl">
@@ -771,7 +776,7 @@ export function PosTerminal({
 
                     {/* Payment Method Selector */}
                     <div className="space-y-1.5 pt-1">
-                        <div className="grid grid-cols-5 gap-1">
+                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
                             <Button
                                 type="button"
                                 variant={
@@ -780,10 +785,10 @@ export function PosTerminal({
                                         : "outline"
                                 }
                                 size="sm"
-                                className="h-8 text-[11px] font-semibold gap-1 px-1.5"
+                                className="h-9 gap-1 px-1.5 text-[11px] font-semibold sm:h-8"
                                 onClick={() => setPaymentMethod("cash")}
                             >
-                                <Banknote className="h-3 w-3" /> Cash
+                                <Banknote className="h-3 w-3 shrink-0" /> Cash
                             </Button>
                             <Button
                                 type="button"
@@ -793,10 +798,10 @@ export function PosTerminal({
                                         : "outline"
                                 }
                                 size="sm"
-                                className="h-8 text-[11px] font-semibold gap-1 px-1.5"
+                                className="h-9 gap-1 px-1.5 text-[11px] font-semibold sm:h-8"
                                 onClick={() => setPaymentMethod("card")}
                             >
-                                <CreditCard className="h-3 w-3" /> Card
+                                <CreditCard className="h-3 w-3 shrink-0" /> Card
                             </Button>
                             <Button
                                 type="button"
@@ -806,10 +811,10 @@ export function PosTerminal({
                                         : "outline"
                                 }
                                 size="sm"
-                                className="h-8 text-[11px] font-semibold gap-1 px-1.5"
+                                className="h-9 gap-1 px-1.5 text-[11px] font-semibold sm:h-8"
                                 onClick={() => setPaymentMethod("online")}
                             >
-                                <Globe className="h-3 w-3" /> Online
+                                <Globe className="h-3 w-3 shrink-0" /> Online
                             </Button>
                             <Button
                                 type="button"
@@ -819,7 +824,7 @@ export function PosTerminal({
                                         : "outline"
                                 }
                                 size="sm"
-                                className="h-8 text-[11px] font-semibold gap-1 px-1.5"
+                                className="h-9 gap-1 px-1.5 text-[11px] font-semibold sm:h-8"
                                 onClick={() => {
                                     setPaymentMethod("split");
                                     if (
@@ -861,10 +866,10 @@ export function PosTerminal({
                                         : "outline"
                                 }
                                 size="sm"
-                                className="h-8 text-[11px] font-semibold gap-1 px-1.5"
+                                className="h-9 gap-1 px-1.5 text-[11px] font-semibold sm:h-8"
                                 onClick={() => setPaymentMethod("unpaid")}
                             >
-                                <Clock className="h-3 w-3 text-rose-500" />{" "}
+                                <Clock className="h-3 w-3 shrink-0 text-rose-500" />{" "}
                                 Unpaid
                             </Button>
                         </div>
@@ -1086,6 +1091,35 @@ export function PosTerminal({
                 receipt={receiptData}
                 currency={activeCurrency}
             />
+
+            {cart.length > 0 ? (
+                <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 p-3 backdrop-blur-md lg:hidden">
+                    <button
+                        type="button"
+                        onClick={() =>
+                            document.getElementById("pos-cart")?.scrollIntoView({
+                                behavior: "smooth",
+                                block: "start",
+                            })
+                        }
+                        className="flex w-full items-center justify-between gap-3 rounded-xl bg-primary px-4 py-3 text-left text-primary-foreground shadow-lg"
+                    >
+                        <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-primary-foreground/80">
+                                Cart · {cart.reduce((s, c) => s + c.quantity, 0)}{" "}
+                                item{cart.reduce((s, c) => s + c.quantity, 0) === 1 ? "" : "s"}
+                            </p>
+                            <p className="truncate text-base font-bold tabular-nums">
+                                {formatCurrency(totalAmount, activeCurrency)}
+                            </p>
+                        </div>
+                        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-foreground/15 px-3 py-2 text-xs font-bold">
+                            <ShoppingCart className="h-3.5 w-3.5" />
+                            Review
+                        </span>
+                    </button>
+                </div>
+            ) : null}
         </div>
     );
 }

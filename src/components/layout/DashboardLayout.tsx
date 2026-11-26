@@ -25,10 +25,19 @@ export function DashboardLayout() {
     };
   }, [mobileNavOpen, hideSidebar]);
 
+  useEffect(() => {
+    if (!mobileNavOpen || hideSidebar) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileNavOpen, hideSidebar]);
+
   return (
     <div
       className={cn(
-        "flex min-h-screen",
+        "flex h-screen max-h-screen overflow-hidden h-dvh max-h-dvh",
         hideSidebar ? "bg-[#F7F3EB]" : "canvas-atmosphere",
       )}
     >
@@ -51,7 +60,7 @@ export function DashboardLayout() {
       ) : null}
 
       <div
-        className={`flex min-w-0 flex-1 flex-col transition-[margin-left] duration-300 ease-in-out ${
+        className={`flex min-h-0 min-w-0 max-w-full flex-1 flex-col transition-[margin-left] duration-300 ease-in-out ${
           hideSidebar ? "ml-0" : sidebarCollapsed ? "lg:ml-16" : "lg:ml-64"
         }`}
       >
@@ -62,8 +71,8 @@ export function DashboardLayout() {
         <main
           className={
             hideSidebar
-              ? "flex-1 overflow-auto px-4 pb-8 pt-5 sm:px-6 sm:pt-6 lg:px-8"
-              : "flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6 sm:pt-4 lg:px-8"
+              ? "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pb-8 pt-5 sm:px-6 sm:pt-6 lg:px-8"
+              : "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pb-8 pt-3 sm:px-6 sm:pt-4 lg:px-8"
           }
         >
           <Outlet />

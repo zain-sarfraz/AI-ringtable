@@ -597,7 +597,7 @@ export function StaffDashboard({ firstName }: { firstName: string }) {
         </section>
 
         {/* Current Ticket — reference style */}
-        <aside id="current-ticket" className="lg:sticky lg:top-4">
+        <aside id="current-ticket" className="scroll-mt-24 lg:sticky lg:top-4">
           <div className="overflow-hidden rounded-2xl border border-[#E8E0D4] bg-white shadow-sm">
             <div className="flex items-center justify-between gap-2 bg-[#1B4332] px-4 py-3.5">
               <div className="flex items-center gap-2.5">
@@ -704,45 +704,49 @@ export function StaffDashboard({ firstName }: { firstName: string }) {
                   cart.map((c) => (
                     <div
                       key={c.cart_id}
-                      className="flex items-center gap-2 border-b border-[#EFE8DC] py-2.5 last:border-0"
+                      className="space-y-2 border-b border-[#EFE8DC] py-2.5 last:border-0"
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold text-[#1C1917]">{c.item_name}</p>
-                        <p className="text-[11px] tabular-nums text-[#6B6358]">
-                          {formatCurrency(c.unit_price)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-0.5 rounded-full bg-[#F4EFE6] px-1 py-0.5">
-                        <button
-                          type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-[#1C1917] hover:bg-white"
-                          onClick={() => updateQty(c.cart_id, -1)}
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </button>
-                        <span className="w-6 text-center text-sm font-bold tabular-nums text-[#1C1917]">
-                          {c.quantity}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-[#1C1917]">{c.item_name}</p>
+                          <p className="text-[11px] tabular-nums text-[#6B6358]">
+                            {formatCurrency(c.unit_price)}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-sm font-bold tabular-nums text-[#1C1917]">
+                          {formatCurrency(c.unit_price * c.quantity)}
                         </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-0.5 rounded-full bg-[#F4EFE6] px-1 py-0.5">
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-[#1C1917] hover:bg-white"
+                            onClick={() => updateQty(c.cart_id, -1)}
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="w-6 text-center text-sm font-bold tabular-nums text-[#1C1917]">
+                            {c.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-[#1C1917] hover:bg-white"
+                            onClick={() => updateQty(c.cart_id, 1)}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                         <button
                           type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-[#1C1917] hover:bg-white"
-                          onClick={() => updateQty(c.cart_id, 1)}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                          onClick={() =>
+                            setCart((prev) => prev.filter((x) => x.cart_id !== c.cart_id))
+                          }
                         >
-                          <Plus className="h-3.5 w-3.5" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                      <span className="w-[4.5rem] shrink-0 text-right text-sm font-bold tabular-nums text-[#1C1917]">
-                        {formatCurrency(c.unit_price * c.quantity)}
-                      </span>
-                      <button
-                        type="button"
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
-                        onClick={() =>
-                          setCart((prev) => prev.filter((x) => x.cart_id !== c.cart_id))
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
                     </div>
                   ))
                 )}

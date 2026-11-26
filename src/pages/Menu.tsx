@@ -181,21 +181,149 @@ function MenuItemsTable({
   canManageMenu?: boolean;
 }) {
   const { t } = useTranslation(["menu", "common"]);
+
+  const getItemPriceMeta = (it: MenuItem) => {
+    const itemVars = itemVariants?.filter((v) => v.menu_item_id === it.id) || [];
+    const itemSizes = itemVars.filter((v) => v.variant_type === "size");
+    const itemFlavors = itemVars.filter((v) => v.variant_type !== "size");
+    const sizePrices = itemSizes.filter((s) => s.is_active).map((s) => Number(s.price));
+    const flavorPrices = itemFlavors.filter((v) => v.is_active && Number(v.price) > 0).map((v) => Number(v.price));
+
+    let minPrice = Number(it.price) || 0;
+    let maxPrice = Number(it.price) || 0;
+    if (sizePrices.length > 0) {
+      minPrice = Math.min(...sizePrices);
+      maxPrice = Math.max(...sizePrices);
+    } else if (flavorPrices.length > 0) {
+      minPrice = Math.min(...flavorPrices);
+      maxPrice = Math.max(...flavorPrices);
+    }
+    return { sizePrices, flavorPrices, minPrice, maxPrice };
+  };
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm min-w-[980px] border-collapse">
-        <thead className="text-left bg-muted/40 text-muted-foreground border-b text-xs font-semibold uppercase tracking-wider">
+    <>
+    <div className="space-y-3 md:hidden">
+      {rows.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+          {emptyMessage || t("menu:noItemsFound", "No items found.")}
+        </div>
+      ) : (
+        rows.map((it, idx) => {
+          const thumbSrc = resolveMediaUrl(it.image_url);
+          const categoryName = categories?.find((c) => c.id === it.category_id)?.name || t("common:uncategorized", "Uncategorized");
+          const subCategoryName = subCategories?.find((sc) => sc.id === it.sub_category_id)?.name || "—";
+          const { sizePrices, flavorPrices, minPrice, maxPrice } = getItemPriceMeta(it);
+          const outOfStock = !it.is_available || (it.track_inventory && Number(it.stock_quantity || 0) <= 0);
+
+          return (
+            <div key={it.id} className="rounded-xl border border-border/70 bg-card p-3 shadow-xs">
+              <div className="flex items-start gap-3">
+                {thumbSrc ? (
+                  <img src={thumbSrc} alt={it.name} className="h-14 w-14 shrink-0 rounded-lg object-cover border bg-muted/20" />
+                ) : (
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border bg-muted/30 text-muted-foreground">
+                    <UtensilsCrossed className="h-5 w-5 opacity-50" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">#{idx + 1}</p>
+                      <Link
+                        to={`/menu/items/${it.id}`}
+                        className="block truncate text-sm font-bold text-foreground hover:text-primary hover:underline"
+                      >
+                        {it.name}
+                      </Link>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {(sizePrices.length > 1 || flavorPrices.length > 1) && minPrice !== maxPrice ? (
+                        <p className="text-sm font-extrabold tabular-nums">
+                          <span className="mr-1 text-[10px] font-medium text-muted-foreground">From</span>
+                          {formatCurrency(minPrice)}
+                        </p>
+                      ) : (
+                        <p className="text-sm font-extrabold tabular-nums">{formatCurrency(minPrice || it.price)}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-medium">{categoryName}</span>
+                    <span className="text-[11px] font-semibold lowercase text-amber-700 dark:text-amber-400">{subCategoryName}</span>
+                    {outOfStock ? (
+                      <Badge variant="destructive" className="h-4 border-destructive/20 bg-destructive/10 px-1.5 py-0 text-[10px] font-semibold text-destructive">
+                        {t("menu:outOfStock", "Out of Stock")}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-muted-foreground">
+                    <span>Stock: {it.track_inventory ? (it.stock_quantity ?? 0) : "1"}</span>
+                    {it.prep_time_minutes ? <span>Prep: {it.prep_time_minutes} min</span> : null}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-3">
+                {canManageMenu ? (
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={it.is_available}
+                      onCheckedChange={() => onToggleAvailability?.(it)}
+                      className="data-[state=checked]:bg-primary"
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      {it.is_available ? t("common:available", "Available") : t("menu:outOfStock", "Unavailable")}
+                    </span>
+                  </div>
+                ) : (
+                  <Badge variant="outline" className="text-[10px]">
+                    {it.is_available ? t("common:available", "Available") : t("menu:outOfStock", "Unavailable")}
+                  </Badge>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <Button size="sm" variant="outline" className="h-8 w-8 p-0" asChild title={t("common:view", "View details")}>
+                    <Link to={`/menu/items/${it.id}`}>
+                      <Eye className="h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                  {canManageMenu ? (
+                    <>
+                      <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => onEdit(it)} title={t("common:edit", "Edit")}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 w-8 p-0 border-red-200/60 bg-red-50/40 text-red-600"
+                        onClick={() => onDelete(it.id)}
+                        title={t("common:delete", "Delete")}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+
+    <div className="hidden overflow-x-auto md:block">
+      <table className="w-full min-w-[980px] border-collapse text-sm">
+        <thead className="border-b bg-muted/40 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <tr>
-            <th className="py-3 px-4 w-12 text-center">{t("menu:itemNumber", "Item #")}</th>
-            <th className="py-3 px-4 w-16">{t("menu:image", "Image")}</th>
-            <th className="py-3 px-4 min-w-[240px]">{t("menu:itemName", "Item Name")}</th>
-            <th className="py-3 px-4">{t("menu:category", "Category")}</th>
-            <th className="py-3 px-4">{t("menu:subCategory", "Sub-category")}</th>
-            <th className="py-3 px-4 text-center whitespace-nowrap">{t("menu:stock", "Stock")}</th>
-            <th className="py-3 px-4 whitespace-nowrap">{t("menu:preparationTime", "Prep Time")}</th>
-            <th className="py-3 px-4 whitespace-nowrap">{t("menu:price", "Price")}</th>
-            <th className="py-3 px-4 text-center">{t("common:status", "Status")}</th>
-            <th className="py-3 px-4 w-28 text-right">{t("common:actions", "Actions")}</th>
+            <th className="px-4 py-3 w-12 text-center">{t("menu:itemNumber", "Item #")}</th>
+            <th className="px-4 py-3 w-16">{t("menu:image", "Image")}</th>
+            <th className="min-w-[240px] px-4 py-3">{t("menu:itemName", "Item Name")}</th>
+            <th className="px-4 py-3">{t("menu:category", "Category")}</th>
+            <th className="px-4 py-3">{t("menu:subCategory", "Sub-category")}</th>
+            <th className="whitespace-nowrap px-4 py-3 text-center">{t("menu:stock", "Stock")}</th>
+            <th className="whitespace-nowrap px-4 py-3">{t("menu:preparationTime", "Prep Time")}</th>
+            <th className="whitespace-nowrap px-4 py-3">{t("menu:price", "Price")}</th>
+            <th className="px-4 py-3 text-center">{t("common:status", "Status")}</th>
+            <th className="w-28 px-4 py-3 text-right">{t("common:actions", "Actions")}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border/60">
@@ -203,26 +331,10 @@ function MenuItemsTable({
             const thumbSrc = resolveMediaUrl(it.image_url);
             const categoryName = categories?.find((c) => c.id === it.category_id)?.name || t("common:uncategorized", "Uncategorized");
             const subCategoryName = subCategories?.find((sc) => sc.id === it.sub_category_id)?.name || "—";
-
-            const itemVars = itemVariants?.filter((v) => v.menu_item_id === it.id) || [];
-            const itemSizes = itemVars.filter((v) => v.variant_type === "size");
-            const itemFlavors = itemVars.filter((v) => v.variant_type !== "size");
-
-            const sizePrices = itemSizes.filter((s) => s.is_active).map((s) => Number(s.price));
-            const flavorPrices = itemFlavors.filter((v) => v.is_active && Number(v.price) > 0).map((v) => Number(v.price));
-
-            let minPrice = Number(it.price) || 0;
-            let maxPrice = Number(it.price) || 0;
-            if (sizePrices.length > 0) {
-              minPrice = Math.min(...sizePrices);
-              maxPrice = Math.max(...sizePrices);
-            } else if (flavorPrices.length > 0) {
-              minPrice = Math.min(...flavorPrices);
-              maxPrice = Math.max(...flavorPrices);
-            }
+            const { sizePrices, flavorPrices, minPrice, maxPrice } = getItemPriceMeta(it);
 
             return (
-              <tr key={it.id} className="hover:bg-muted/40 transition-colors">
+              <tr key={it.id} className="transition-colors hover:bg-muted/40">
                 {/* 1. Item # */}
                 <td className="py-3 px-4 align-middle text-center text-xs font-medium text-muted-foreground">
                   <span className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-muted/50 border border-border/40 font-semibold text-xs">
@@ -383,6 +495,7 @@ function MenuItemsTable({
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
@@ -395,7 +508,7 @@ export default function Menu() {
   // Only admin / manager / super_admin can add or edit menu
   const canManageMenu =
     role === "admin" || role === "manager" || role === "super_admin";
-  const { restaurantId, loading: activeRestaurantLoading } = useActiveRestaurant();
+  const { restaurantId, activeRestaurant, loading: activeRestaurantLoading } = useActiveRestaurant();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") || "items";
   const itemsTab = activeTab === "items";
@@ -688,8 +801,32 @@ export default function Menu() {
       setLoading(false);
       return;
     }
-    void load();
-  }, [restaurantId, activeRestaurantLoading, load]);
+
+    let cancelled = false;
+    const run = async () => {
+      // Branch portal: pull missing sizes/flavors/add-ons from HQ before rendering
+      const isBranch = Boolean(activeRestaurant?.is_branch || activeRestaurant?.parent_restaurant_id);
+      if (isBranch) {
+        try {
+          await fetch(`${getApiBase()}/api/restaurants/${restaurantId}/heal-menu-from-parent`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${getToken()}`,
+            },
+            body: JSON.stringify({ force: false }),
+          });
+        } catch (err) {
+          console.warn("heal-menu-from-parent failed:", err);
+        }
+      }
+      if (!cancelled) await load();
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId, activeRestaurantLoading, activeRestaurant?.is_branch, activeRestaurant?.parent_restaurant_id, load]);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -884,6 +1021,28 @@ export default function Menu() {
     }
   };
 
+  const pushItemToBranches = async (parentRestaurantId: string, itemId: string) => {
+    try {
+      const res = await fetch(
+        `${getApiBase()}/api/restaurants/${parentRestaurantId}/menu-items/${itemId}/sync-to-branches`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: "{}",
+        },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.warn("sync-to-branches failed:", body.error || res.statusText);
+      }
+    } catch (err) {
+      console.warn("sync-to-branches error:", err);
+    }
+  };
+
   const saveItem = async (form: Partial<MenuItem> & { addon_ids?: string[]; variants?: Partial<MenuItemVariant>[]; restaurant_id?: string }) => {
     if (!canManageMenu) {
       toast({ variant: "destructive", title: t("common:error", "Error"), description: "Only admin or manager can add or edit menu items." });
@@ -908,11 +1067,13 @@ export default function Menu() {
     };
     const allowedAddonIds = new Set(addons.map((x) => x.id));
     try {
+      let savedItemId: string | null = editItem?.id || null;
       if (editItem) {
         const res = await supabase.from("menu_items").update(payload).eq("id", editItem.id);
         if (res.error) throw res.error;
         await syncItemAddonLinks(editItem.id, addon_ids, allowedAddonIds);
         if (form.variants) await syncItemVariants(editItem.id, form.variants);
+        savedItemId = editItem.id;
       } else {
         const res = await supabase.from("menu_items").insert(payload).select("id").single();
         if (res.error) throw res.error;
@@ -920,8 +1081,21 @@ export default function Menu() {
         if (id) {
           await syncItemAddonLinks(id, addon_ids, allowedAddonIds);
           if (form.variants) await syncItemVariants(id, form.variants);
+          savedItemId = id;
         }
       }
+
+      // Parent HQ: after variants/addons are fully saved, push COMPLETE item to all branches
+      const isParentHq = Boolean(
+        activeRestaurant &&
+          !activeRestaurant.is_branch &&
+          !activeRestaurant.parent_restaurant_id &&
+          targetRestaurantId === restaurantId,
+      );
+      if (isParentHq && savedItemId) {
+        await pushItemToBranches(targetRestaurantId, savedItemId);
+      }
+
       setIsSaving(false);
       toast({ title: editItem ? "Item updated" : "Item created" });
       setItemDialog(false);
@@ -1625,10 +1799,10 @@ export default function Menu() {
                 </div>
 
                 {/* Filters */}
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex flex-wrap items-center gap-2">
                   {/* Limit status filter */}
                   <Select value={limitFilter} onValueChange={setLimitFilter}>
-                    <SelectTrigger className="w-[140px] h-9 text-sm">
+                    <SelectTrigger className="h-9 w-full text-sm sm:w-[140px]">
                       <SelectValue placeholder={t("common:limit", "Limit")} />
                     </SelectTrigger>
                     <SelectContent>
@@ -1640,7 +1814,7 @@ export default function Menu() {
 
                   {/* Flavors filter */}
                   <Select value={flavorFilter} onValueChange={setFlavorFilter}>
-                    <SelectTrigger className="w-[145px] h-9 text-sm">
+                    <SelectTrigger className="h-9 w-full text-sm sm:w-[145px]">
                       <SelectValue placeholder="Flavors" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1653,7 +1827,7 @@ export default function Menu() {
                   {/* Restaurants filter for Super Admin */}
                   {isSuperAdmin && (
                     <Select value={restaurantFilterId} onValueChange={setRestaurantFilterId}>
-                      <SelectTrigger className="w-[150px] h-9 text-sm">
+                      <SelectTrigger className="h-9 w-full text-sm sm:w-[150px]">
                         <SelectValue placeholder={t("superAdmin:restaurants", "Restaurants")} />
                       </SelectTrigger>
                       <SelectContent>
@@ -1685,15 +1859,15 @@ export default function Menu() {
 
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[760px] border-collapse">
-                  <thead className="text-left bg-muted/40 text-muted-foreground border-b text-xs font-semibold uppercase tracking-wider">
+                <table className="w-full min-w-[640px] border-collapse text-sm md:min-w-[760px]">
+                  <thead className="border-b bg-muted/40 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     <tr>
-                      <th className="py-3 px-4 w-12 text-center">{t("menu:itemNumber", "ITEM #")}</th>
-                      <th className="py-3 px-4 min-w-[220px]">{t("menu:itemName", "ITEM NAME")}</th>
-                      <th className="py-3 px-4 min-w-[200px]">{t("menu:flavor", "FLAVOR")}</th>
-                      <th className="py-3 px-4 w-44 whitespace-nowrap">{t("menu:maxOrderQuantity", "MAX ORDER QUANTITY")}</th>
-                      <th className="py-3 px-4 w-32 whitespace-nowrap">{t("common:limit", "LIMIT STATUS")}</th>
-                      <th className="py-3 px-4 w-20 text-right">{t("common:actions", "ACTIONS")}</th>
+                      <th className="w-12 px-3 py-3 text-center sm:px-4">{t("menu:itemNumber", "ITEM #")}</th>
+                      <th className="min-w-[160px] px-3 py-3 sm:min-w-[220px] sm:px-4">{t("menu:itemName", "ITEM NAME")}</th>
+                      <th className="min-w-[120px] px-3 py-3 sm:min-w-[200px] sm:px-4">{t("menu:flavor", "FLAVOR")}</th>
+                      <th className="w-36 whitespace-nowrap px-3 py-3 sm:w-44 sm:px-4">{t("menu:maxOrderQuantity", "MAX ORDER QUANTITY")}</th>
+                      <th className="w-28 whitespace-nowrap px-3 py-3 sm:w-32 sm:px-4">{t("common:limit", "LIMIT STATUS")}</th>
+                      <th className="w-16 px-3 py-3 text-right sm:w-20 sm:px-4">{t("common:actions", "ACTIONS")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
@@ -2937,10 +3111,10 @@ function ItemForm({
   };
 
   return (
-    <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-h-[min(92vh,900px)] w-[calc(100%-1rem)] max-w-3xl sm:w-[calc(100%-2rem)]">
       <DialogHeader>
         <DialogTitle>{initial ? t("menu:editItem", "Edit item") : t("menu:addItem", "New item")}</DialogTitle>
-        <DialogDescription className="text-sm text-muted-foreground pt-1">
+        <DialogDescription className="pt-1 text-sm text-muted-foreground">
           Fill in the details below, configure sizes, flavors, and add-ons, then save to update the menu.
         </DialogDescription>
       </DialogHeader>

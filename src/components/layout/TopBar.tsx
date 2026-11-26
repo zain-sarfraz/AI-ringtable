@@ -76,20 +76,20 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
 
     return (
       <header className="sticky top-0 z-30 border-b border-[#E8E0D4] bg-[#FBF8F3]/95 backdrop-blur-md">
-        <div className="mx-auto flex h-[68px] max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="mx-auto flex h-[60px] max-w-[1600px] items-center justify-between gap-2 px-4 sm:h-[68px] sm:gap-4 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <Link
               to="/dashboard"
-              className="flex min-w-0 items-center gap-3 rounded-xl outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[#C9A227]/40"
+              className="flex min-w-0 items-center gap-2 rounded-xl outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[#C9A227]/40 sm:gap-3"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1B4332] text-sm font-bold tracking-tight text-[#F4E4A6] shadow-sm">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1B4332] text-sm font-bold tracking-tight text-[#F4E4A6] shadow-sm sm:h-10 sm:w-10">
                 {(restaurantLabel || "R").charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
-                <p className="truncate text-[15px] font-semibold tracking-tight text-[#1C1917] sm:text-base">
+                <p className="truncate text-sm font-semibold tracking-tight text-[#1C1917] sm:text-[15px] md:text-base">
                   {restaurantLabel}
                 </p>
-                <p className="mt-0.5 truncate text-[11px] font-medium tracking-wide text-[#6B6358]">
+                <p className="mt-0.5 truncate text-[10px] font-medium tracking-wide text-[#6B6358] sm:text-[11px]">
                   Waiter Portal · Floor Staff
                 </p>
               </div>
@@ -190,19 +190,6 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
     <header className="sticky top-0 z-30 h-14 border-b border-border/70 bg-background/80 backdrop-blur-xl sm:h-16">
       <div className="flex h-full items-center justify-between gap-1.5 px-3 sm:gap-3 sm:px-6 lg:px-8">
         <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
-          {onOpenMobileNav ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0 rounded-lg border-border/80 bg-card/80 lg:hidden"
-              onClick={onOpenMobileNav}
-              aria-label="Open navigation"
-            >
-              <Menu className="h-4 w-4" />
-            </Button>
-          ) : null}
-
           {isPosPage ? (
             <Button
               type="button"
@@ -277,6 +264,19 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {onOpenMobileNav ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-lg border-border/80 bg-card/80 lg:hidden"
+              onClick={onOpenMobileNav}
+              aria-label="Open navigation"
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+          ) : null}
         </div>
       </div>
     </header>

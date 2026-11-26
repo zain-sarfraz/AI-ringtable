@@ -18,6 +18,7 @@ import {
     Building2,
     Calculator,
     CalendarCheck,
+    CalendarDays,
     CheckCircle2,
     ChefHat,
     ChevronDown,
@@ -48,6 +49,7 @@ import {
     Users,
     UtensilsCrossed,
     Wallet,
+    X,
     type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -127,35 +129,60 @@ export function Sidebar({
         [t],
     );
 
-    const navigationItems = useMemo(
-        () => [
+    const navigationItems = useMemo(() => {
+        // Base items common to all roles
+        const base = [
             {
                 icon: LayoutDashboard,
                 label: t("sidebar:dashboard", "Dashboard"),
                 href: "/dashboard",
             },
-            ...(!isBranch
-                ? [
-                      {
-                          icon: Tag,
-                          label: t("sidebar:dealsAndOffers", "Deals & Offers"),
-                          href: "/deals",
-                      },
-                      {
-                          icon: Ticket,
-                          label: t("sidebar:couponCode", "Coupon Code"),
-                          href: "/coupons",
-                      },
-                      {
-                          icon: Layers,
-                          label: t("sidebar:cuisines", "Cuisines"),
-                          href: "/cuisines",
-                      },
-                  ]
-                : []),
-        ],
-        [t, isBranch],
-    );
+        ];
+
+        // Non-branch additional items
+        if (!isBranch) {
+            base.push(
+                {
+                    icon: Tag,
+                    label: t("sidebar:dealsAndOffers", "Deals & Offers"),
+                    href: "/deals",
+                },
+                {
+                    icon: Ticket,
+                    label: t("sidebar:couponCode", "Coupon Code"),
+                    href: "/coupons",
+                },
+                {
+                    icon: Layers,
+                    label: t("sidebar:cuisines", "Cuisines"),
+                    href: "/cuisines",
+                },
+            );
+        }
+
+        // Receptionist limited view overrides other items
+        if (role === "receptionist") {
+            return [
+                {
+                    icon: LayoutDashboard,
+                    label: t("sidebar:dashboard", "Dashboard"),
+                    href: "/dashboard",
+                },
+                {
+                    icon: CalendarDays,
+                    label: t("sidebar:reservations", "Reservations"),
+                    href: "/reservations",
+                },
+                {
+                    icon: UserCircle,
+                    label: t("sidebar:profile", "Profile"),
+                    href: "/profile",
+                },
+            ];
+        }
+
+        return base;
+    }, [t, isBranch, role]);
 
     const menuChildren = useMemo(
         () => [
@@ -307,7 +334,13 @@ export function Sidebar({
                 href: "/settings",
             },
         ],
-        [t, isBranch, planFeatures.branches, planFeatures.staff_management, role],
+        [
+            t,
+            isBranch,
+            planFeatures.branches,
+            planFeatures.staff_management,
+            role,
+        ],
     );
 
     useEffect(() => {
@@ -631,6 +664,16 @@ export function Sidebar({
                     <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => onMobileClose?.()}
+                        className="inline-flex h-8 w-8 shrink-0 rounded-lg text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:hidden"
+                        title={t("common:close", "Close")}
+                        aria-label="Close navigation"
+                    >
+                        <X className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={onToggle}
                         className={cn(
                             "hidden h-8 w-8 shrink-0 rounded-lg text-sidebar-foreground/60 transition-opacity duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:inline-flex",
@@ -781,18 +824,6 @@ export function Sidebar({
                             )}
                             href="/reservations?tab=tables"
                         />
-                        <div
-                            className={cn(
-                                "border-t border-sidebar-border space-y-0.5",
-                                collapsed ? "pt-2 mt-2" : "pt-4 mt-3",
-                            )}
-                        >
-                            <NavItem
-                                icon={Settings}
-                                label={t("sidebar:settings", "Settings")}
-                                href="/settings"
-                            />
-                        </div>
                     </div>
                 ) : role === "kitchen" || role === "chef" ? (
                     <div className="space-y-0.5">
@@ -1056,39 +1087,38 @@ export function Sidebar({
                             </div>
                         )}
 
-                        {/* Menu is only visible to Parent Restaurant admins, hidden for Branches */}
-                        {!isBranch &&
-                            (collapsed ? (
-                                <NavItem
+                        {/* Menu: parent HQ + branches (branch edits stay local; HQ edits sync to branches) */}
+                        {collapsed ? (
+                            <NavItem
+                                icon={UtensilsCrossed}
+                                label={t("sidebar:menu", "Menu")}
+                                href="/menu"
+                                activeOverride={menuGroupActive}
+                            />
+                        ) : (
+                            <>
+                                <GroupButton
+                                    open={menuOpen}
+                                    onToggleOpen={() =>
+                                        setMenuOpen((v) => !v)
+                                    }
+                                    active={menuGroupActive}
                                     icon={UtensilsCrossed}
                                     label={t("sidebar:menu", "Menu")}
-                                    href="/menu"
-                                    activeOverride={menuGroupActive}
                                 />
-                            ) : (
-                                <>
-                                    <GroupButton
-                                        open={menuOpen}
-                                        onToggleOpen={() =>
-                                            setMenuOpen((v) => !v)
-                                        }
-                                        active={menuGroupActive}
-                                        icon={UtensilsCrossed}
-                                        label={t("sidebar:menu", "Menu")}
-                                    />
-                                    {menuOpen && (
-                                        <div className="space-y-0.5">
-                                            {menuChildren.map((item) => (
-                                                <NavItem
-                                                    key={item.href}
-                                                    {...item}
-                                                    indent
-                                                />
-                                            ))}
-                                        </div>
-                                    )}
-                                </>
-                            ))}
+                                {menuOpen && (
+                                    <div className="space-y-0.5">
+                                        {menuChildren.map((item) => (
+                                            <NavItem
+                                                key={item.href}
+                                                {...item}
+                                                indent
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </>
+                        )}
 
                         {navigationItems
                             .filter((i) => i.href !== "/dashboard")

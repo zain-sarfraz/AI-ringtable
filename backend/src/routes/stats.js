@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getKnex } from "../db.js";
-import { requireAuth, optionalAuth } from "../middleware/auth.js";
+import { optionalAuth, requireAuth } from "../middleware/auth.js";
+import { resolveRole } from "../middleware/checkPermission.js";
 
 const router = Router();
 
@@ -19,9 +20,9 @@ async function canAccessBranchReports(knex, userId, branchRestaurantId) {
     .first();
   const isParentOwner = branch.parent_restaurant_id
     ? await knex("restaurant_members")
-        .where({ restaurant_id: branch.parent_restaurant_id, user_id: userId })
-        .whereIn("member_role", ["owner", "admin"])
-        .first()
+      .where({ restaurant_id: branch.parent_restaurant_id, user_id: userId })
+      .whereIn("member_role", ["owner", "admin"])
+      .first()
     : false;
 
   return Boolean(isBranchMember || isParentOwner);
@@ -211,6 +212,12 @@ router.get("/earnings", optionalAuth, requireAuth, async (req, res) => {
       .groupBy("restaurants.id", "restaurants.name", "restaurants.commission_rate")
       .orderBy("total_sales", "desc");
 
+    const callerRole = resolveRole(req);
+    const isManager = callerRole === "manager";
+    if (isManager) {
+      return res.status(403).json({ error: "Access denied: managers cannot access platform earnings" });
+    }
+
     let totalAdminEarning = 0;
     let totalRestaurantEarning = 0;
     let totalSales = 0;
@@ -227,6 +234,16 @@ router.get("/earnings", optionalAuth, requireAuth, async (req, res) => {
       totalRestaurantEarning += restPart;
       totalOrders += Number(s.order_count || 0);
 
+      if (isManager) {
+        return {
+          restaurant_id: s.restaurant_id,
+          restaurant_name: s.restaurant_name,
+          total_sales: sales,
+          order_count: Number(s.order_count || 0),
+          restaurant_earning: restPart,
+        };
+      }
+
       return {
         restaurant_id: s.restaurant_id,
         restaurant_name: s.restaurant_name,
@@ -240,12 +257,18 @@ router.get("/earnings", optionalAuth, requireAuth, async (req, res) => {
 
     res.json({
       restaurants: formattedStats,
-      summary: {
-        total_sales: totalSales,
-        total_orders: totalOrders,
-        total_admin_earning: totalAdminEarning,
-        total_restaurant_earning: totalRestaurantEarning,
-      },
+      summary: isManager
+        ? {
+          total_sales: totalSales,
+          total_orders: totalOrders,
+          total_restaurant_earning: totalRestaurantEarning,
+        }
+        : {
+          total_sales: totalSales,
+          total_orders: totalOrders,
+          total_admin_earning: totalAdminEarning,
+          total_restaurant_earning: totalRestaurantEarning,
+        },
     });
   } catch (e) {
     console.error("EARNINGS STATS ERROR:", e.message);
@@ -1461,9 +1484,9 @@ router.get("/order-report", optionalAuth, requireAuth, async (req, res) => {
     const familyIds = scope.restaurantIds;
     const branches = familyIds?.length
       ? await knex("restaurants")
-          .whereIn("id", familyIds)
-          .select("id", "name", "is_branch", "parent_restaurant_id")
-          .orderBy("name", "asc")
+        .whereIn("id", familyIds)
+        .select("id", "name", "is_branch", "parent_restaurant_id")
+        .orderBy("name", "asc")
       : [];
 
     const filtered = () =>
@@ -1523,9 +1546,9 @@ router.get("/order-report", optionalAuth, requireAuth, async (req, res) => {
     const orders = rows.map((row) => {
       const transferred = Boolean(
         row.is_transferred ||
-          row.pending_transfer_to_restaurant_id ||
-          row.transferred_from_restaurant_id ||
-          (row.branch_assigned_at && row.auto_assigned === false),
+        row.pending_transfer_to_restaurant_id ||
+        row.transferred_from_restaurant_id ||
+        (row.branch_assigned_at && row.auto_assigned === false),
       );
       return {
         id: row.id,
