@@ -45,12 +45,24 @@ type MenuItem = {
 
 type Category = { id: string; name: string };
 
+type VariantItem = {
+  id: string;
+  menu_item_id: string;
+  name: string;
+  price: number;
+  is_active?: boolean;
+  variant_type?: "size" | "flavor" | string | null;
+  measurement?: string | null;
+  parent_id?: string | null;
+};
+
 type CartItem = {
   cart_id: string;
   menu_item_id: string | null;
   item_name: string;
   unit_price: number;
   quantity: number;
+  notes?: string | null;
 };
 
 type ActiveOrderItem = {
@@ -104,9 +116,13 @@ export function StaffDashboard({ firstName }: { firstName: string }) {
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [variants, setVariants] = useState<VariantItem[]>([]);
+  /** Branch item id → parent item id when branch menu lacks copied sizes/flavors */
+  const [variantSourceByItemId, setVariantSourceByItemId] = useState<Record<string, string>>({});
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [menuSearch, setMenuSearch] = useState("");
   const [categoryId, setCategoryId] = useState("all");
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [loadingActive, setLoadingActive] = useState(true);
@@ -131,6 +147,20 @@ export function StaffDashboard({ firstName }: { firstName: string }) {
       if (!restaurantId) return;
       if (!silent) setLoadingMenu(true);
       try {
+        // Best-effort: copy missing parent sizes/flavors onto this branch
+        try {
+          await fetch(`${getApiBase()}/api/restaurants/${restaurantId}/heal-menu-from-parent`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${getToken()}`,
+            },
+            body: JSON.stringify({ force: false }),
+          });
+        } catch {
+          // heal is optional; parent fallback below still covers display
+        }
+
         const [{ data: itemsData }, { data: catData }] = await Promise.all([
           supabase
             .from("menu_items")
@@ -143,8 +173,67 @@ export function StaffDashboard({ firstName }: { firstName: string }) {
             .eq("restaurant_id", restaurantId)
             .order("sort_order"),
         ]);
-        setMenuItems((itemsData as MenuItem[]) || []);
+
+        const items = (itemsData as MenuItem[]) || [];
+        const itemIds = items.map((i) => i.id);
+        let finalVariants: VariantItem[] = [];
+        const sourceMap: Record<string, string> = {};
+
+        if (itemIds.length > 0) {
+          const { data: variantsData } = await supabase
+            .from("menu_item_variants")
+            .select("id, menu_item_id, name, price, is_active, variant_type, measurement, parent_id")
+            .in("menu_item_id", itemIds)
+            .order("sort_order");
+          finalVariants = ((variantsData as VariantItem[]) || []).filter((v) => v.is_active !== false);
+        }
+
+        // Branch fallback: if an item has no variants, show parent HQ sizes/flavors by name
+        const missingVariantItemIds = items
+          .filter((bi) => !finalVariants.some((v) => v.menu_item_id === bi.id))
+          .map((bi) => bi.id);
+
+        if (missingVariantItemIds.length > 0) {
+          const { data: rest } = await supabase
+            .from("restaurants")
+            .select("id, parent_restaurant_id, is_branch")
+            .eq("id", restaurantId)
+            .maybeSingle();
+          const parentId = (rest as { parent_restaurant_id?: string | null } | null)?.parent_restaurant_id;
+          if (parentId) {
+            const { data: parentItems } = await supabase
+              .from("menu_items")
+              .select("id, name")
+              .eq("restaurant_id", parentId);
+            const parentByName = new Map<string, string>();
+            for (const pi of (parentItems as { id: string; name: string }[]) || []) {
+              parentByName.set(String(pi.name || "").trim().toLowerCase(), pi.id);
+            }
+            const parentIdsNeeded: string[] = [];
+            for (const bi of items) {
+              if (!missingVariantItemIds.includes(bi.id)) continue;
+              const pid = parentByName.get(String(bi.name || "").trim().toLowerCase());
+              if (pid) {
+                sourceMap[bi.id] = pid;
+                parentIdsNeeded.push(pid);
+              }
+            }
+            if (parentIdsNeeded.length > 0) {
+              const { data: parentVariants } = await supabase
+                .from("menu_item_variants")
+                .select("id, menu_item_id, name, price, is_active, variant_type, measurement, parent_id")
+                .in("menu_item_id", [...new Set(parentIdsNeeded)])
+                .order("sort_order");
+              const extra = ((parentVariants as VariantItem[]) || []).filter((v) => v.is_active !== false);
+              finalVariants = [...finalVariants, ...extra];
+            }
+          }
+        }
+
+        setMenuItems(items);
         setCategories((catData as Category[]) || []);
+        setVariants(finalVariants);
+        setVariantSourceByItemId(sourceMap);
       } catch (err) {
         console.error("Failed to load menu:", err);
         if (!silent) toast.error("Could not load menu");
@@ -284,13 +373,9 @@ export function StaffDashboard({ firstName }: { firstName: string }) {
 
   const cartCount = useMemo(() => cart.reduce((s, c) => s + c.quantity, 0), [cart]);
 
-  const addToCart = (item: MenuItem) => {
-    if (item.is_available === false) {
-      toast.error("This item is currently unavailable");
-      return;
-    }
+  const addCartLine = (line: Omit<CartItem, "quantity"> & { quantity?: number }) => {
     setCart((prev) => {
-      const existing = prev.find((c) => c.menu_item_id === item.id);
+      const existing = prev.find((c) => c.cart_id === line.cart_id);
       if (existing) {
         return prev.map((c) =>
           c.cart_id === existing.cart_id ? { ...c, quantity: c.quantity + 1 } : c,
@@ -299,14 +384,35 @@ export function StaffDashboard({ firstName }: { firstName: string }) {
       return [
         ...prev,
         {
-          cart_id: `${item.id}-${Date.now()}`,
-          menu_item_id: item.id,
-          item_name: item.name,
-          unit_price: Number(item.price) || 0,
-          quantity: 1,
+          cart_id: line.cart_id,
+          menu_item_id: line.menu_item_id,
+          item_name: line.item_name,
+          unit_price: Number(line.unit_price) || 0,
+          quantity: line.quantity || 1,
+          notes: line.notes || null,
         },
       ];
     });
+  };
+
+  const addPlainItem = (item: MenuItem) => {
+    if (item.is_available === false) {
+      toast.error("This item is currently unavailable");
+      return;
+    }
+    addCartLine({
+      cart_id: item.id,
+      menu_item_id: item.id,
+      item_name: item.name,
+      unit_price: Number(item.price) || 0,
+    });
+  };
+
+  const variantsForItem = (itemId: string) => {
+    const sourceId = variantSourceByItemId[itemId] || itemId;
+    const sizes = variants.filter((v) => v.menu_item_id === sourceId && v.variant_type === "size");
+    const flavors = variants.filter((v) => v.menu_item_id === sourceId && v.variant_type !== "size");
+    return { sourceId, sizes, flavors, standaloneFlavors: flavors.filter((v) => !v.parent_id) };
   };
 
   const updateQty = (cartId: string, delta: number) => {
@@ -349,6 +455,7 @@ export function StaffDashboard({ firstName }: { firstName: string }) {
       quantity: c.quantity,
       unit_price: c.unit_price,
       line_total: c.unit_price * c.quantity,
+      notes: c.notes || null,
     }));
 
     setSubmitting(true);
@@ -548,44 +655,230 @@ export function StaffDashboard({ firstName }: { firstName: string }) {
                     <div className="space-y-1.5">
                       {section.items.map((item) => {
                         const unavailable = item.is_available === false;
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            disabled={unavailable}
-                            onClick={() => addToCart(item)}
-                            className={cn(
-                              "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors sm:px-3.5 sm:py-3",
-                              unavailable
-                                ? "cursor-not-allowed border-[#EFE8DC] bg-[#F7F3EB]/70 opacity-60"
-                                : "border-[#E8E0D4] bg-[#FBF8F3] hover:border-[#1B4332]/25 hover:bg-white active:bg-[#F4EFE6]",
-                            )}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-semibold text-[#1C1917]">
-                                {item.name}
-                              </p>
-                              <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                                <span className="text-sm font-bold tabular-nums text-[#1B4332]">
-                                  {formatCurrency(Number(item.price) || 0)}
-                                </span>
-                                {unavailable ? (
-                                  <span className="rounded-md bg-[#1C1917]/80 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                                    Unavailable
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-                            <span
+                        const { sizes, flavors, standaloneFlavors } = variantsForItem(item.id);
+                        const hasVariants = sizes.length > 0 || flavors.length > 0;
+                        const expanded = expandedItemId === item.id;
+                        const inCartQty = cart
+                          .filter((c) => c.menu_item_id === item.id)
+                          .reduce((sum, c) => sum + c.quantity, 0);
+
+                        if (!hasVariants) {
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              disabled={unavailable}
+                              onClick={() => addPlainItem(item)}
                               className={cn(
-                                "inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-3 text-xs font-bold text-white",
-                                unavailable ? "bg-[#C9BBA8]" : "bg-[#C9A227]",
+                                "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors sm:px-3.5 sm:py-3",
+                                unavailable
+                                  ? "cursor-not-allowed border-[#EFE8DC] bg-[#F7F3EB]/70 opacity-60"
+                                  : "border-[#E8E0D4] bg-[#FBF8F3] hover:border-[#1B4332]/25 hover:bg-white active:bg-[#F4EFE6]",
                               )}
                             >
-                              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-                              Add
-                            </span>
-                          </button>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold text-[#1C1917]">
+                                  {item.name}
+                                </p>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-bold tabular-nums text-[#1B4332]">
+                                    {formatCurrency(Number(item.price) || 0)}
+                                  </span>
+                                  {unavailable ? (
+                                    <span className="rounded-md bg-[#1C1917]/80 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                      Unavailable
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                              <span
+                                className={cn(
+                                  "inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-3 text-xs font-bold text-white",
+                                  unavailable ? "bg-[#C9BBA8]" : "bg-[#C9A227]",
+                                )}
+                              >
+                                <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+                                Add
+                              </span>
+                            </button>
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={cn(
+                              "rounded-xl border px-3 py-2.5 sm:px-3.5 sm:py-3",
+                              unavailable
+                                ? "border-[#EFE8DC] bg-[#F7F3EB]/70 opacity-60"
+                                : inCartQty > 0
+                                  ? "border-[#C9A227]/50 bg-[#FBF6E8]"
+                                  : "border-[#E8E0D4] bg-[#FBF8F3]",
+                            )}
+                          >
+                            <button
+                              type="button"
+                              disabled={unavailable}
+                              onClick={() =>
+                                setExpandedItemId((prev) => (prev === item.id ? null : item.id))
+                              }
+                              className="flex w-full items-center gap-3 text-left"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold text-[#1C1917]">
+                                  {item.name}
+                                </p>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                  <span className="text-sm font-bold tabular-nums text-[#1B4332]">
+                                    {formatCurrency(Number(item.price) || 0)}
+                                  </span>
+                                  {sizes.length > 0 ? (
+                                    <span className="rounded-md bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">
+                                      {sizes.length} sizes
+                                    </span>
+                                  ) : null}
+                                  {flavors.length > 0 ? (
+                                    <span className="rounded-md bg-[#C9A227]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#8A7018]">
+                                      {flavors.length} flavors
+                                    </span>
+                                  ) : null}
+                                  {inCartQty > 0 ? (
+                                    <span className="rounded-md bg-[#1B4332] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                                      {inCartQty} in ticket
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                              <span className="inline-flex h-9 shrink-0 items-center rounded-lg bg-[#C9A227] px-3 text-xs font-bold text-white">
+                                {expanded ? "Hide" : "Choose"}
+                              </span>
+                            </button>
+
+                            {expanded && !unavailable ? (
+                              <div className="mt-2.5 space-y-2 border-t border-[#E8E0D4] pt-2.5">
+                                {sizes.length > 0
+                                  ? sizes.map((s) => {
+                                      const childFlavors = flavors.filter((f) => f.parent_id === s.id);
+                                      const sizeLabel = `${s.name}${s.measurement ? ` (${s.measurement})` : ""}`;
+                                      const sizeCartId = `${item.id}-${s.id}`;
+                                      const inCartSize =
+                                        cart.find((c) => c.cart_id === sizeCartId)?.quantity || 0;
+                                      return (
+                                        <div
+                                          key={s.id}
+                                          className="space-y-1.5 rounded-lg border border-[#E8E0D4] bg-white p-2"
+                                        >
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-[11px] font-bold text-[#1C1917]">
+                                              {sizeLabel} — {formatCurrency(Number(s.price) || 0)}
+                                            </span>
+                                            {childFlavors.length === 0 ? (
+                                              <button
+                                                type="button"
+                                                className="inline-flex h-7 items-center gap-1 rounded-lg bg-[#C9A227] px-2 text-[10px] font-bold text-white"
+                                                onClick={() =>
+                                                  addCartLine({
+                                                    cart_id: sizeCartId,
+                                                    menu_item_id: item.id,
+                                                    item_name: `${item.name} (${sizeLabel})`,
+                                                    unit_price: Number(s.price) || 0,
+                                                    notes: `Size: ${sizeLabel}`,
+                                                  })
+                                                }
+                                              >
+                                                <Plus className="h-3 w-3" />
+                                                Add{inCartSize > 0 ? ` ×${inCartSize}` : ""}
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                          {childFlavors.length > 0 ? (
+                                            <div className="flex flex-wrap gap-1.5">
+                                              <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-[#6B6358]">
+                                                Flavors
+                                              </span>
+                                              {childFlavors.map((f) => {
+                                                const flavorCartId = `${item.id}-${s.id}-${f.id}`;
+                                                const inCartFlavor =
+                                                  cart.find((c) => c.cart_id === flavorCartId)
+                                                    ?.quantity || 0;
+                                                const unit =
+                                                  Number(s.price) +
+                                                  (Number(f.price) > 0 ? Number(f.price) : 0);
+                                                return (
+                                                  <button
+                                                    key={f.id}
+                                                    type="button"
+                                                    className={cn(
+                                                      "inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[10px] font-bold",
+                                                      inCartFlavor > 0
+                                                        ? "border-[#1B4332] bg-[#1B4332] text-white"
+                                                        : "border-[#E8E0D4] bg-[#FBF8F3] text-[#1C1917]",
+                                                    )}
+                                                    onClick={() =>
+                                                      addCartLine({
+                                                        cart_id: flavorCartId,
+                                                        menu_item_id: item.id,
+                                                        item_name: `${item.name} (${sizeLabel} · ${f.name})`,
+                                                        unit_price: unit,
+                                                        notes: `Size: ${sizeLabel}, Flavor: ${f.name}`,
+                                                      })
+                                                    }
+                                                  >
+                                                    <Plus className="h-3 w-3" />
+                                                    {f.name}
+                                                    {inCartFlavor > 0 ? ` ×${inCartFlavor}` : ""}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      );
+                                    })
+                                  : null}
+
+                                {sizes.length === 0 && standaloneFlavors.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-[#6B6358]">
+                                      Flavors
+                                    </span>
+                                    {standaloneFlavors.map((f) => {
+                                      const flavorCartId = `${item.id}-${f.id}`;
+                                      const inCart =
+                                        cart.find((c) => c.cart_id === flavorCartId)?.quantity || 0;
+                                      const price =
+                                        Number(f.price) > 0 ? Number(f.price) : Number(item.price) || 0;
+                                      return (
+                                        <button
+                                          key={f.id}
+                                          type="button"
+                                          className={cn(
+                                            "inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[10px] font-bold",
+                                            inCart > 0
+                                              ? "border-[#1B4332] bg-[#1B4332] text-white"
+                                              : "border-[#E8E0D4] bg-white text-[#1C1917]",
+                                          )}
+                                          onClick={() =>
+                                            addCartLine({
+                                              cart_id: flavorCartId,
+                                              menu_item_id: item.id,
+                                              item_name: `${item.name} (${f.name})`,
+                                              unit_price: price,
+                                              notes: `Flavor: ${f.name}`,
+                                            })
+                                          }
+                                        >
+                                          <Plus className="h-3 w-3" />
+                                          {f.name}
+                                          {inCart > 0 ? ` ×${inCart}` : ""}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
                         );
                       })}
                     </div>
@@ -711,6 +1004,7 @@ export function StaffDashboard({ firstName }: { firstName: string }) {
                           <p className="truncate text-sm font-bold text-[#1C1917]">{c.item_name}</p>
                           <p className="text-[11px] tabular-nums text-[#6B6358]">
                             {formatCurrency(c.unit_price)}
+                            {c.notes ? ` · ${c.notes}` : ""}
                           </p>
                         </div>
                         <span className="shrink-0 text-sm font-bold tabular-nums text-[#1C1917]">
