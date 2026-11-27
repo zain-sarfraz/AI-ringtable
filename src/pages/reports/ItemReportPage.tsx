@@ -21,6 +21,7 @@ import {
   Check,
   Lightbulb,
   ArrowUpDown,
+  Store,
 } from "lucide-react";
 import {
   AreaChart,
@@ -44,7 +45,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useReportRestaurants } from "@/hooks/useReportRestaurants";
 import { formatCurrency } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
-import { PageShell } from "@/components/layout/PageShell";
+import { PageHeader, PageShell } from "@/components/layout/PageShell";
 
 type ItemReportRow = {
   restaurant_id: string;
@@ -392,173 +393,159 @@ export default function ItemReportPage() {
 
   return (
     <PageShell className="pb-16">
-      {/* ── Header ────────────────────────────────────────────── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-1">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-500 to-amber-400 flex items-center justify-center text-white shadow-lg shadow-orange-500/25 flex-shrink-0">
-            <UtensilsCrossed className="h-6 w-6" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">
-              {t("reports:itemReport", "Item Report")}
-            </h1>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 break-words">
-              {t("reports:itemReportDesc", "Menu item sales from completed deliveries")}
-            </p>
-          </div>
-        </div>
-
-        {/* Top Controls - Single Row */}
-        <div className="flex flex-col items-stretch sm:flex-row sm:flex-wrap sm:items-center gap-2.5 w-full lg:w-auto">
-          {/* Restaurant Selector for multi-restaurant */}
-          {restaurants.length > 1 && (
-            <Select value={restaurantId} onValueChange={setRestaurantId}>
-              <SelectTrigger className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
-                <SelectValue placeholder="Select restaurant" />
-              </SelectTrigger>
-              <SelectContent>
-                {restaurants.map((r) => (
-                  <SelectItem key={r.restaurant_id} value={r.restaurant_id}>
-                    {r.restaurant_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {/* Date Filter Dropdown */}
-          <Select value={datePreset} onValueChange={setDatePreset}>
-            <SelectTrigger className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[180px]">
-              <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Time</SelectItem>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="yesterday">Yesterday</SelectItem>
-              <SelectItem value="7">Last 7 Days</SelectItem>
-              <SelectItem value="30">Last 30 Days</SelectItem>
-              <SelectItem value="90">Last 90 Days</SelectItem>
-              <SelectItem value="this_month">This Month</SelectItem>
-              <SelectItem value="last_month">Last Month</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Categories Popover search / dropdown */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-auto"
-              >
-                <Layers className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate text-left max-w-none sm:max-w-[140px]">
-                  {selectedCategory === "all"
-                    ? "All Categories"
-                    : categoriesList.find((c) => c.id === selectedCategory)?.name || "Category"}
-                </span>
-                <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-70" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-56 p-2 rounded-xl shadow-xl bg-card border-border/80" align="end">
-              <div className="relative mb-2">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Search category..."
-                  value={categorySearch}
-                  onChange={(e) => setCategorySearch(e.target.value)}
-                  className="h-8 pl-8 pr-2 text-xs bg-muted/50 rounded-lg border-none"
-                />
-              </div>
-              <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCategory("all");
-                    setActiveCategoryTab("all");
-                  }}
-                  className={cn(
-                    "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left",
-                    selectedCategory === "all"
-                      ? "bg-primary/10 text-primary font-semibold"
-                      : "hover:bg-muted text-foreground"
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={cn(
-                        "w-4 h-4 rounded flex items-center justify-center border text-[10px]",
-                        selectedCategory === "all"
-                          ? "bg-primary border-primary text-primary-foreground"
-                          : "border-muted-foreground/30"
-                      )}
-                    >
-                      {selectedCategory === "all" && <Check className="h-3 w-3 stroke-[3]" />}
-                    </div>
-                    <span>All Categories</span>
-                  </div>
-                </button>
-
-                {filteredCategories.map((cat) => {
-                  const isSelected = selectedCategory === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => {
-                        const next = isSelected ? "all" : cat.id;
-                        setSelectedCategory(next);
-                        setActiveCategoryTab(next);
-                      }}
-                      className={cn(
-                        "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left",
-                        isSelected
-                          ? "bg-primary/10 text-primary font-semibold"
-                          : "hover:bg-muted text-foreground"
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={cn(
-                            "w-4 h-4 rounded flex items-center justify-center border text-[10px]",
-                            isSelected
-                              ? "bg-primary border-primary text-primary-foreground"
-                              : "border-muted-foreground/30"
-                          )}
-                        >
-                          {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
-                        </div>
-                        <span>{cat.name}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          {/* Refresh Button */}
+      <PageHeader
+        title={t("reports:itemReport", "Item Report")}
+        description={t("reports:itemReportDesc", "Menu item sales from completed deliveries")}
+        icon={<UtensilsCrossed className="h-5 w-5" />}
+        actions={
           <Button
             variant="outline"
-            size="icon"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="h-10 w-10 bg-card border-border/80 rounded-xl shadow-sm shrink-0"
-            title="Refresh Data"
-          >
-            <RefreshCw className={cn("h-4 w-4 text-muted-foreground", isFetching && "animate-spin text-primary")} />
-          </Button>
-
-          {/* Export CSV Button */}
-          <Button
+            className="h-10 rounded-xl w-full justify-center sm:w-auto"
             onClick={exportToCSV}
             disabled={isLoading || displayedRows.length === 0}
-            className="h-10 w-full justify-center sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold rounded-xl px-4 text-xs gap-2 shadow-md shadow-orange-500/20 border-none transition-all hover:shadow-lg shrink-0"
           >
-            <Download className="h-4 w-4" />
-            <span>Export CSV</span>
+            <Download className="h-4 w-4 mr-2" />
+            {t("reports:exportCsv", "Export CSV")}
           </Button>
-        </div>
+        }
+      />
+
+      <div className="flex flex-col items-stretch sm:flex-row sm:flex-wrap sm:items-center gap-2.5">
+        {restaurants.length > 1 && (
+          <Select value={restaurantId} onValueChange={setRestaurantId}>
+            <SelectTrigger className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
+              <Store className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <SelectValue placeholder="Select restaurant" />
+            </SelectTrigger>
+            <SelectContent>
+              {restaurants.map((r) => (
+                <SelectItem key={r.restaurant_id} value={r.restaurant_id}>
+                  {r.restaurant_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        <Select value={datePreset} onValueChange={setDatePreset}>
+          <SelectTrigger className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[180px]">
+            <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("orders:allTime", "All time")}</SelectItem>
+            <SelectItem value="today">{t("orders:today", "Today")}</SelectItem>
+            <SelectItem value="yesterday">{t("orders:yesterday", "Yesterday")}</SelectItem>
+            <SelectItem value="7">{t("orders:last7Days", "Last 7 days")}</SelectItem>
+            <SelectItem value="30">{t("orders:last30Days", "Last 30 days")}</SelectItem>
+            <SelectItem value="90">{t("orders:last90Days", "Last 90 days")}</SelectItem>
+            <SelectItem value="this_month">{t("orders:thisMonth", "This month")}</SelectItem>
+            <SelectItem value="last_month">{t("orders:lastMonth", "Last month")}</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]"
+            >
+              <Layers className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-left">
+                {selectedCategory === "all"
+                  ? "All Categories"
+                  : categoriesList.find((c) => c.id === selectedCategory)?.name || "Category"}
+              </span>
+              <ChevronDown className="ml-auto h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56 p-2 rounded-xl shadow-xl bg-card border-border/80" align="start">
+            <div className="relative mb-2">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search category..."
+                value={categorySearch}
+                onChange={(e) => setCategorySearch(e.target.value)}
+                className="h-8 pl-8 pr-2 text-xs bg-muted/50 rounded-lg border-none"
+              />
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory("all");
+                  setActiveCategoryTab("all");
+                }}
+                className={cn(
+                  "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left",
+                  selectedCategory === "all"
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "hover:bg-muted text-foreground",
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className={cn(
+                      "w-4 h-4 rounded flex items-center justify-center border text-[10px]",
+                      selectedCategory === "all"
+                        ? "bg-primary border-primary text-primary-foreground"
+                        : "border-muted-foreground/30",
+                    )}
+                  >
+                    {selectedCategory === "all" && <Check className="h-3 w-3 stroke-[3]" />}
+                  </div>
+                  <span>All Categories</span>
+                </div>
+              </button>
+
+              {filteredCategories.map((cat) => {
+                const isSelected = selectedCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      const next = isSelected ? "all" : cat.id;
+                      setSelectedCategory(next);
+                      setActiveCategoryTab(next);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left",
+                      isSelected
+                        ? "bg-primary/10 text-primary font-semibold"
+                        : "hover:bg-muted text-foreground",
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={cn(
+                          "w-4 h-4 rounded flex items-center justify-center border text-[10px]",
+                          isSelected
+                            ? "bg-primary border-primary text-primary-foreground"
+                            : "border-muted-foreground/30",
+                        )}
+                      >
+                        {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                      </div>
+                      <span>{cat.name}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="h-10 w-10 bg-card border-border/80 rounded-xl shadow-sm shrink-0"
+          title="Refresh Data"
+        >
+          <RefreshCw className={cn("h-4 w-4 text-muted-foreground", isFetching && "animate-spin text-primary")} />
+        </Button>
       </div>
 
       {/* ── 6 Top Metric KPI Cards with Sparkline Waves ───────── */}
