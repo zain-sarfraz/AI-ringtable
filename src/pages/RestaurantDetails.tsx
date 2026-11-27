@@ -38,6 +38,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DeliveryRadiusControl } from "@/components/branches/DeliveryRadiusControl";
 import { getToken } from "@/lib/authStorage";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -1151,27 +1152,20 @@ export default function RestaurantDetails() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="branch-radius">Service Radius (km)</Label>
-                <Input
-                  id="branch-radius"
-                  type="number"
-                  step="0.5"
-                  value={branchForm.service_radius_km}
-                  onChange={(e) => setBranchForm({ ...branchForm, service_radius_km: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="branch-phone">Branch Phone</Label>
-                <Input
-                  id="branch-phone"
-                  placeholder="Optional contact phone"
-                  value={branchForm.phone}
-                  onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value })}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="branch-phone">Branch phone</Label>
+              <Input
+                id="branch-phone"
+                placeholder="Optional contact phone"
+                value={branchForm.phone}
+                onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value })}
+              />
             </div>
+            <DeliveryRadiusControl
+              id="branch-radius"
+              value={branchForm.service_radius_km}
+              onChange={(km) => setBranchForm({ ...branchForm, service_radius_km: String(km) })}
+            />
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">

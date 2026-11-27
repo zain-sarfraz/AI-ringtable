@@ -915,22 +915,12 @@ export default function OrderDetail() {
           Open Table Reservations to see the booking.
         </div>
       )}
-      {/* 1. Top Navigation Bar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-2 h-9 w-full text-muted-foreground hover:text-foreground font-semibold sm:w-auto -ml-0 sm:-ml-2"
-          onClick={() => navigate("/orders")}
-        >
-          <ArrowLeft className="h-4 w-4" /> {t("orders:title", "Orders")}
-        </Button>
-
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+      {/* 1. Actions — Orders back link lives in TopBar (left) */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <Button
             variant="outline"
             size="sm"
-            className="h-9 gap-2 text-xs font-semibold bg-card border-border/80 shadow-xs hover:bg-muted"
+            className="h-9 gap-2 text-xs font-semibold bg-card border-border/80 shadow-xs hover:bg-muted w-full sm:w-auto"
             onClick={handlePrint}
           >
             <Printer className="h-4 w-4 text-muted-foreground" />{" "}
@@ -941,7 +931,7 @@ export default function OrderDetail() {
           <Button
             variant="outline"
             size="sm"
-            className="h-9 gap-2 text-xs font-semibold bg-card border-border/80 shadow-xs hover:bg-muted"
+            className="h-9 gap-2 text-xs font-semibold bg-card border-border/80 shadow-xs hover:bg-muted w-full sm:w-auto"
             asChild
           >
             <Link to={`/track/${order.tracking_code}`} target="_blank" rel="noreferrer">
@@ -964,7 +954,6 @@ export default function OrderDetail() {
               Call Audio & Transcript
             </Button>
           )}
-        </div>
       </div>
 
       {/* 2. Hero Header Card */}
@@ -1015,15 +1004,15 @@ export default function OrderDetail() {
 
               {/* Transferred-from banner */}
               {(order.is_transferred || order.transferred_from_restaurant_id) && (
-                <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/25 text-foreground">
+                <div className="flex items-start gap-3 px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/25 text-foreground overflow-hidden">
                   <div className="h-8 w-8 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
                     <ArrowRightLeft className="h-4 w-4 text-primary" />
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     <p className="text-xs font-bold leading-tight">
                       {t("orders:transferredOrder", "Transferred order")}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[11px] text-muted-foreground break-words [overflow-wrap:anywhere]">
                       {t("orders:transferredFrom", "Transferred from")}:{" "}
                       <span className="font-semibold text-foreground">
                         {transferredFromName || t("orders:anotherLocation", "another location")}

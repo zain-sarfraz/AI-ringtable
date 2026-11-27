@@ -50,16 +50,59 @@ import {
   ChefHat,
   RefreshCw,
   ChevronDown,
-  LayoutGrid,
-  Zap,
-  Tag,
+  CircleDot,
   Share2,
-  Eraser,
+  Tag,
   ClipboardList,
   type LucideProps,
 } from "lucide-react";
+import { CreateManualOrderDialog } from "@/components/orders/CreateManualOrderDialog";
+import {
+  MobileOrderFilters,
+  countMobileActiveFilters,
+  draftFromAppliedFilters,
+  encodeCategoryFilter,
+  encodeChannelFilter,
+  type MobileFilterDraft,
+} from "@/components/orders/MobileOrderFilters";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
+import { cn } from "@/lib/utils";
+import {
+  ORDER_STATUS_COLORS,
+  ORDER_STATUSES,
+  formatCurrency,
+  OrderStatus,
+} from "@/lib/restaurant";
+import { getOrderStatusLabel, formatDate, formatTime } from "@/i18n/formatters";
+import { getApiBase } from "@/lib/apiBase";
+import { getToken } from "@/lib/authStorage";
+import { orderTakerLabel } from "@/lib/orderTaker";
+import {
+  ORDER_CHANNELS,
+  ORDER_CHANNEL_LABELS,
+  matchesOrderChannel,
+  orderChannel,
+} from "@/lib/orderChannel";
 
-/** Select trigger with leading icon — full-width, readable on mobile. */
+/** Phone-only breakpoint for mobile filter dropdown (< tablet). */
+const PHONE_FILTER_BREAKPOINT = 768;
+
+function useIsPhone() {
+  const [isPhone, setIsPhone] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < PHONE_FILTER_BREAKPOINT,
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${PHONE_FILTER_BREAKPOINT - 1}px)`);
+    const onChange = () => setIsPhone(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return isPhone;
+}
+
 function FilterSelectTrigger({
   icon: Icon,
   children,
@@ -87,26 +130,6 @@ function FilterSelectTrigger({
     </div>
   );
 }
-import { CreateManualOrderDialog } from "@/components/orders/CreateManualOrderDialog";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
-import { useActiveRestaurant } from "@/hooks/useActiveRestaurant";
-import { cn } from "@/lib/utils";
-import {
-  ORDER_STATUS_COLORS,
-  formatCurrency,
-  OrderStatus,
-} from "@/lib/restaurant";
-import { getOrderStatusLabel, formatDate, formatTime } from "@/i18n/formatters";
-import { getApiBase } from "@/lib/apiBase";
-import { getToken } from "@/lib/authStorage";
-import { orderTakerLabel } from "@/lib/orderTaker";
-import {
-  ORDER_CHANNELS,
-  ORDER_CHANNEL_LABELS,
-  matchesOrderChannel,
-  orderChannel,
-} from "@/lib/orderChannel";
 
 interface Order {
   id: string;
@@ -275,9 +298,8 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
   const [statusFilter, setStatusFilter] = useState("all");
   const [fulfillmentFilter, setFulfillmentFilter] = useState<"all" | "dine_in" | "pickup">("all");
   const [sortBy, setSortBy] = useState("newest");
-  const [showFilters, setShowFilters] = useState(
-    () => typeof window !== "undefined" && window.innerWidth >= 1024,
-  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const isPhone = useIsPhone();
   const isStaffRole = role === "staff";
   const isKitchenRole = role === "kitchen" || role === "chef";
   const canCancelOrder = role === "admin" || role === "super_admin" || role === "manager";
@@ -630,20 +652,26 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
           }
         }
 
-        // 3. Category Filter
+        // 3. Category Filter (supports single id or comma-separated multi)
         if (categoryFilter !== "all") {
+          const selectedCats = categoryFilter.split(",").map((v) => v.trim()).filter(Boolean);
           const orderItemRows = items.filter((i) => i.order_id === o.id);
           const hasCategoryItem = orderItemRows.some((oi) => {
-            if (oi.menu_item_id && itemCategoryMap[oi.menu_item_id] === categoryFilter) return true;
-            // Name fallback
+            if (oi.menu_item_id && selectedCats.includes(itemCategoryMap[oi.menu_item_id])) return true;
             const mi = menuItems.find((m) => m.name.toLowerCase() === oi.item_name.toLowerCase());
-            return mi?.category_id === categoryFilter;
+            return Boolean(mi?.category_id && selectedCats.includes(mi.category_id));
           });
           if (!hasCategoryItem) return false;
         }
 
-        // 4. Channel / app filter
-        if (!matchesOrderChannel(sourceFilter, o.source, o.call_id)) return false;
+        // 4. Channel / app filter (supports single channel or comma-separated multi)
+        if (sourceFilter !== "all") {
+          const selectedChannels = sourceFilter.split(",").map((v) => v.trim()).filter(Boolean);
+          const matchesAny = selectedChannels.some((ch) =>
+            matchesOrderChannel(ch, o.source, o.call_id),
+          );
+          if (!matchesAny) return false;
+        }
 
         // 5. Payment Status
         if (paymentStatusFilter !== "all") {
@@ -832,58 +860,105 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
     return filtered.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   }, [filtered]);
 
-  const selectedCategoryName = categories.find((c) => c.id === categoryFilter)?.name;
+  const selectedCategoryIds = categoryFilter === "all"
+    ? []
+    : categoryFilter.split(",").map((v) => v.trim()).filter(Boolean);
+  const selectedCategoryName =
+    selectedCategoryIds.length === 1
+      ? categories.find((c) => c.id === selectedCategoryIds[0])?.name
+      : selectedCategoryIds.length > 1
+        ? `${selectedCategoryIds.length} selected`
+        : undefined;
   const selectedDriverName = drivers.find((d) => d.id === driverFilter)?.full_name;
+
+  const mobileAppliedDraft = useMemo(
+    () =>
+      draftFromAppliedFilters({
+        statusFilter,
+        categoryFilter,
+        sourceFilter,
+        fulfillmentFilter,
+        datePreset,
+        fromDate,
+        toDate,
+        sortBy,
+      }),
+    [
+      statusFilter,
+      categoryFilter,
+      sourceFilter,
+      fulfillmentFilter,
+      datePreset,
+      fromDate,
+      toDate,
+      sortBy,
+    ],
+  );
+
+  const mobileActiveCount = useMemo(
+    () => countMobileActiveFilters(mobileAppliedDraft, isAllOrdersPage),
+    [mobileAppliedDraft, isAllOrdersPage],
+  );
+
+  const applyMobileFilters = (draft: MobileFilterDraft) => {
+    setStatusFilter(draft.status);
+    setCategoryFilter(encodeCategoryFilter(draft.categories));
+    setSourceFilter(encodeChannelFilter(draft.channels));
+    setFulfillmentFilter(draft.orderType);
+    setDatePreset(draft.datePreset);
+    setFromDate(draft.fromDate);
+    setToDate(draft.toDate);
+    setSortBy(draft.sortBy);
+  };
+
+  const resetMobileFilters = () => {
+    setStatusFilter("all");
+    setCategoryFilter("all");
+    setSourceFilter("all");
+    setFulfillmentFilter("all");
+    setDatePreset("all");
+    setFromDate("");
+    setToDate("");
+    setSortBy("newest");
+  };
 
   return (
     <>
       <PageShell className="min-w-0 space-y-3 sm:space-y-4" maxWidth="full">
-        {/* Top toolbar */}
+        {/* Top toolbar: title left · actions right · compact search */}
         <header className="flex flex-col gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm sm:h-11 sm:w-11 [&>svg]:h-5 [&>svg]:w-5">
-              {icon || <ClipboardList className="h-5 w-5" />}
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm sm:h-11 sm:w-11 [&>svg]:h-5 [&>svg]:w-5">
+                {icon || <ClipboardList className="h-5 w-5" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl font-bold leading-tight tracking-tight text-foreground sm:text-2xl">
+                  {title}
+                </h1>
+                <p className="mt-0.5 text-xs leading-snug text-muted-foreground sm:text-sm">
+                  {description || t("orders:viewAndManage", "View and manage your restaurant orders")}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl font-bold leading-tight tracking-tight text-foreground sm:text-2xl">
-                {title}
-              </h1>
-              <p className="mt-0.5 text-xs leading-snug text-muted-foreground sm:text-sm">
-                {description || t("orders:viewAndManage", "View and manage your restaurant orders")}
-              </p>
-            </div>
-          </div>
 
-          <div className="flex min-w-0 w-full flex-col gap-2">
-            <div className="relative min-w-0 w-full">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder={t("orders:searchPlaceholder", "Search name, phone, #...")}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-11 w-full rounded-xl border-border/80 bg-card pl-10 pr-9 shadow-xs"
+            <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end lg:pt-0.5">
+              <MobileOrderFilters
+                isAllOrdersPage={isAllOrdersPage}
+                categories={categories}
+                applied={mobileAppliedDraft}
+                activeCount={mobileActiveCount}
+                onApply={applyMobileFilters}
+                onResetAll={resetMobileFilters}
               />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setShowFilters((v) => !v)}
+                onClick={() => setFiltersOpen((v) => !v)}
                 className={cn(
-                  "h-11 w-full gap-2 rounded-xl border-primary/40 bg-card px-3 text-primary shadow-xs sm:h-10 sm:w-auto sm:rounded-full sm:px-3.5",
-                  (role === "kitchen" || role === "chef" || role === "receptionist") &&
-                    "col-span-2",
-                  showFilters && "bg-primary/5 font-semibold",
+                  "hidden h-10 gap-2 rounded-full border-primary/40 bg-card px-3.5 text-primary shadow-xs md:inline-flex",
+                  filtersOpen && "bg-primary/5 font-semibold",
                 )}
               >
                 <SlidersHorizontal className="h-4 w-4 shrink-0" />
@@ -895,22 +970,22 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                 )}
                 <ChevronDown
                   className={cn(
-                    "ml-auto h-4 w-4 shrink-0 transition-transform sm:ml-0",
-                    showFilters && "rotate-180",
+                    "h-4 w-4 shrink-0 transition-transform",
+                    filtersOpen && "rotate-180",
                   )}
                 />
               </Button>
 
               {role !== "kitchen" && role !== "chef" && role !== "receptionist" ? (
                 <>
-                  <div className="min-w-0 w-full sm:w-auto [&_button]:h-11 [&_button]:rounded-xl sm:[&_button]:h-10 sm:[&_button]:rounded-full">
+                  <div className="min-w-0 [&_button]:h-10 [&_button]:rounded-full">
                     <CreateManualOrderDialog onOrderCreated={() => void load()} />
                   </div>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="col-span-2 h-11 w-full gap-1.5 rounded-xl border-primary/40 bg-card px-3.5 text-primary shadow-xs sm:col-span-1 sm:h-10 sm:w-auto sm:rounded-full"
+                    className="h-10 gap-1.5 rounded-full border-primary/40 bg-card px-3.5 text-primary shadow-xs"
                     disabled={syncingMarketplace}
                     onClick={() => void syncMarketplaceOrders()}
                     title={t("orders:syncMarketplace", "Sync")}
@@ -926,308 +1001,265 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
               ) : null}
             </div>
           </div>
+
+          <div className="relative w-full max-w-[280px] sm:max-w-[320px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder={t("orders:searchPlaceholder", "Search name, phone, #...")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 w-full rounded-xl border-border/80 bg-card pl-9 pr-8 shadow-xs"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </header>
 
-        {/* Filters card */}
+        {/* Tablet/Laptop filter grid + summary */}
         <Card className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
-          <CardContent className="space-y-3 p-3 sm:space-y-4 sm:p-5">
-            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 scrollbar-none">
-              <Button
-                type="button"
-                size="sm"
-                variant={transferFilter === "all" ? "default" : "outline"}
-                className={cn(
-                  "h-9 shrink-0 gap-1.5 rounded-full px-3.5 text-xs font-semibold",
-                  transferFilter === "all"
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "border-primary/35 bg-card text-primary hover:bg-primary/5",
-                )}
-                onClick={() => setTransferFilter("all")}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                {t("orders:allOrdersTab", "All Orders")} ({transferCounts.all})
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={transferFilter === "direct" ? "default" : "outline"}
-                className={cn(
-                  "h-9 shrink-0 gap-1.5 rounded-full px-3.5 text-xs font-semibold",
-                  transferFilter === "direct"
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "border-primary/35 bg-card text-primary hover:bg-primary/5",
-                )}
-                onClick={() => setTransferFilter("direct")}
-              >
-                <Zap className="h-3.5 w-3.5" />
-                {t("orders:directOrders", "Direct Orders")} ({transferCounts.direct})
-              </Button>
-            </div>
-
-            {showFilters && (
-              <>
-                <div className="grid grid-cols-1 gap-3 rounded-xl border border-border/60 bg-muted/20 p-3 sm:grid-cols-2 sm:p-4 lg:grid-cols-3 xl:grid-cols-4">
+          <CardContent className="space-y-3 p-3 sm:space-y-4 sm:p-4">
+            {!isPhone && filtersOpen ? (
+              <div className="grid grid-cols-1 gap-3 rounded-xl border border-border/60 bg-muted/20 p-3 sm:grid-cols-2 sm:p-4 md:grid-cols-3 xl:grid-cols-4">
+                {isAllOrdersPage ? (
                   <div className="min-w-0 space-y-1.5">
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      {t("orders:category", "Category")}
+                      {t("orders:orderStatus", "Order Status")}
                     </label>
-                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                      <FilterSelectTrigger icon={Layers}>
-                        <SelectValue placeholder={t("orders:allCategories", "All Categories")} />
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <FilterSelectTrigger icon={CircleDot}>
+                        <SelectValue placeholder={t("orders:allStatuses", "All statuses")} />
                       </FilterSelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">{t("orders:allCategories", "All Categories")}</SelectItem>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {siblingBranches.length > 1 && (
-                    <div className="min-w-0 space-y-1.5">
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                        {t("orders:branchLocation", "Branch Location")}
-                      </label>
-                      <Select value={branchFilter} onValueChange={setBranchFilter}>
-                        <FilterSelectTrigger icon={Building2}>
-                          <SelectValue placeholder={t("orders:allBranches", "All Branches")} />
-                        </FilterSelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{t("orders:allBranches", "All Branches")} ({siblingBranches.length})</SelectItem>
-                          {siblingBranches.map((b) => (
-                            <SelectItem key={b.id} value={b.id}>
-                              {b.name} {!b.is_accepting_orders ? `(${t("orders:paused", "Paused")})` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  <div className="min-w-0 space-y-1.5">
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      {t("orders:channel", "Channel")}
-                    </label>
-                    <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                      <FilterSelectTrigger icon={Share2}>
-                        <SelectValue placeholder={t("orders:allChannels", "All Channels")} />
-                      </FilterSelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">{t("orders:allChannels", "All Channels")}</SelectItem>
-                        {ORDER_CHANNELS.map((ch) => (
-                          <SelectItem key={ch} value={ch}>
-                            {t(`orders:channel_${ch}`, ORDER_CHANNEL_LABELS[ch])}
+                        <SelectItem value="all">{t("orders:allStatuses", "All statuses")}</SelectItem>
+                        {ORDER_STATUSES.map((st) => (
+                          <SelectItem key={st} value={st}>
+                            {getOrderStatusLabel(st, t)}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
+                ) : null}
 
-                  <div className="min-w-0 space-y-1.5">
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      {t("orders:orderType", "Order Type")}
-                    </label>
-                    <Select
-                      value={fulfillmentFilter}
-                      onValueChange={(v) => setFulfillmentFilter(v as "all" | "dine_in" | "pickup")}
-                    >
-                      <FilterSelectTrigger icon={Tag}>
-                        <SelectValue placeholder={t("orders:allTypes", "All Types")} />
-                      </FilterSelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">{t("orders:allTypes", "All Types")}</SelectItem>
-                        <SelectItem value="dine_in">{t("orders:dineIn", "Dine-in")}</SelectItem>
-                        <SelectItem value="pickup">{t("orders:takeaway", "Takeaway")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="min-w-0 space-y-1.5">
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      {t("orders:dateRange", "Date Range")}
-                    </label>
-                    <Select value={datePreset} onValueChange={setDatePreset}>
-                      <FilterSelectTrigger icon={Calendar}>
-                        <SelectValue placeholder={t("common:selectDate", "Select date")} />
-                      </FilterSelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">{t("orders:allTime", "All Time")}</SelectItem>
-                        <SelectItem value="today">{t("orders:today", "Today")}</SelectItem>
-                        <SelectItem value="yesterday">{t("orders:yesterday", "Yesterday")}</SelectItem>
-                        <SelectItem value="last_7_days">{t("orders:last7Days", "Last 7 Days")}</SelectItem>
-                        <SelectItem value="last_30_days">{t("orders:last30Days", "Last 30 Days")}</SelectItem>
-                        <SelectItem value="this_month">{t("orders:thisMonth", "This Month")}</SelectItem>
-                        <SelectItem value="custom">{t("orders:customRange", "Custom Range...")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="min-w-0 space-y-1.5">
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      {t("orders:sortBy", "Sort By")}
-                    </label>
-                    <Select value={sortBy} onValueChange={setSortBy}>
-                      <FilterSelectTrigger icon={ArrowUpDown}>
-                        <SelectValue placeholder={t("orders:sortBy", "Sort by")} />
-                      </FilterSelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="newest">{t("orders:newestFirst", "Newest First")}</SelectItem>
-                        <SelectItem value="oldest">{t("orders:oldestFirst", "Oldest First")}</SelectItem>
-                        <SelectItem value="highest_amount">{t("orders:highestAmount", "Amount: High to Low")}</SelectItem>
-                        <SelectItem value="lowest_amount">{t("orders:lowestAmount", "Amount: Low to High")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {datePreset === "custom" && (
-                    <>
-                      <div className="min-w-0 space-y-1.5">
-                        <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                          {t("common:startDate", "From Date")}
-                        </label>
-                        <Input
-                          type="date"
-                          value={fromDate}
-                          onChange={(e) => setFromDate(e.target.value)}
-                          className="h-11 rounded-xl"
-                        />
-                      </div>
-                      <div className="min-w-0 space-y-1.5">
-                        <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                          {t("common:endDate", "To Date")}
-                        </label>
-                        <Input
-                          type="date"
-                          value={toDate}
-                          onChange={(e) => setToDate(e.target.value)}
-                          className="h-11 rounded-xl"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 flex-col gap-2">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">
-                        {t("orders:showingOrders", {
-                          count: filtered.length,
-                          total: orders.length,
-                        })}
-                      </span>
-                      <span className="hidden sm:inline">•</span>
-                      <span>
-                        {t("orders:totalLabel", "Total")}:{" "}
-                        <span className="font-bold text-primary">
-                          {formatCurrency(filteredTotalRevenue)}
-                        </span>
-                      </span>
-                    </div>
-                    {activeFiltersCount > 0 ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {transferFilter !== "all" && (
-                          <Badge
-                            variant="secondary"
-                            className="gap-1 border-amber-500/30 bg-amber-500/15 font-medium text-amber-700"
-                          >
-                            {t("orders:directOrders", "Direct Orders")}
-                            <X
-                              className="h-3 w-3 cursor-pointer"
-                              onClick={() => setTransferFilter("all")}
-                            />
-                          </Badge>
-                        )}
-                        {categoryFilter !== "all" && (
-                          <Badge variant="secondary" className="gap-1 font-medium">
-                            {selectedCategoryName || categoryFilter}
-                            <X
-                              className="h-3 w-3 cursor-pointer"
-                              onClick={() => setCategoryFilter("all")}
-                            />
-                          </Badge>
-                        )}
-                        {sourceFilter !== "all" && (
-                          <Badge variant="secondary" className="gap-1 font-medium">
-                            {t(
-                              `orders:channel_${sourceFilter}`,
-                              ORDER_CHANNEL_LABELS[
-                                sourceFilter as keyof typeof ORDER_CHANNEL_LABELS
-                              ] || sourceFilter,
-                            )}
-                            <X
-                              className="h-3 w-3 cursor-pointer"
-                              onClick={() => setSourceFilter("all")}
-                            />
-                          </Badge>
-                        )}
-                        {fulfillmentFilter !== "all" && (
-                          <Badge variant="secondary" className="gap-1 font-medium">
-                            {fulfillmentFilter === "dine_in"
-                              ? t("orders:dineIn", "Dine-in")
-                              : t("orders:takeaway", "Takeaway")}
-                            <X
-                              className="h-3 w-3 cursor-pointer"
-                              onClick={() => setFulfillmentFilter("all")}
-                            />
-                          </Badge>
-                        )}
-                        {datePreset !== "all" && (
-                          <Badge
-                            variant="secondary"
-                            className="gap-1 font-medium capitalize"
-                          >
-                            {datePreset.replace(/_/g, " ")}
-                            <X
-                              className="h-3 w-3 cursor-pointer"
-                              onClick={() => setDatePreset("all")}
-                            />
-                          </Badge>
-                        )}
-                        {branchFilter !== "all" && (
-                          <Badge variant="secondary" className="gap-1 font-medium">
-                            {restaurantsMap[branchFilter] || branchFilter}
-                            <X
-                              className="h-3 w-3 cursor-pointer"
-                              onClick={() => setBranchFilter("all")}
-                            />
-                          </Badge>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={resetFilters}
-                    className="h-10 w-full gap-1.5 rounded-xl border-primary/40 px-3 text-primary hover:bg-primary/5 sm:h-9 sm:w-auto sm:rounded-full"
+                <div className="min-w-0 space-y-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {t("orders:category", "Category")}
+                  </label>
+                  <Select
+                    value={selectedCategoryIds[0] || "all"}
+                    onValueChange={setCategoryFilter}
                   >
-                    <Eraser className="h-3.5 w-3.5" />
-                    {t("orders:clearFilters", "Clear Filters")}
-                  </Button>
+                    <FilterSelectTrigger icon={Layers}>
+                      <SelectValue placeholder={t("orders:allCategories", "All Categories")} />
+                    </FilterSelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t("orders:allCategories", "All Categories")}</SelectItem>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </>
-            )}
 
-            {!showFilters && (
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-3 text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">
-                  {t("orders:showingOrders", {
-                    count: filtered.length,
-                    total: orders.length,
-                  })}
-                </span>
-                <span>
-                  {t("orders:totalLabel", "Total")}:{" "}
-                  <span className="font-bold text-primary">
-                    {formatCurrency(filteredTotalRevenue)}
-                  </span>
-                </span>
+                <div className="min-w-0 space-y-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {t("orders:channel", "Channel")}
+                  </label>
+                  <Select
+                    value={
+                      sourceFilter.includes(",")
+                        ? sourceFilter.split(",")[0].trim() || "all"
+                        : sourceFilter
+                    }
+                    onValueChange={setSourceFilter}
+                  >
+                    <FilterSelectTrigger icon={Share2}>
+                      <SelectValue placeholder={t("orders:allChannels", "All Channels")} />
+                    </FilterSelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t("orders:allChannels", "All Channels")}</SelectItem>
+                      {ORDER_CHANNELS.map((ch) => (
+                        <SelectItem key={ch} value={ch}>
+                          {t(`orders:channel_${ch}`, ORDER_CHANNEL_LABELS[ch])}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="min-w-0 space-y-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {t("orders:orderType", "Order Type")}
+                  </label>
+                  <Select
+                    value={fulfillmentFilter}
+                    onValueChange={(v) => setFulfillmentFilter(v as "all" | "dine_in" | "pickup")}
+                  >
+                    <FilterSelectTrigger icon={Tag}>
+                      <SelectValue placeholder={t("orders:allTypes", "All Types")} />
+                    </FilterSelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t("orders:allTypes", "All Types")}</SelectItem>
+                      <SelectItem value="dine_in">{t("orders:dineIn", "Dine-in")}</SelectItem>
+                      <SelectItem value="pickup">{t("orders:takeaway", "Takeaway")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="min-w-0 space-y-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {t("orders:dateRange", "Date Range")}
+                  </label>
+                  <Select value={datePreset} onValueChange={setDatePreset}>
+                    <FilterSelectTrigger icon={Calendar}>
+                      <SelectValue placeholder={t("orders:allTime", "All Time")} />
+                    </FilterSelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t("orders:allTime", "All Time")}</SelectItem>
+                      <SelectItem value="today">{t("orders:today", "Today")}</SelectItem>
+                      <SelectItem value="yesterday">{t("orders:yesterday", "Yesterday")}</SelectItem>
+                      <SelectItem value="last_7_days">{t("orders:last7Days", "Last 7 Days")}</SelectItem>
+                      <SelectItem value="last_30_days">{t("orders:last30Days", "Last 30 Days")}</SelectItem>
+                      <SelectItem value="this_month">{t("orders:thisMonth", "This Month")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="min-w-0 space-y-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {t("orders:sortBy", "Sort By")}
+                  </label>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <FilterSelectTrigger icon={ArrowUpDown}>
+                      <SelectValue placeholder={t("orders:sortBy", "Sort by")} />
+                    </FilterSelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">{t("orders:newestFirst", "Newest First")}</SelectItem>
+                      <SelectItem value="oldest">{t("orders:oldestFirst", "Oldest First")}</SelectItem>
+                      <SelectItem value="highest_amount">
+                        {t("orders:highestAmount", "Amount: High to Low")}
+                      </SelectItem>
+                      <SelectItem value="lowest_amount">
+                        {t("orders:lowestAmount", "Amount: Low to High")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            )}
+            ) : null}
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {t("orders:showingOrders", {
+                      count: filtered.length,
+                      total: orders.length,
+                    })}
+                  </span>
+                  <span className="hidden sm:inline">•</span>
+                  <span>
+                    {t("orders:totalLabel", "Total")}:{" "}
+                    <span className="font-bold text-primary">
+                      {formatCurrency(filteredTotalRevenue)}
+                    </span>
+                  </span>
+                </div>
+                {activeFiltersCount > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {isAllOrdersPage && statusFilter !== "all" && (
+                      <Badge variant="secondary" className="gap-1 font-medium">
+                        {getOrderStatusLabel(statusFilter as OrderStatus, t)}
+                        <X
+                          className="h-3 w-3 cursor-pointer"
+                          onClick={() => setStatusFilter("all")}
+                        />
+                      </Badge>
+                    )}
+                    {categoryFilter !== "all" && (
+                      <Badge variant="secondary" className="gap-1 font-medium">
+                        {selectedCategoryName || categoryFilter}
+                        <X
+                          className="h-3 w-3 cursor-pointer"
+                          onClick={() => setCategoryFilter("all")}
+                        />
+                      </Badge>
+                    )}
+                    {sourceFilter !== "all" && (
+                      <Badge variant="secondary" className="gap-1 font-medium">
+                        {(() => {
+                          const channels = sourceFilter
+                            .split(",")
+                            .map((v) => v.trim())
+                            .filter(Boolean);
+                          if (channels.length > 1) return `${channels.length} selected`;
+                          const ch = channels[0];
+                          return t(
+                            `orders:channel_${ch}`,
+                            ORDER_CHANNEL_LABELS[ch as keyof typeof ORDER_CHANNEL_LABELS] || ch,
+                          );
+                        })()}
+                        <X
+                          className="h-3 w-3 cursor-pointer"
+                          onClick={() => setSourceFilter("all")}
+                        />
+                      </Badge>
+                    )}
+                    {fulfillmentFilter !== "all" && (
+                      <Badge variant="secondary" className="gap-1 font-medium">
+                        {fulfillmentFilter === "dine_in"
+                          ? t("orders:dineIn", "Dine-in")
+                          : t("orders:takeaway", "Takeaway")}
+                        <X
+                          className="h-3 w-3 cursor-pointer"
+                          onClick={() => setFulfillmentFilter("all")}
+                        />
+                      </Badge>
+                    )}
+                    {datePreset !== "all" && (
+                      <Badge
+                        variant="secondary"
+                        className="gap-1 font-medium capitalize"
+                      >
+                        {datePreset.replace(/_/g, " ")}
+                        <X
+                          className="h-3 w-3 cursor-pointer"
+                          onClick={() => setDatePreset("all")}
+                        />
+                      </Badge>
+                    )}
+                    {branchFilter !== "all" && (
+                      <Badge variant="secondary" className="gap-1 font-medium">
+                        {restaurantsMap[branchFilter] || branchFilter}
+                        <X
+                          className="h-3 w-3 cursor-pointer"
+                          onClick={() => setBranchFilter("all")}
+                        />
+                      </Badge>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={resetFilters}
+                      className="h-7 gap-1 px-2 text-xs text-primary"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      {t("orders:clearAll", "Clear All")}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -1491,6 +1523,8 @@ export function OrdersListView({ status = "all", title, description, icon }: Pro
                             {o.order_number}
                           </span>
                           {(() => {
+                            // Floor staff: hide Dashboard / QR channel pills (noise on waiter portal)
+                            if (isStaffRole) return null;
                             const channel = orderChannel(o.source, o.call_id);
                             if (channel) {
                               return (

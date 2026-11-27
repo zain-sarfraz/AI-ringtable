@@ -56,6 +56,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getDeviceGps } from "@/lib/deviceGps";
+import { DeliveryRadiusControl } from "@/components/branches/DeliveryRadiusControl";
 
 /** Row from `restaurants` (includes fields set when the tenant was created in super admin). */
 interface Restaurant {
@@ -2047,43 +2048,22 @@ export default function RestaurantSettings() {
                     </div>
 
                     <div className="rounded-xl border bg-muted/10 p-4 space-y-3">
-                        <div className="space-y-0.5">
-                            <Label htmlFor="rs-service-radius" className="text-sm sm:text-base flex items-center gap-1.5">
-                                <MapPin className="h-3.5 w-3.5" />
-                                {t(
-                                    "restaurantSettings:serviceRadius",
-                                    "Delivery distance (km)",
-                                )}
-                            </Label>
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                                {t(
-                                    "restaurantSettings:serviceRadiusDesc",
-                                    "How far from this location you can deliver. Same as branch service radius — orders outside this range stay unassigned.",
-                                )}
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap items-end gap-3">
-                            <div className="w-full max-w-[10rem] space-y-1.5 min-w-0">
-                                <Input
-                                    id="rs-service-radius"
-                                    type="number"
-                                    min={0.5}
-                                    step={0.5}
-                                    value={
-                                        r.service_radius_km != null && r.service_radius_km !== ""
-                                            ? String(r.service_radius_km)
-                                            : "5"
-                                    }
-                                    onChange={(e) =>
-                                        setR({
-                                            ...r,
-                                            service_radius_km: e.target.value,
-                                        })
-                                    }
-                                    className="font-mono"
-                                />
-                            </div>
-                            <span className="text-xs text-muted-foreground pb-2">km</span>
+                        <DeliveryRadiusControl
+                            id="rs-service-radius"
+                            label={t("restaurantSettings:serviceRadius", "Delivery radius")}
+                            value={
+                                r.service_radius_km != null && r.service_radius_km !== ""
+                                    ? String(r.service_radius_km)
+                                    : "5"
+                            }
+                            onChange={(km) =>
+                                setR({
+                                    ...r,
+                                    service_radius_km: km,
+                                })
+                            }
+                        />
+                        <div className="flex flex-wrap items-center gap-3">
                             <Button
                                 type="button"
                                 variant="outline"
@@ -2292,9 +2272,9 @@ export default function RestaurantSettings() {
                         onClick={async () => {
                             setSavingFulfillment(true);
                             try {
-                                const radius = Math.max(
-                                    0.5,
-                                    Number(r.service_radius_km) || 5,
+                                const radius = Math.min(
+                                    20,
+                                    Math.max(1, Math.round(Number(r.service_radius_km) || 5)),
                                 );
                                 const { data, error } = await supabase
                                     .from("restaurants")

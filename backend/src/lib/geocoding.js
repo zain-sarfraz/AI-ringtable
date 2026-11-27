@@ -187,7 +187,15 @@ export async function reverseGeocode(latitude, longitude) {
 }
 
 /**
- * Calculate Haversine distance in kilometers between two lat/lon points.
+ * Calculate straight-line (Haversine) distance in kilometers between two lat/lon points.
+ * Earth radius = 6371 KM.
+ *
+ * NOTE: Road distance (e.g. Google Maps Distance Matrix) could later replace or wrap
+ * this behind the same function interface without changing call sites.
+ *
+ * PERFORMANCE: A simple loop over candidates is fine for ≤ ~50 branches. If branch
+ * count grows, prefer a PostGIS / MongoDB $geoNear-style 2dsphere index query instead
+ * of scanning every location in JS.
  */
 export function haversineDistanceKm(lat1, lon1, lat2, lon2) {
   const nLat1 = Number(lat1);
@@ -206,4 +214,45 @@ export function haversineDistanceKm(lat1, lon1, lat2, lon2) {
     Math.sin(dLat / 2) ** 2 +
     Math.cos((nLat1 * Math.PI) / 180) * Math.cos((nLat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
   return Number((R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)))).toFixed(2));
+}
+
+/** Alias for haversineDistanceKm — shared name used by delivery assignment APIs. */
+export function calculateDistance(lat1, lon1, lat2, lon2) {
+  return haversineDistanceKm(lat1, lon1, lat2, lon2);
+}
+
+/**
+ * Parse a single coordinate. null / undefined / "" / NaN never become 0 —
+ * they return null so callers can reject with HTTP 400.
+ */
+export function parseCoordinate(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+/** Valid WGS84 latitude/longitude ranges. Rejects null/undefined/""/NaN (never coerces to 0). */
+export function isValidLatLng(lat, lng) {
+  if (lat === undefined || lat === null || lat === "") return false;
+  if (lng === undefined || lng === null || lng === "") return false;
+  const nLat = Number(lat);
+  const nLng = Number(lng);
+  return (
+    Number.isFinite(nLat) &&
+    Number.isFinite(nLng) &&
+    nLat >= -90 &&
+    nLat <= 90 &&
+    nLng >= -180 &&
+    nLng <= 180
+  );
+}
+
+/** Clamp delivery radius (KM) to the admin-supported 1–20 range. */
+export function clampDeliveryRadiusKm(value, fallback = 5) {
+  // null / undefined / "" / NaN → default (5 KM), not 1
+  if (value === undefined || value === null || value === "") return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(20, Math.max(1, n));
 }

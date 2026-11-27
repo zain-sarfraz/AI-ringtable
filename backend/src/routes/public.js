@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { getKnex } from "../db.js";
-import { geocodeAddress } from "../lib/geocoding.js";
+import { geocodeAddress, isValidLatLng, parseCoordinate } from "../lib/geocoding.js";
 import {
   DELIVERY_UNAVAILABLE_MESSAGE,
+  findDeliveryBranch,
   isTableReservationLine,
   resolveDeliveryAssignment,
 } from "../lib/phoneOrderService.js";
@@ -131,6 +132,74 @@ router.get("/storefront", async (req, res) => {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /api/public/delivery/check?restaurant_id=&lat=&lng=
+ * Optional: &address= (geocoded when lat/lng missing)
+ * Lightweight pre-checkout coverage check for the customer UI.
+ */
+router.get("/delivery/check", async (req, res) => {
+  try {
+    const knex = getKnex();
+    const restaurantId = String(req.query.restaurant_id || req.query.branch_id || "").trim();
+    if (!restaurantId || !isValidUUID(restaurantId)) {
+      return res.status(400).json({ error: "restaurant_id is required", available: false });
+    }
+
+    // Never coerce null/undefined/""/NaN → 0
+    let lat = parseCoordinate(req.query.lat ?? req.query.latitude);
+    let lng = parseCoordinate(req.query.lng ?? req.query.longitude);
+    const address = String(req.query.address || "").trim();
+
+    if ((lat == null || lng == null || !isValidLatLng(lat, lng)) && address) {
+      const geo = await geocodeAddress(address);
+      if (geo) {
+        lat = geo.latitude;
+        lng = geo.longitude;
+      }
+    }
+
+    if (lat == null || lng == null || !isValidLatLng(lat, lng)) {
+      return res.status(400).json({
+        available: false,
+        error:
+          "We could not determine your location. Please allow location access or enter a full address / drop a pin on the map.",
+        code: "missing_delivery_coords",
+      });
+    }
+
+    const result = await findDeliveryBranch(knex, lat, lng, { restaurantId });
+    if (!result.ok) {
+      const status = result.status || (result.code === "out_of_range" ? 422 : 400);
+      if (status === 422) {
+        return res.status(200).json({
+          available: false,
+          message: result.error || DELIVERY_UNAVAILABLE_MESSAGE,
+          code: result.code,
+          lat,
+          lng,
+        });
+      }
+      return res.status(status).json({
+        available: false,
+        error: result.error,
+        code: result.code,
+      });
+    }
+
+    return res.json({
+      available: true,
+      branchId: result.branch.id,
+      branchName: result.branch.name || null,
+      distance: Number(result.distance.toFixed(1)),
+      lat,
+      lng,
+    });
+  } catch (e) {
+    console.error("[delivery/check]", e);
+    return res.status(500).json({ available: false, error: e.message || "Delivery check failed" });
   }
 });
 
@@ -405,11 +474,28 @@ router.post("/orders", async (req, res) => {
     let transferredFromRestaurantId = null;
     let isTransferred = false;
 
-    let lat = Number.isFinite(Number(delivery_latitude)) ? Number(delivery_latitude) : null;
-    let lng = Number.isFinite(Number(delivery_longitude)) ? Number(delivery_longitude) : null;
+    // Never coerce null/undefined/""/NaN → 0 (Number(null) === 0 is a classic footgun)
+    const bodyHasCoordField =
+      Object.prototype.hasOwnProperty.call(req.body || {}, "delivery_latitude") ||
+      Object.prototype.hasOwnProperty.call(req.body || {}, "delivery_longitude");
+    let lat = parseCoordinate(delivery_latitude);
+    let lng = parseCoordinate(delivery_longitude);
 
     // Delivery: backend distance check + assign / reassign to an eligible branch (one-shot)
     if (!isPickup && !isDineIn) {
+      // Explicit but invalid coords (null/""/"NaN"/out of range) → 400, do not geocode over them
+      if (
+        bodyHasCoordField &&
+        (lat == null || lng == null || !isValidLatLng(lat, lng))
+      ) {
+        await trx.rollback();
+        return res.status(400).json({
+          error:
+            "We could not determine your location. Please enter a full delivery address or drop a pin on the map.",
+          code: "missing_delivery_coords",
+        });
+      }
+
       if ((lat == null || lng == null) && delivery_address) {
         const geo = await geocodeAddress(delivery_address);
         if (geo) {
@@ -418,10 +504,11 @@ router.post("/orders", async (req, res) => {
         }
       }
 
-      if (lat == null || lng == null) {
+      if (lat == null || lng == null || !isValidLatLng(lat, lng)) {
         await trx.rollback();
         return res.status(400).json({
-          error: DELIVERY_UNAVAILABLE_MESSAGE,
+          error:
+            "We could not determine your location. Please enter a full delivery address or drop a pin on the map.",
           code: "missing_delivery_coords",
         });
       }
@@ -437,14 +524,17 @@ router.post("/orders", async (req, res) => {
 
       if (!assignment.ok) {
         await trx.rollback();
-        return res.status(400).json({
+        const status = assignment.code === "out_of_range" || assignment.code === "no_eligible_branches"
+          ? 422
+          : 400;
+        return res.status(status).json({
           error: assignment.error || DELIVERY_UNAVAILABLE_MESSAGE,
           code: assignment.code || "out_of_range",
         });
       }
 
       targetRestaurantId = assignment.restaurantId;
-      assignedBranchDistanceKm = assignment.distanceKm;
+      assignedBranchDistanceKm = Number(Number(assignment.distanceKm).toFixed(2));
       branchAssignedAt = new Date();
       autoAssigned = Boolean(assignment.autoAssigned || assignment.reassigned);
       assignmentStatus = assignment.reassigned ? "auto_reassigned" : "assigned";

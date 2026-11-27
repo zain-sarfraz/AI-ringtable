@@ -1,8 +1,16 @@
 import "dotenv/config";
 import test, { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
-import { getKnex } from "../db.js";
+import { applyTestDatabaseEnv } from "./testDatabase.js";
 import { aiOrderStatus } from "../fns/aiOrderStatus.js";
+
+const dbInfo = applyTestDatabaseEnv();
+console.log(
+  `[orderTracking.test] Using ${dbInfo.source} → database "${dbInfo.databaseName}" ` +
+    "(set TEST_DATABASE_URL to isolate from shared/dev data)",
+);
+
+const { getKnex } = await import("../db.js");
 
 describe("aiOrderStatus user-friendly phone tracking & kitchen notes", () => {
   const knex = getKnex();

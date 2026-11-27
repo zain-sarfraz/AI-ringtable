@@ -48,6 +48,7 @@ import { formatCurrency } from "@/lib/restaurant";
 import { getApiBase } from "@/lib/apiBase";
 import { getToken } from "@/lib/authStorage";
 import { getDeviceGps } from "@/lib/deviceGps";
+import { DeliveryRadiusControl } from "@/components/branches/DeliveryRadiusControl";
 import { PageShell } from "@/components/layout/PageShell";
 
 interface BranchItem extends RestaurantInfo {
@@ -976,36 +977,24 @@ export default function BranchPortal() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="branch_phone" className="text-xs font-bold">
-                  Branch Phone (Optional)
-                </Label>
-                <Input
-                  id="branch_phone"
-                  placeholder="e.g. +923001234567"
-                  value={addForm.phone}
-                  onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
-                  className="h-9 text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="branch_radius" className="text-xs font-bold">
-                  Delivery Radius (km) *
-                </Label>
-                <Input
-                  id="branch_radius"
-                  type="number"
-                  step="0.5"
-                  min="1"
-                  max="100"
-                  value={addForm.service_radius_km}
-                  onChange={(e) => setAddForm({ ...addForm, service_radius_km: e.target.value })}
-                  required
-                  className="h-9 text-xs font-mono"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="branch_phone" className="text-xs font-bold">
+                Branch phone (optional)
+              </Label>
+              <Input
+                id="branch_phone"
+                placeholder="e.g. +923001234567"
+                value={addForm.phone}
+                onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
+                className="h-9 text-xs"
+              />
             </div>
+            <DeliveryRadiusControl
+              id="branch_radius"
+              dense
+              value={addForm.service_radius_km}
+              onChange={(km) => setAddForm({ ...addForm, service_radius_km: String(km) })}
+            />
 
             <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/50">
               <div>
@@ -1168,26 +1157,20 @@ export default function BranchPortal() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold">Phone</Label>
-                <Input
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  className="h-9 text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold">Service Radius (km)</Label>
-                <Input
-                  type="number"
-                  step="0.5"
-                  value={editForm.service_radius_km}
-                  onChange={(e) => setEditForm({ ...editForm, service_radius_km: e.target.value })}
-                  className="h-9 text-xs font-mono"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">Phone</Label>
+              <Input
+                value={editForm.phone}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                className="h-9 text-xs"
+              />
             </div>
+            <DeliveryRadiusControl
+              id="edit_branch_radius"
+              dense
+              value={editForm.service_radius_km}
+              onChange={(km) => setEditForm({ ...editForm, service_radius_km: String(km) })}
+            />
 
             {/* Branch Manager Credentials */}
             <div className="border-t border-border/50 pt-3 space-y-3">

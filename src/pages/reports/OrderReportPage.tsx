@@ -168,10 +168,10 @@ export default function OrderReportPage() {
         }
       />
 
-      <div className="flex flex-col sm:flex-row flex-wrap gap-2.5">
+      <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5">
         <Select value={branchId} onValueChange={setBranchId}>
-          <SelectTrigger className="h-10 bg-card border-border/80 rounded-xl px-3 text-xs w-full lg:w-[220px]">
-            <Building2 className="h-4 w-4 text-muted-foreground mr-1" />
+          <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
+            <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
             <SelectValue placeholder={t("reports:allBranches", "All branches")} />
           </SelectTrigger>
           <SelectContent>
@@ -184,8 +184,8 @@ export default function OrderReportPage() {
           </SelectContent>
         </Select>
         <Select value={datePreset} onValueChange={setDatePreset}>
-          <SelectTrigger className="h-10 bg-card border-border/80 rounded-xl px-3 text-xs w-full lg:w-[180px]">
-            <Calendar className="h-4 w-4 text-muted-foreground mr-1" />
+          <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[180px]">
+            <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -194,12 +194,13 @@ export default function OrderReportPage() {
             <SelectItem value="yesterday">{t("orders:yesterday", "Yesterday")}</SelectItem>
             <SelectItem value="7">{t("orders:last7Days", "Last 7 days")}</SelectItem>
             <SelectItem value="30">{t("orders:last30Days", "Last 30 days")}</SelectItem>
+            <SelectItem value="90">{t("orders:last90Days", "Last 90 days")}</SelectItem>
             <SelectItem value="this_month">{t("orders:thisMonth", "This month")}</SelectItem>
             <SelectItem value="last_month">{t("orders:lastMonth", "Last month")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={transferFilter} onValueChange={setTransferFilter}>
-          <SelectTrigger className="h-10 bg-card border-border/80 rounded-xl px-3 text-xs w-full lg:w-[200px]">
+          <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -212,7 +213,7 @@ export default function OrderReportPage() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder={t("reports:searchOrdersPlaceholder", "Search order, name, or phone")}
-          className="h-10 rounded-xl bg-card lg:max-w-xs"
+          className="h-10 w-full rounded-xl border-border/80 bg-card shadow-sm sm:max-w-xs"
         />
       </div>
 

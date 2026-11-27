@@ -402,11 +402,63 @@ function RoiCalculator() {
   );
 }
 
+type PerfPeriod = "7D" | "30D" | "90D";
+
+const PERF_BY_PERIOD: Record<
+  PerfPeriod,
+  { subtitle: string; kpis: Array<[string, string, string, boolean?]>; revenue: string }
+> = {
+  "7D": {
+    subtitle: "Last 7 days · All locations",
+    revenue: "$4,210",
+    kpis: [
+      ["📞 Calls received", "312", "▲ 8% vs prior week"],
+      ["🤖 Calls handled by AI", "286", "92% of all calls"],
+      ["🍔 Orders captured by AI", "68", "▲ 11%"],
+      ["🍽 Reservations booked", "39", "▲ 6%"],
+      ["📱 QR table orders", "98", "▲ 14%"],
+      ["💰 Total order value", "$4,210", "▲ 9%"],
+      ["⏱ Staff interactions automated", "214", "≈ 18 staff hours"],
+      ["⚠️ Escalated to staff", "12", "3.8% of calls", true],
+    ],
+  },
+  "30D": {
+    subtitle: "This month · All locations",
+    revenue: "$18,742",
+    kpis: [
+      ["📞 Calls received", "1,284", "▲ 12% vs last month"],
+      ["🤖 Calls handled by AI", "1,173", "91% of all calls"],
+      ["🍔 Orders captured by AI", "287", "▲ 18%"],
+      ["🍽 Reservations booked", "164", "▲ 9%"],
+      ["📱 QR table orders", "421", "▲ 22%"],
+      ["💰 Total order value", "$18,742", "▲ 15%"],
+      ["⏱ Staff interactions automated", "932", "≈ 78 staff hours"],
+      ["⚠️ Escalated to staff", "41", "3.5% of calls", true],
+    ],
+  },
+  "90D": {
+    subtitle: "Last 90 days · All locations",
+    revenue: "$52,180",
+    kpis: [
+      ["📞 Calls received", "3,640", "▲ 15% vs prior 90D"],
+      ["🤖 Calls handled by AI", "3,310", "91% of all calls"],
+      ["🍔 Orders captured by AI", "812", "▲ 21%"],
+      ["🍽 Reservations booked", "468", "▲ 12%"],
+      ["📱 QR table orders", "1,190", "▲ 28%"],
+      ["💰 Total order value", "$52,180", "▲ 19%"],
+      ["⏱ Staff interactions automated", "2,640", "≈ 220 staff hours"],
+      ["⚠️ Escalated to staff", "118", "3.2% of calls", true],
+    ],
+  },
+};
+
 export default function Landing() {
   const { user } = useAuth();
   const [navOpen, setNavOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
+  const [perfPeriod, setPerfPeriod] = useState<PerfPeriod>("30D");
+  const perf = PERF_BY_PERIOD[perfPeriod];
 
   useEffect(() => {
     const previous = document.title;
@@ -765,7 +817,7 @@ export default function Landing() {
                   <div className="ic" style={{ background: bg }}>
                     {icon}
                   </div>
-                  <div>
+                  <div className="out-copy">
                     <b>{title}</b>
                     <small>{sub}</small>
                   </div>
@@ -859,27 +911,80 @@ export default function Landing() {
                 <h3>The right access for every role</h3>
                 <p>Owners, managers, hosts, waiters and kitchen each see only what they need. Every change is logged.</p>
                 <div className="mini">
-                  <div className="role">
-                    <b>Permission</b>
-                    <span>Owner · Mgr · Host · Kitchen</span>
-                  </div>
-                  <div className="role">
-                    <span>Refunds</span>
-                    <span>
-                      <span className="ck">✓</span> &nbsp;<span className="ck">✓</span> &nbsp;<span className="no">—</span> &nbsp;<span className="no">—</span>
-                    </span>
-                  </div>
-                  <div className="role">
-                    <span>Edit menu / 86 items</span>
-                    <span>
-                      <span className="ck">✓</span> &nbsp;<span className="ck">✓</span> &nbsp;<span className="no">—</span> &nbsp;<span className="ck">✓</span>
-                    </span>
-                  </div>
-                  <div className="role border-0">
-                    <span>Reservations</span>
-                    <span>
-                      <span className="ck">✓</span> &nbsp;<span className="ck">✓</span> &nbsp;<span className="ck">✓</span> &nbsp;<span className="no">—</span>
-                    </span>
+                  <div className="perm-scroll">
+                    <div className="perm-grid" role="table" aria-label="Role permissions">
+                      <div className="perm-row perm-head" role="row">
+                        <span className="perm-label" role="columnheader">
+                          Permission
+                        </span>
+                        <span role="columnheader" title="Owner">
+                          <span className="perm-role-full">Owner</span>
+                          <span className="perm-role-abbr">Own</span>
+                        </span>
+                        <span role="columnheader" title="Manager">
+                          <span className="perm-role-full">Manager</span>
+                          <span className="perm-role-abbr">Mgr</span>
+                        </span>
+                        <span role="columnheader" title="Host">
+                          Host
+                        </span>
+                        <span role="columnheader" title="Kitchen">
+                          <span className="perm-role-full">Kitchen</span>
+                          <span className="perm-role-abbr">Kit</span>
+                        </span>
+                      </div>
+                      <div className="perm-row" role="row">
+                        <span className="perm-label" role="rowheader" title="Refunds">
+                          Refunds
+                        </span>
+                        <span className="ck" role="cell" aria-label="Owner: yes">
+                          ✓
+                        </span>
+                        <span className="ck" role="cell" aria-label="Manager: yes">
+                          ✓
+                        </span>
+                        <span className="no" role="cell" aria-label="Host: no">
+                          —
+                        </span>
+                        <span className="no" role="cell" aria-label="Kitchen: no">
+                          —
+                        </span>
+                      </div>
+                      <div className="perm-row" role="row">
+                        <span className="perm-label" role="rowheader" title="Edit menu / 86 items">
+                          Edit menu
+                        </span>
+                        <span className="ck" role="cell" aria-label="Owner: yes">
+                          ✓
+                        </span>
+                        <span className="ck" role="cell" aria-label="Manager: yes">
+                          ✓
+                        </span>
+                        <span className="no" role="cell" aria-label="Host: no">
+                          —
+                        </span>
+                        <span className="ck" role="cell" aria-label="Kitchen: yes">
+                          ✓
+                        </span>
+                      </div>
+                      <div className="perm-row perm-row-last" role="row">
+                        <span className="perm-label" role="rowheader" title="Reservations">
+                          Reservations
+                        </span>
+                        <span className="ck" role="cell" aria-label="Owner: yes">
+                          ✓
+                        </span>
+                        <span className="ck" role="cell" aria-label="Manager: yes">
+                          ✓
+                        </span>
+                        <span className="ck" role="cell" aria-label="Host: yes">
+                          ✓
+                        </span>
+                        <span className="no" role="cell" aria-label="Kitchen: no">
+                          —
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   <div className="text-mut mt-2">🕑 6:42 PM · Sam (Manager) marked Lobster Pasta sold out</div>
                 </div>
@@ -901,26 +1006,25 @@ export default function Landing() {
               <div className="min-w-0">
                 <b style={{ fontSize: 20 }}>Restaurant AI Performance</b>
                 <div className="text-mut" style={{ fontSize: 14 }}>
-                  This month · All locations
+                  {perf.subtitle}
                 </div>
               </div>
-              <div className="segs">
-                <span>7D</span>
-                <span className="on">30D</span>
-                <span>90D</span>
+              <div className="segs" role="group" aria-label="Performance period">
+                {(["7D", "30D", "90D"] as PerfPeriod[]).map((period) => (
+                  <button
+                    key={period}
+                    type="button"
+                    className={perfPeriod === period ? "on" : undefined}
+                    aria-pressed={perfPeriod === period}
+                    onClick={() => setPerfPeriod(period)}
+                  >
+                    {period}
+                  </button>
+                ))}
               </div>
             </div>
             <div className="row g-3 kpi-grid">
-              {[
-                ["📞 Calls received", "1,284", "▲ 12% vs last month"],
-                ["🤖 Calls handled by AI", "1,173", "91% of all calls"],
-                ["🍔 Orders captured by AI", "287", "▲ 18%"],
-                ["🍽 Reservations booked", "164", "▲ 9%"],
-                ["📱 QR table orders", "421", "▲ 22%"],
-                ["💰 Total order value", "$18,742", "▲ 15%"],
-                ["⏱ Staff interactions automated", "932", "≈ 78 staff hours"],
-                ["⚠️ Escalated to staff", "41", "3.5% of calls", true],
-              ].map((row) => (
+              {perf.kpis.map((row) => (
                 <div className="col-6 col-lg-3" key={String(row[0])}>
                   <div className="kpi">
                     <small>{row[0]}</small>
@@ -935,14 +1039,14 @@ export default function Landing() {
                 <div className="box">
                   <b>Revenue attribution</b>
                   <div className="d-flex flex-wrap gap-4 align-items-center mt-3">
-                    <div className="donut" />
+                    <div className="donut" data-total={perf.revenue} />
                     <div className="leg flex-grow-1">
                       <div>
                         <span>
                           <i style={{ background: "var(--or)" }} />
                           AI phone orders
                         </span>
-                        <b>$6,840</b>
+                        <b>{perfPeriod === "7D" ? "$1,540" : perfPeriod === "90D" ? "$19,080" : "$6,840"}</b>
                       </div>
                       <div>
                         <span>
@@ -1419,7 +1523,7 @@ export default function Landing() {
               <div className="col-lg-6">
                 <h2>Every customer channel. Every order. One restaurant operating system.</h2>
                 <p>Book a 30-minute demo built on your actual menu. We'll call the AI live, walk through your inbox and dashboard, and send your free Missed-Call Audit.</p>
-                <div className="row g-3 mt-2">
+                <div className="row g-3 cta-benefits">
                   {[
                     ["✓ No POS change", "Keep what you use today"],
                     ["✓ Live in 7 days", "We do the setup"],

@@ -2,7 +2,12 @@ import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { getKnex } from "../db.js";
-import { geocodeAddress, reverseGeocode, haversineDistanceKm } from "../lib/geocoding.js";
+import {
+  geocodeAddress,
+  reverseGeocode,
+  haversineDistanceKm,
+  clampDeliveryRadiusKm,
+} from "../lib/geocoding.js";
 import { pushBranchListToAgent } from "../lib/syncAgentBranches.js";
 import { optionalAuth, requireAuth } from "../middleware/auth.js";
 import { resolveRole } from "../middleware/checkPermission.js";
@@ -170,7 +175,13 @@ router.post("/restaurants/:parentId/branches", optionalAuth, requireAuth, async 
       slug = `${baseSlug}-${counter++}`;
     }
 
-    const radius = Number(service_radius_km) > 0 ? Number(service_radius_km) : 5.0;
+    const rawRadius = Number(service_radius_km);
+    if (service_radius_km !== undefined && service_radius_km !== null && service_radius_km !== "") {
+      if (!Number.isFinite(rawRadius) || rawRadius < 1 || rawRadius > 20) {
+        return res.status(400).json({ error: "Delivery radius must be between 1 and 20 KM" });
+      }
+    }
+    const radius = clampDeliveryRadiusKm(rawRadius, 5);
 
     const result = await knex.transaction(async (trx) => {
       const restaurantColumns = await columnsOf(trx, "restaurants");
@@ -652,7 +663,13 @@ router.patch("/branches/:branchId", optionalAuth, requireAuth, async (req, res) 
     if (phone !== undefined) updates.phone = phone ? String(phone).trim() : null;
     if (is_accepting_orders !== undefined) updates.is_accepting_orders = Boolean(is_accepting_orders);
     if (is_active !== undefined) updates.is_active = Boolean(is_active);
-    if (service_radius_km !== undefined) updates.service_radius_km = Number(service_radius_km) || 5.0;
+    if (service_radius_km !== undefined) {
+      const rawRadius = Number(service_radius_km);
+      if (!Number.isFinite(rawRadius) || rawRadius < 1 || rawRadius > 20) {
+        return res.status(400).json({ error: "Delivery radius must be between 1 and 20 KM" });
+      }
+      updates.service_radius_km = clampDeliveryRadiusKm(rawRadius, 5);
+    }
 
     let newLat = latitude !== undefined ? (latitude != null && latitude !== "" ? Number(latitude) : null) : undefined;
     let newLng = longitude !== undefined ? (longitude != null && longitude !== "" ? Number(longitude) : null) : undefined;
@@ -891,10 +908,10 @@ router.patch("/restaurants/:id/delivery-coverage", optionalAuth, requireAuth, as
     const updates = { updated_at: new Date() };
     if (req.body?.service_radius_km !== undefined) {
       const radius = Number(req.body.service_radius_km);
-      if (!Number.isFinite(radius) || radius <= 0) {
-        return res.status(400).json({ error: "service_radius_km must be a positive number" });
+      if (!Number.isFinite(radius) || radius < 1 || radius > 20) {
+        return res.status(400).json({ error: "Delivery radius must be between 1 and 20 KM" });
       }
-      updates.service_radius_km = Math.min(500, Math.round(radius * 100) / 100);
+      updates.service_radius_km = clampDeliveryRadiusKm(radius, 5);
     }
 
     let lat =

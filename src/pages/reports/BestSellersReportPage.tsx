@@ -110,7 +110,7 @@ export default function BestSellersReportPage() {
           extra={
             <>
               <Select value={limit} onValueChange={setLimit}>
-                <SelectTrigger className="w-full sm:w-[130px]">
+                <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[130px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -120,7 +120,7 @@ export default function BestSellersReportPage() {
                 </SelectContent>
               </Select>
               <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-full sm:w-[150px]">
+                <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[150px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

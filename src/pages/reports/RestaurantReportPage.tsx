@@ -34,7 +34,6 @@ export default function RestaurantReportPage() {
     const { role } = useAuth();
     const can = usePermission();
     const showAdminEarnings = can("admin_earnings.view") && role !== "manager";
-    const isSuperAdmin = role === "super_admin";
     const [restaurantId, setRestaurantId] = useState("");
 
     const { data, isLoading, error } = useQuery<EarningStats>({
@@ -109,12 +108,12 @@ export default function RestaurantReportPage() {
                 )}
                 icon={<Store className="h-5 w-5" />}
                 actions={
-                    isSuperAdmin && restaurants.length > 1 ? (
+                    restaurants.length > 1 ? (
                         <Select
                             value={restaurantId}
                             onValueChange={setRestaurantId}
                         >
-                            <SelectTrigger className="w-full sm:w-[280px]">
+                            <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[240px]">
                                 <SelectValue
                                     placeholder={t(
                                         "reports:filterByRestaurant",

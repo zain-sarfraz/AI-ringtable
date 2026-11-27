@@ -42,4 +42,8 @@ export function hasPermission(role, permission) {
   if (role in roleDeniedPermissions) {
     return !roleDeniedPermissions[role].includes(permission);
   }
+  if (role in rolePermissions) {
+    return rolePermissions[role].includes(permission);
+  }
+  return true; // unknown role (admin, kitchen, staff, etc.) = unrestricted
 }

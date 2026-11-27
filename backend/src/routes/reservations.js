@@ -39,11 +39,11 @@ async function assertRestaurantAccess(req, res, restaurantId) {
   // super_admin and admin: unrestricted
   if (roles.includes("super_admin") || roles.includes("admin")) return null;
 
+  // restaurantIds already expands parent memberships to include child branches
   const allowed = req.user?.restaurantIds ?? [];
   if (allowed.includes(restaurantId)) return null;
 
-  // Manager whose direct membership is on a parent: check if restaurantId is a child
-  const directMemberIds = req.user?.directMemberIds ?? [];
+  return res.status(403).json({ error: "Forbidden – not a member of this restaurant" });
 }
 
 /**

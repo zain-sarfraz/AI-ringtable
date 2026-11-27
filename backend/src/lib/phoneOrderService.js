@@ -1,6 +1,11 @@
 import { branchArea, matchBranchChoice } from "./branchLocation.js";
 import { normalizeE164 } from "./voiceWebhookUtils.js";
-import { geocodeAddress, haversineDistanceKm } from "./geocoding.js";
+import {
+  geocodeAddress,
+  haversineDistanceKm,
+  isValidLatLng,
+  clampDeliveryRadiusKm,
+} from "./geocoding.js";
 import { nextOrderNumber } from "./orderNumbers.js";
 import { notifyNewOrderLater } from "./orderAlerts.js";
 import {
@@ -136,16 +141,30 @@ async function bookReservationInsteadOfOrder(knex, {
 }
 
 export const DELIVERY_UNAVAILABLE_MESSAGE =
-  "Sorry, delivery is not available at your location.";
+  "Delivery is not available at your location.";
 
 function isDeliveryEligibleLocation(loc) {
   if (!loc) return false;
   if (loc.is_active === false) return false;
   if (loc.is_accepting_orders === false) return false;
   if (loc.allows_delivery === false) return false;
+  // TODO: also respect restaurant_hours / restaurant_settings.is_open when enforcing
+  // "currently open" for delivery assignment (day-of-week slots already exist).
+  if (loc.latitude == null || loc.longitude == null || loc.latitude === "" || loc.longitude === "") {
+    console.warn(
+      `[delivery] excluding branch ${loc.id || "?"} (${loc.name || "unnamed"}): missing latitude/longitude`,
+    );
+    return false;
+  }
   const lat = Number(loc.latitude);
   const lng = Number(loc.longitude);
-  return Number.isFinite(lat) && Number.isFinite(lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    console.warn(
+      `[delivery] excluding branch ${loc.id || "?"} (${loc.name || "unnamed"}): invalid latitude/longitude`,
+    );
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -183,6 +202,7 @@ export async function listDeliveryCandidates(knex, familyRootId) {
 
 /**
  * Distance + in-radius check for one location.
+ * Boundary inclusive: distance == radius is eligible.
  * @returns {{ distance: number; inRadius: boolean; radius: number } | null}
  */
 export function measureDeliveryCoverage(loc, deliveryLat, deliveryLng) {
@@ -194,12 +214,14 @@ export function measureDeliveryCoverage(loc, deliveryLat, deliveryLng) {
     Number(loc.longitude),
   );
   if (!Number.isFinite(distance)) return null;
-  const radius = Number(loc.service_radius_km || 5.0);
+  const radius = clampDeliveryRadiusKm(loc.service_radius_km, 5);
   return { distance, inRadius: distance <= radius, radius };
 }
 
 /**
- * Pick nearest in-range location from a candidate list (single pass — no loops).
+ * Pick nearest in-range location from a candidate list.
+ * Simple JS loop is fine for ≤ ~50 branches; swap for a geo index query if that grows.
+ * Equal distance: prefer lower current_load when provided, else first match (deterministic).
  * @param {any[]} candidates
  * @param {number} deliveryLat
  * @param {number} deliveryLng
@@ -208,15 +230,46 @@ export function measureDeliveryCoverage(loc, deliveryLat, deliveryLng) {
 export function pickNearestInRadius(candidates, deliveryLat, deliveryLng) {
   let nearest = null;
   let minDistance = Infinity;
+  let minLoad = Infinity;
   for (const loc of candidates || []) {
     const measured = measureDeliveryCoverage(loc, deliveryLat, deliveryLng);
     if (!measured?.inRadius) continue;
-    if (measured.distance < minDistance) {
+    const load = Number.isFinite(Number(loc.current_load)) ? Number(loc.current_load) : Infinity;
+    const closer = measured.distance < minDistance;
+    const sameDistanceLowerLoad =
+      measured.distance === minDistance && load < minLoad;
+    if (closer || sameDistanceLowerLoad) {
       minDistance = measured.distance;
+      minLoad = load;
       nearest = loc;
     }
   }
   return nearest ? { branch: nearest, distance: minDistance } : null;
+}
+
+/**
+ * Attach active-order load counts for equal-distance tie-breaks.
+ * @param {import("knex").Knex} knex
+ * @param {any[]} candidates
+ */
+async function attachCurrentLoads(knex, candidates) {
+  if (!candidates?.length) return candidates;
+  const ids = candidates.map((c) => c.id).filter(Boolean);
+  if (!ids.length) return candidates;
+  try {
+    const rows = await knex("orders")
+      .whereIn("restaurant_id", ids)
+      .whereNotIn("status", ["delivered", "completed", "cancelled"])
+      .groupBy("restaurant_id")
+      .select("restaurant_id", knex.raw("count(*)::int as current_load"));
+    const map = new Map(rows.map((r) => [r.restaurant_id, Number(r.current_load || 0)]));
+    for (const c of candidates) {
+      c.current_load = map.has(c.id) ? map.get(c.id) : 0;
+    }
+  } catch (e) {
+    console.warn("[delivery] failed to load branch order counts for tie-break:", e.message);
+  }
+  return candidates;
 }
 
 /**
@@ -231,9 +284,59 @@ export async function findNearestBranch(knex, parentRestaurantId, deliveryLat, d
   if (!parentRestaurantId || !Number.isFinite(deliveryLat) || !Number.isFinite(deliveryLng)) {
     return null;
   }
+  if (!isValidLatLng(deliveryLat, deliveryLng)) {
+    return null;
+  }
   const rootId = await resolveDeliveryFamilyRootId(knex, parentRestaurantId);
-  const candidates = await listDeliveryCandidates(knex, rootId);
+  const candidates = await attachCurrentLoads(knex, await listDeliveryCandidates(knex, rootId));
   return pickNearestInRadius(candidates, deliveryLat, deliveryLng);
+}
+
+/**
+ * Public delivery-assignment helper: nearest eligible branch covering the customer.
+ * @param {import("knex").Knex} knex
+ * @param {number} customerLat
+ * @param {number} customerLng
+ * @param {{ restaurantId: string }} opts  multi-tenant family root / restaurant id
+ * @returns {Promise<
+ *   | { ok: true; branch: any; distance: number }
+ *   | { ok: false; error: string; code: string; status?: number }
+ * >}
+ */
+export async function findDeliveryBranch(knex, customerLat, customerLng, opts = {}) {
+  const lat = Number(customerLat);
+  const lng = Number(customerLng);
+  if (!isValidLatLng(lat, lng)) {
+    return {
+      ok: false,
+      error: "Invalid coordinates. Latitude must be -90..90 and longitude -180..180.",
+      code: "invalid_coords",
+      status: 400,
+    };
+  }
+  const restaurantId = opts.restaurantId;
+  if (!restaurantId) {
+    return {
+      ok: false,
+      error: "restaurant_id is required",
+      code: "missing_restaurant",
+      status: 400,
+    };
+  }
+  const nearest = await findNearestBranch(knex, restaurantId, lat, lng);
+  if (!nearest) {
+    return {
+      ok: false,
+      error: DELIVERY_UNAVAILABLE_MESSAGE,
+      code: "out_of_range",
+      status: 422,
+    };
+  }
+  return {
+    ok: true,
+    branch: nearest.branch,
+    distance: Number(nearest.distance.toFixed(2)),
+  };
 }
 
 /**
@@ -269,9 +372,17 @@ export async function resolveDeliveryAssignment(knex, {
     return { ok: false, error: DELIVERY_UNAVAILABLE_MESSAGE, code: "restaurant_not_found" };
   }
 
-  const candidates = await listDeliveryCandidates(knex, rootId);
+  const candidates = await attachCurrentLoads(knex, await listDeliveryCandidates(knex, rootId));
   if (!candidates.length) {
     return { ok: false, error: DELIVERY_UNAVAILABLE_MESSAGE, code: "no_eligible_branches" };
+  }
+
+  if (!isValidLatLng(deliveryLat, deliveryLng)) {
+    return {
+      ok: false,
+      error: "Invalid coordinates. Latitude must be -90..90 and longitude -180..180.",
+      code: "invalid_coords",
+    };
   }
 
   const preferredId = preferredBranchId || null;
@@ -284,7 +395,7 @@ export async function resolveDeliveryAssignment(knex, {
       return {
         ok: true,
         restaurantId: preferred.id,
-        distanceKm: measured.distance,
+        distanceKm: Number(measured.distance.toFixed(2)),
         autoAssigned: false,
         reassigned: false,
         fromRestaurantId: null,
@@ -302,7 +413,7 @@ export async function resolveDeliveryAssignment(knex, {
   return {
     ok: true,
     restaurantId: nearest.branch.id,
-    distanceKm: nearest.distance,
+    distanceKm: Number(nearest.distance.toFixed(2)),
     autoAssigned: true,
     reassigned,
     fromRestaurantId: reassigned ? preferredId : null,

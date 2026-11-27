@@ -30,6 +30,9 @@ import {
   Sparkles,
   Boxes,
   UtensilsCrossed,
+  MapPin,
+  LocateFixed,
+  Loader2,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/restaurant";
 import { cn } from "@/lib/utils";
@@ -156,6 +159,14 @@ export default function Order() {
     delivery_address: "",
     notes: "",
   });
+  const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [deliveryCheck, setDeliveryCheck] = useState<{
+    status: "idle" | "checking" | "available" | "unavailable" | "need_location";
+    distance?: number;
+    branchName?: string | null;
+    message?: string;
+  }>({ status: "idle" });
+  const [locating, setLocating] = useState(false);
   const [tableBill, setTableBill] = useState<{
     session?: { id: string; table_number?: string; customer_name?: string };
     orders?: Array<{ id: string; order_number: string; total_amount: number; items?: Array<{ item_name: string; quantity: number }> }>;
@@ -452,6 +463,113 @@ export default function Order() {
     };
   }, [fulfillmentType, tableInfo, tableParam, tableIdParam, settings, restaurant]);
 
+  useEffect(() => {
+    if (fulfillmentType !== "delivery") {
+      setDeliveryCheck({ status: "idle" });
+      return;
+    }
+    const restaurantId = (settings as any)?.restaurant_id || restaurant?.id;
+    if (!restaurantId) return;
+
+    const hasCoords = Boolean(deliveryCoords);
+    const address = form.delivery_address.trim();
+    if (!hasCoords && address.length < 5) {
+      setDeliveryCheck({
+        status: "need_location",
+        message:
+          "Share your location or enter a full delivery address so we can check coverage.",
+      });
+      return;
+    }
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(async () => {
+      setDeliveryCheck((prev) => ({ ...prev, status: "checking" }));
+      try {
+        const q = new URLSearchParams({ restaurant_id: restaurantId });
+        if (deliveryCoords) {
+          q.set("lat", String(deliveryCoords.lat));
+          q.set("lng", String(deliveryCoords.lng));
+        } else if (address) {
+          q.set("address", address);
+        }
+        const res = await fetch(`${getApiBase()}/api/public/delivery/check?${q.toString()}`, {
+          signal: ctrl.signal,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok && data.code === "missing_delivery_coords") {
+          setDeliveryCheck({
+            status: "need_location",
+            message:
+              data.error ||
+              "We could not determine your location. Please allow location access or enter a full address / drop a pin on the map.",
+          });
+          return;
+        }
+        if (data.available) {
+          const nextLat = Number(data.lat);
+          const nextLng = Number(data.lng);
+          if (Number.isFinite(nextLat) && Number.isFinite(nextLng)) {
+            setDeliveryCoords((prev) =>
+              prev && prev.lat === nextLat && prev.lng === nextLng
+                ? prev
+                : { lat: nextLat, lng: nextLng },
+            );
+          }
+          setDeliveryCheck({
+            status: "available",
+            distance: Number(data.distance),
+            branchName: data.branchName || null,
+          });
+          return;
+        }
+        setDeliveryCheck({
+          status: "unavailable",
+          message: data.message || data.error || "Delivery unavailable at your location",
+        });
+      } catch {
+        // ignore aborted / network — order API still enforces radius
+      }
+    }, 450);
+
+    return () => {
+      ctrl.abort();
+      clearTimeout(timer);
+    };
+  }, [fulfillmentType, form.delivery_address, deliveryCoords?.lat, deliveryCoords?.lng, settings, restaurant]);
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Location is not supported on this device. Please enter your address or drop a pin on the map.");
+      setDeliveryCheck({
+        status: "need_location",
+        message: "Location permission unavailable. Enter a full address or drop a pin on the map.",
+      });
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setDeliveryCoords({
+          lat: Number(pos.coords.latitude.toFixed(7)),
+          lng: Number(pos.coords.longitude.toFixed(7)),
+        });
+        setLocating(false);
+        toast.success("Location captured");
+      },
+      () => {
+        setLocating(false);
+        setDeliveryCheck({
+          status: "need_location",
+          message:
+            "Location permission denied. Please enter a full delivery address or drop a pin on the map.",
+        });
+        toast.error("Location permission denied. Enter your address or drop a pin on the map.");
+      },
+      { enableHighAccuracy: true, timeout: 12000 },
+    );
+  };
+
   const submitOrder = async () => {
     if (cart.length === 0) return toast.error("Your cart is empty");
     const isDineIn = fulfillmentType === "dine_in";
@@ -463,6 +581,18 @@ export default function Order() {
     }
     if (fulfillmentType === "delivery" && !form.delivery_address) {
       return toast.error("Please enter required name and contact details");
+    }
+    if (fulfillmentType === "delivery" && deliveryCheck.status === "unavailable") {
+      return toast.error(deliveryCheck.message || "Delivery unavailable at your location");
+    }
+    if (
+      fulfillmentType === "delivery" &&
+      !deliveryCoords &&
+      deliveryCheck.status === "need_location"
+    ) {
+      return toast.error(
+        "We need your location for delivery. Use “Use my location” or enter a full address / drop a pin on the map.",
+      );
     }
     if (settings && Number(settings.min_order_amount || 0) > 0 && subtotal < Number(settings.min_order_amount) && !isDineIn) {
       return toast.error(`Minimum order amount is ${formatCurrency(settings.min_order_amount, settings.currency)}. Orders below this amount cannot be placed.`);
@@ -509,6 +639,12 @@ export default function Order() {
             ? form.delivery_address
             : "Self Pickup",
           fulfillment_type: fulfillmentType,
+          ...(fulfillmentType === "delivery" && deliveryCoords
+            ? {
+                delivery_latitude: deliveryCoords.lat,
+                delivery_longitude: deliveryCoords.lng,
+              }
+            : {}),
           table_id: tableId,
           table_number: tableNumber,
           reservation_id: reservationIdParam || null,
@@ -1010,13 +1146,64 @@ export default function Order() {
                     </span>
                   </div>
                 ) : fulfillmentType === "delivery" ? (
-                  <div>
+                  <div className="space-y-2">
                     <Label>{t("ordering:deliveryAddress", "Delivery Address")} *</Label>
                     <Textarea
                       value={form.delivery_address}
-                      onChange={(e) => setForm({ ...form, delivery_address: e.target.value })}
+                      onChange={(e) => {
+                        setDeliveryCoords(null);
+                        setForm({ ...form, delivery_address: e.target.value });
+                      }}
                       placeholder="Enter your full address"
                     />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
+                        disabled={locating}
+                        onClick={useMyLocation}
+                      >
+                        {locating ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <LocateFixed className="h-3.5 w-3.5 text-orange-600" />
+                        )}
+                        Use my location
+                      </Button>
+                      {deliveryCoords && (
+                        <span className="text-[11px] text-muted-foreground font-mono">
+                          Pin: {deliveryCoords.lat.toFixed(4)}, {deliveryCoords.lng.toFixed(4)}
+                        </span>
+                      )}
+                    </div>
+                    {deliveryCheck.status === "checking" && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Checking delivery coverage…
+                      </p>
+                    )}
+                    {deliveryCheck.status === "available" && (
+                      <p className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5" />
+                        Delivery available
+                        {Number.isFinite(deliveryCheck.distance)
+                          ? ` · ${Number(deliveryCheck.distance).toFixed(1)} km away`
+                          : ""}
+                        {deliveryCheck.branchName ? ` · ${deliveryCheck.branchName}` : ""}
+                      </p>
+                    )}
+                    {deliveryCheck.status === "unavailable" && (
+                      <p className="text-xs text-destructive font-medium">
+                        Delivery unavailable at your location
+                      </p>
+                    )}
+                    {deliveryCheck.status === "need_location" && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        {deliveryCheck.message ||
+                          "Please allow location access or enter a full address / drop a pin on the map."}
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -1057,7 +1244,15 @@ export default function Order() {
                   <Label>{t("ordering:specialInstructions", "Notes")}</Label>
                   <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Any special instructions?" />
                 </div>
-                <Button className="w-full font-bold" onClick={submitOrder} disabled={submitting || cart.length === 0}>
+                <Button
+                  className="w-full font-bold"
+                  onClick={submitOrder}
+                  disabled={
+                    submitting ||
+                    cart.length === 0 ||
+                    (fulfillmentType === "delivery" && deliveryCheck.status === "unavailable")
+                  }
+                >
                   {submitting ? t("ordering:processingOrder", "Placing order…") : `${t("ordering:placeOrder", "Place order")} — ${formatCurrency(total, settings?.currency)}`}
                 </Button>
               </div>

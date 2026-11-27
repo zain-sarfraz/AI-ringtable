@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
-  LayoutDashboard,
   LogOut,
   Menu,
   User,
@@ -32,7 +31,7 @@ type TopBarProps = {
 };
 
 export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
-  const { t } = useTranslation(["sidebar", "common", "auth"]);
+  const { t } = useTranslation(["sidebar", "common", "auth", "orders"]);
   const { user, profile, signOut, role } = useAuth();
   const { activeRestaurant } = useActiveRestaurant();
   const navigate = useNavigate();
@@ -40,6 +39,7 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
 
   const isPosPage =
     location.pathname === "/pos" || location.pathname.startsWith("/pos");
+  const isOrderDetailPage = /^\/orders\/[^/]+/.test(location.pathname);
   const isStaff = hideSidebarNav || role === "staff";
 
   useEffect(() => {
@@ -71,9 +71,6 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
   const restaurantLabel = activeRestaurant?.name || PRODUCT_NAME;
 
   if (isStaff) {
-    const onDashboard =
-      location.pathname === "/dashboard" || location.pathname === "/";
-
     return (
       <header className="sticky top-0 z-30 border-b border-[#E8E0D4] bg-[#FBF8F3]/95 backdrop-blur-md">
         <div className="mx-auto flex h-[60px] max-w-[1600px] items-center justify-between gap-2 px-4 sm:h-[68px] sm:gap-4 sm:px-6 lg:px-8">
@@ -94,30 +91,9 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
                 </p>
               </div>
             </Link>
-
-            {!onDashboard ? (
-              <Link
-                to="/dashboard"
-                className="ml-1 hidden items-center gap-1.5 rounded-xl border border-[#E8E0D4] bg-white px-3 py-2 text-xs font-semibold text-[#1B4332] shadow-sm transition-colors hover:border-[#C9A227]/45 hover:bg-[#F7F2E9] sm:inline-flex"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Back to Dashboard
-              </Link>
-            ) : null}
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            {!onDashboard ? (
-              <Link
-                to="/dashboard"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#E8E0D4] bg-white text-[#1B4332] shadow-sm transition-colors hover:border-[#C9A227]/45 hover:bg-[#F7F2E9] sm:hidden"
-                aria-label="Back to Dashboard"
-                title="Back to Dashboard"
-              >
-                <LayoutDashboard className="h-4 w-4" />
-              </Link>
-            ) : null}
-
             <div className="hidden items-center gap-2 rounded-full border border-[#E8E0D4] bg-white/80 px-3 py-1.5 sm:inline-flex">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
@@ -189,7 +165,19 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
   return (
     <header className="sticky top-0 z-30 h-14 border-b border-border/70 bg-background/80 backdrop-blur-xl sm:h-16">
       <div className="flex h-full items-center justify-between gap-1.5 px-3 sm:gap-3 sm:px-6 lg:px-8">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+        <div className="flex min-w-0 flex-1 items-center justify-start gap-1.5 sm:gap-2">
+          {onOpenMobileNav ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-lg border-border/80 bg-card/80 lg:hidden"
+              onClick={onOpenMobileNav}
+              aria-label="Open navigation"
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+          ) : null}
           {isPosPage ? (
             <Button
               type="button"
@@ -207,6 +195,19 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
               <span className="hidden text-xs font-semibold sm:inline">
                 {t("common:backToLastAction", "Back to last action page")}
               </span>
+            </Button>
+          ) : null}
+          {isOrderDetailPage ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/orders")}
+              className="h-9 shrink-0 gap-1.5 px-2 -ml-0.5 text-muted-foreground hover:text-foreground font-semibold"
+              aria-label={t("orders:title", "Orders")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="text-xs sm:text-sm">{t("orders:title", "Orders")}</span>
             </Button>
           ) : null}
         </div>
@@ -264,19 +265,6 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {onOpenMobileNav ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0 rounded-lg border-border/80 bg-card/80 lg:hidden"
-              onClick={onOpenMobileNav}
-              aria-label="Open navigation"
-            >
-              <Menu className="h-4 w-4" />
-            </Button>
-          ) : null}
         </div>
       </div>
     </header>

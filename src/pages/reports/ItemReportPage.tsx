@@ -398,11 +398,11 @@ export default function ItemReportPage() {
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-500 to-amber-400 flex items-center justify-center text-white shadow-lg shadow-orange-500/25 flex-shrink-0">
             <UtensilsCrossed className="h-6 w-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">
               {t("reports:itemReport", "Item Report")}
             </h1>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 break-words">
               {t("reports:itemReportDesc", "Menu item sales from completed deliveries")}
             </p>
           </div>
@@ -413,7 +413,7 @@ export default function ItemReportPage() {
           {/* Restaurant Selector for multi-restaurant */}
           {restaurants.length > 1 && (
             <Select value={restaurantId} onValueChange={setRestaurantId}>
-              <SelectTrigger className="h-10 bg-card border-border/80 rounded-xl px-3 text-xs w-full sm:w-[170px]">
+              <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
                 <SelectValue placeholder="Select restaurant" />
               </SelectTrigger>
               <SelectContent>
@@ -428,8 +428,8 @@ export default function ItemReportPage() {
 
           {/* Date Filter Dropdown */}
           <Select value={datePreset} onValueChange={setDatePreset}>
-            <SelectTrigger className="h-10 bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border whitespace-nowrap">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
+            <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[180px]">
+              <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -438,6 +438,7 @@ export default function ItemReportPage() {
               <SelectItem value="yesterday">Yesterday</SelectItem>
               <SelectItem value="7">Last 7 Days</SelectItem>
               <SelectItem value="30">Last 30 Days</SelectItem>
+              <SelectItem value="90">Last 90 Days</SelectItem>
               <SelectItem value="this_month">This Month</SelectItem>
               <SelectItem value="last_month">Last Month</SelectItem>
             </SelectContent>
@@ -448,10 +449,10 @@ export default function ItemReportPage() {
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className="h-10 bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border whitespace-nowrap"
+                className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-auto"
               >
-                <Layers className="h-4 w-4 text-muted-foreground" />
-                <span>
+                <Layers className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate max-w-[140px]">
                   {selectedCategory === "all"
                     ? "All Categories"
                     : categoriesList.find((c) => c.id === selectedCategory)?.name || "Category"}
@@ -552,7 +553,7 @@ export default function ItemReportPage() {
           <Button
             onClick={exportToCSV}
             disabled={isLoading || displayedRows.length === 0}
-            className="h-10 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold rounded-xl px-4 text-xs gap-2 shadow-md shadow-orange-500/20 border-none transition-all hover:shadow-lg whitespace-nowrap shrink-0"
+            className="h-10 w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold rounded-xl px-4 text-xs gap-2 shadow-md shadow-orange-500/20 border-none transition-all hover:shadow-lg shrink-0"
           >
             <Download className="h-4 w-4" />
             <span>Export CSV</span>
