@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 /** Shared trigger look for every report filter control. */
 export const reportFilterTriggerClass =
-  "h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[180px]";
+  "h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[180px]";
 
 export const REPORT_DATE_PRESETS = [
   { value: "all", labelKey: "orders:allTime", fallback: "All time" },

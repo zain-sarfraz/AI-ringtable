@@ -161,16 +161,16 @@ export default function OrderReportPage() {
         description={t("reports:orderReportDesc", "Which branch each order went to, and how many were transferred.")}
         icon={<ClipboardList className="h-5 w-5" />}
         actions={
-          <Button variant="outline" className="h-10 rounded-xl w-full sm:w-auto" onClick={exportCsv} disabled={!orders.length}>
+          <Button variant="outline" className="h-10 rounded-xl w-full justify-center sm:w-auto" onClick={exportCsv} disabled={!orders.length}>
             <Download className="h-4 w-4 mr-2" />
             {t("reports:exportCsv", "Export CSV")}
           </Button>
         }
       />
 
-      <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5">
+      <div className="flex flex-col items-stretch sm:flex-row sm:flex-wrap sm:items-center gap-2.5">
         <Select value={branchId} onValueChange={setBranchId}>
-          <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
+          <SelectTrigger className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
             <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
             <SelectValue placeholder={t("reports:allBranches", "All branches")} />
           </SelectTrigger>
@@ -184,7 +184,7 @@ export default function OrderReportPage() {
           </SelectContent>
         </Select>
         <Select value={datePreset} onValueChange={setDatePreset}>
-          <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[180px]">
+          <SelectTrigger className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[180px]">
             <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
             <SelectValue />
           </SelectTrigger>
@@ -200,7 +200,7 @@ export default function OrderReportPage() {
           </SelectContent>
         </Select>
         <Select value={transferFilter} onValueChange={setTransferFilter}>
-          <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
+          <SelectTrigger className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

@@ -39,7 +39,6 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
 
   const isPosPage =
     location.pathname === "/pos" || location.pathname.startsWith("/pos");
-  const isOrderDetailPage = /^\/orders\/[^/]+/.test(location.pathname);
   const isStaff = hideSidebarNav || role === "staff";
 
   useEffect(() => {
@@ -195,19 +194,6 @@ export function TopBar({ onOpenMobileNav, hideSidebarNav }: TopBarProps) {
               <span className="hidden text-xs font-semibold sm:inline">
                 {t("common:backToLastAction", "Back to last action page")}
               </span>
-            </Button>
-          ) : null}
-          {isOrderDetailPage ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate("/orders")}
-              className="h-9 shrink-0 gap-1.5 px-2 -ml-0.5 text-muted-foreground hover:text-foreground font-semibold"
-              aria-label={t("orders:title", "Orders")}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="text-xs sm:text-sm">{t("orders:title", "Orders")}</span>
             </Button>
           ) : null}
         </div>

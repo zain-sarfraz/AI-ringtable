@@ -915,15 +915,25 @@ export default function OrderDetail() {
           Open Table Reservations to see the booking.
         </div>
       )}
-      {/* 1. Actions — Orders back link lives in TopBar (left) */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      {/* 1. Back + actions — one left-aligned row */}
+      <div className="flex flex-row flex-wrap items-center justify-start gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/orders")}
+            className="h-9 shrink-0 justify-start gap-1.5 px-2.5 text-xs font-semibold bg-card border-border/80 shadow-xs hover:bg-muted"
+          >
+            <ArrowLeft className="h-4 w-4 shrink-0" />
+            {t("orders:title", "Orders")}
+          </Button>
           <Button
             variant="outline"
             size="sm"
-            className="h-9 gap-2 text-xs font-semibold bg-card border-border/80 shadow-xs hover:bg-muted w-full sm:w-auto"
+            className="h-9 shrink-0 justify-start gap-1.5 px-2.5 text-xs font-semibold bg-card border-border/80 shadow-xs hover:bg-muted"
             onClick={handlePrint}
           >
-            <Printer className="h-4 w-4 text-muted-foreground" />{" "}
+            <Printer className="h-4 w-4 shrink-0 text-muted-foreground" />
             {order && (order.fulfillment_type === "dine_in" || order.table_number)
               ? "Print Table Invoice"
               : t("orders:printReceipt", "Print Receipt")}
@@ -931,11 +941,11 @@ export default function OrderDetail() {
           <Button
             variant="outline"
             size="sm"
-            className="h-9 gap-2 text-xs font-semibold bg-card border-border/80 shadow-xs hover:bg-muted w-full sm:w-auto"
+            className="h-9 shrink-0 justify-start gap-1.5 px-2.5 text-xs font-semibold bg-card border-border/80 shadow-xs hover:bg-muted"
             asChild
           >
             <Link to={`/track/${order.tracking_code}`} target="_blank" rel="noreferrer">
-              <ExternalLink className="h-4 w-4 text-muted-foreground" />
+              <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" />
               {t("orders:liveTrackPage", "Live Track Page")}
             </Link>
           </Button>
@@ -944,13 +954,13 @@ export default function OrderDetail() {
             <Button
               variant="outline"
               size="sm"
-              className="h-9 gap-2 text-xs font-semibold bg-orange-50/80 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-900/60 shadow-xs hover:bg-orange-100 dark:hover:bg-orange-900/60"
+              className="h-9 shrink-0 justify-start gap-1.5 px-2.5 text-xs font-semibold bg-orange-50/80 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-900/60 shadow-xs hover:bg-orange-100 dark:hover:bg-orange-900/60"
               onClick={() => {
                 const el = document.getElementById("order-call-recording-section");
                 el?.scrollIntoView({ behavior: "smooth" });
               }}
             >
-              <PhoneCall className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+              <PhoneCall className="h-4 w-4 shrink-0 text-orange-600 dark:text-orange-400" />
               Call Audio & Transcript
             </Button>
           )}

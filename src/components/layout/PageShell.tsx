@@ -74,7 +74,7 @@ export function PageHeader({
         </div>
       </div>
       {actions ? (
-        <div className="flex w-full min-w-0 shrink-0 flex-col gap-2 md:w-auto md:flex-row md:flex-wrap md:items-center">
+        <div className="flex w-full min-w-0 shrink-0 flex-col items-stretch gap-2 sm:items-start md:w-auto md:flex-row md:flex-wrap md:items-center">
           {actions}
         </div>
       ) : null}

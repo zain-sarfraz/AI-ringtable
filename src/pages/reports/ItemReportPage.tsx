@@ -409,11 +409,11 @@ export default function ItemReportPage() {
         </div>
 
         {/* Top Controls - Single Row */}
-        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
+        <div className="flex flex-col items-stretch sm:flex-row sm:flex-wrap sm:items-center gap-2.5 w-full lg:w-auto">
           {/* Restaurant Selector for multi-restaurant */}
           {restaurants.length > 1 && (
             <Select value={restaurantId} onValueChange={setRestaurantId}>
-              <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
+              <SelectTrigger className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[200px]">
                 <SelectValue placeholder="Select restaurant" />
               </SelectTrigger>
               <SelectContent>
@@ -428,7 +428,7 @@ export default function ItemReportPage() {
 
           {/* Date Filter Dropdown */}
           <Select value={datePreset} onValueChange={setDatePreset}>
-            <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[180px]">
+            <SelectTrigger className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[180px]">
               <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -452,12 +452,12 @@ export default function ItemReportPage() {
                 className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-auto"
               >
                 <Layers className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="truncate max-w-[140px]">
+                <span className="min-w-0 flex-1 truncate text-left max-w-none sm:max-w-[140px]">
                   {selectedCategory === "all"
                     ? "All Categories"
                     : categoriesList.find((c) => c.id === selectedCategory)?.name || "Category"}
                 </span>
-                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground opacity-70 ml-1" />
+                <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-70" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-56 p-2 rounded-xl shadow-xl bg-card border-border/80" align="end">
@@ -553,7 +553,7 @@ export default function ItemReportPage() {
           <Button
             onClick={exportToCSV}
             disabled={isLoading || displayedRows.length === 0}
-            className="h-10 w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold rounded-xl px-4 text-xs gap-2 shadow-md shadow-orange-500/20 border-none transition-all hover:shadow-lg shrink-0"
+            className="h-10 w-full justify-center sm:w-auto bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold rounded-xl px-4 text-xs gap-2 shadow-md shadow-orange-500/20 border-none transition-all hover:shadow-lg shrink-0"
           >
             <Download className="h-4 w-4" />
             <span>Export CSV</span>

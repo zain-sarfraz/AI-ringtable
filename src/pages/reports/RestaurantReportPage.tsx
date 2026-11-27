@@ -113,7 +113,7 @@ export default function RestaurantReportPage() {
                             value={restaurantId}
                             onValueChange={setRestaurantId}
                         >
-                            <SelectTrigger className="h-10 w-full bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[240px]">
+                            <SelectTrigger className="h-10 w-full justify-start bg-card border-border/80 rounded-xl px-3.5 text-xs font-medium gap-2 shadow-sm hover:border-border sm:w-[240px]">
                                 <SelectValue
                                     placeholder={t(
                                         "reports:filterByRestaurant",
